@@ -225,11 +225,11 @@ class ArtifactViewSet(HistoryViewSet):
 
 
 class UserProfileViewSet(HistoryViewSet):
-    serializer_class = UserProfileSerializer
+    serializer_class = UserSerializer
 
     def get_queryset(self):
         # do not return the admin user
-        queryset = UserProfile.objects.all().exclude(id__exact=1)
+        queryset = User.objects.all().exclude(id__exact=1)
         # filter by username, exact
         username = self.request.query_params.get('username', None)
         if username is not None:
@@ -239,7 +239,7 @@ class UserProfileViewSet(HistoryViewSet):
 
 class AuthView(views.APIView):
     authentication_classes = (authentication.BasicAuthentication,)
-    serializer_class = UserProfileSerializer
+    serializer_class = UserSerializer
 
     def post(self, request):
         return Response(self.serializer_class(request.user).data)
