@@ -135,7 +135,8 @@ class StateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = State
-        fields = ('id', 'name', 'county', 'abbreviation', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'country', 'abbreviation',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class CountySerializer(serializers.ModelSerializer):
@@ -302,13 +303,18 @@ class ArtifactSerializer(serializers.ModelSerializer):
 ######
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
+    role = serializers.StringRelatedField(source='userprofile.role')
+    organization = serializers.StringRelatedField(source='userprofile.organization')
+    last_visit = serializers.StringRelatedField(source='userprofile.last_visit')
+    active_key = serializers.StringRelatedField(source='userprofile.active_key')
+    user_status = serializers.StringRelatedField(source='userprofile.user_status')
 
     def __str__(self):
-        return self.user.username
+        return self.username
 
     class Meta:
-        model = UserProfile
+        model = User
         fields = ('id', 'username', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
                   'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_visit', 'active_key',
                   'user_status',)
