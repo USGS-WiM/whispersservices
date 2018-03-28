@@ -370,3 +370,24 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+######
+#
+#  Special
+#
+######
+
+
+class EventSummarySerializer(serializers.ModelSerializer):
+    eventdiagnoses = EventDiagnosisSerializer()
+    states = StateSerializer(many=True, source='eventlocations.state')
+    counties = CountySerializer(many=True, source='eventlocations.county')
+    species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'superevent', 'legal_number', 'legal_status', 'event_status_string', 'event_status',
+                  'epi_staff', 'affected_count', 'end_date', 'start_date', 'complete', 'event_reference',
+                  'event_type_string', 'event_type', 'eventdiagnoses', 'states', 'counties', 'species',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
