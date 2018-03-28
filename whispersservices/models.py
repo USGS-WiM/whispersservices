@@ -68,9 +68,9 @@ class Event(HistoryModel):
     affected_count = models.IntegerField(null=True)
     epi_staff = models.ForeignKey('EpiStaff', 'events')  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
     event_status = models.ForeignKey('EventStatus', 'events')
-    legal_status = models.CharField(max_length=128, null=True, blank=True)
+    legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
     legal_number = models.CharField(max_length=128, null=True, blank=True)
-    superevent = models.ForeignKey('SuperEvent', 'events')
+    superevent = models.ForeignKey('SuperEvent', 'events', null=True)
 
     def __str__(self):
         return str(self.id)
@@ -131,6 +131,18 @@ class EpiStaff(NameModel):  # QUESTION: what is the purpose of this table? see r
 
     class Meta:
         db_table = "whispers_epistaff"
+
+
+class LegalStatus(NameModel):
+    """
+    Legal Status
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_legalstatus"
 
 
 class EventStatus(NameModel):
@@ -410,10 +422,10 @@ class Diagnosis(HistoryModel):
     """
 
     diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses')
-    diagnosis = models.CharField(max_length=128, null=True, blank=True)
+    diagnosis = models.CharField(max_length=128)
 
     def __str__(self):
-        return str(self.id)
+        return self.diagnosis
 
     class Meta:
         db_table = "whispers_diagnosis"

@@ -12,11 +12,16 @@ from whispersservices.models import *
 class EventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
 
     class Meta:
         model = Event
-        fields = ('id', 'event_type', 'event_reference', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'epi_staff', 'event_status', 'legal_status', 'legal_number', 'superevent',
+        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'legal_status', 'legal_status_string', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -111,11 +116,15 @@ class EventContactSerializer(serializers.ModelSerializer):
 class EventLocationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    county_string = serializers.StringRelatedField(source='county')
+    state_string = serializers.StringRelatedField(source='state')
+    country_string = serializers.StringRelatedField(source='country')
 
     class Meta:
         model = EventLocation
-        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'state', 'county', 'county_multiple',
-                  'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'flyway',
+        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string', 'state', 'state_string',
+                  'county', 'county_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude', 'priority',
+                  'land_ownership', 'flyway',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -132,21 +141,23 @@ class CountrySerializer(serializers.ModelSerializer):
 class StateSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    country_string = serializers.StringRelatedField(source='country')
 
     class Meta:
         model = State
-        fields = ('id', 'name', 'country', 'abbreviation',
+        fields = ('id', 'name', 'country', 'country_string', 'abbreviation',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class CountySerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    state_string = serializers.StringRelatedField(source='state')
 
     class Meta:
         model = County
-        fields = ('id', 'name', 'state', 'points', 'centroid_latitude', 'centroid_longitude', 'fips_code',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'state', 'state_string', 'points', 'centroid_latitude', 'centroid_longitude',
+                  'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class LandOwnershipSerializer(serializers.ModelSerializer):
@@ -233,21 +244,23 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 class EventDiagnosisSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
     class Meta:
         model = EventDiagnosis
-        fields = ('id', 'event', 'diagnosis', 'confirmed', 'major', 'priority',
+        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'confirmed', 'major', 'priority', 'causal', 'tested_cout',
-                  'positive_count', 'suspect_count', 'pooled', 'organization',
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
+                  'tested_cout', 'positive_count', 'suspect_count', 'pooled', 'organization',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
