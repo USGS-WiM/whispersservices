@@ -172,8 +172,17 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
-    queryset = Diagnosis.objects.all()
+    # queryset = Diagnosis.objects.all()
     serializer_class = DiagnosisSerializer
+
+    # override the default queryset to allow filtering by URL argument diagnosis_type
+    def get_queryset(self):
+        queryset = Diagnosis.objects.all()
+        diagnosis_type = self.request.query_params.get('diagnosis_type', None)
+        if diagnosis_type is not None:
+            diagnosis_type_list = diagnosis_type.split(',')
+            queryset = queryset.filter(id__in=diagnosis_type_list)
+        return queryset
 
 
 class DiagnosisTypeViewSet(HistoryViewSet):

@@ -260,7 +260,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
-                  'tested_cout', 'positive_count', 'suspect_count', 'pooled', 'organization',
+                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
