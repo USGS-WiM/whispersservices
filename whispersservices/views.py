@@ -181,7 +181,7 @@ class DiagnosisViewSet(HistoryViewSet):
         diagnosis_type = self.request.query_params.get('diagnosis_type', None)
         if diagnosis_type is not None:
             diagnosis_type_list = diagnosis_type.split(',')
-            queryset = queryset.filter(id__in=diagnosis_type_list)
+            queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
         return queryset
 
 
