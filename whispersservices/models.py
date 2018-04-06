@@ -163,6 +163,7 @@ class EventAbstract(HistoryModel):
     """
 
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventabstracts')
+    text = models.TextField(blank=True)
     lab_id = models.IntegerField(null=True)
 
     def __str__(self):

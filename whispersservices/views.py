@@ -81,8 +81,15 @@ class EventStatusViewSet(HistoryViewSet):
 
 
 class EventAbstractViewSet(HistoryViewSet):
-    queryset = EventAbstract.objects.all()
+    # queryset = EventAbstract.objects.all()
     serializer_class = EventAbstractSerializer
+
+    def get_queryset(self):
+        queryset = EventAbstract.objects.all()
+        contains = self.request.query_params.get('contains', None)
+        if contains is not None:
+            queryset = queryset.filter(text__contains=contains)
+        return queryset
 
 
 class EventCaseViewSet(HistoryViewSet):

@@ -67,7 +67,7 @@ class EventAbstractSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventAbstract
-        fields = ('id', 'event', 'lab_id', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event', 'text', 'lab_id', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class EventCaseSerializer(serializers.ModelSerializer):
