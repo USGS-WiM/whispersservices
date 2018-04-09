@@ -328,40 +328,27 @@ class EventSummaryViewSet(viewsets.ModelViewSet):
         if affected is not None:
             affected_list = affected.split(',')
             queryset = queryset.filter(affected__in=affected_list)
-        # filter by sample date (after only, before only, or between both, depending on which URL params appear)
-        # remember that sample date is actually a date time object, so convert it to date before doing date math
+        # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
+        # the date filters below are date-exclusive
         startdate = self.request.query_params.get('startdate', None)
         enddate = self.request.query_params.get('enddate', None)
-        # filtering datetime fields using only date is problematic
-        # (see warning at https://docs.djangoproject.com/en/dev/ref/models/querysets/#range)
-        # to properly do the date math on datetime fields,
-        # set date_after to 23:59 of the current date and date_before to 00:00 of the same day
-        if startdate is not None:
-            startdate_plus = dt.combine(dt.strptime(startdate, '%Y-%m-%d').date(), dtmod.time.max)
-        if enddate is not None:
-            enddate_minus = dt.combine(
-                dt.strptime(enddate, '%Y-%m-%d').date(), dtmod.time.min)
         if startdate is not None and enddate is not None:
-            # the filter below using __range is date-inclusive
-            # queryset = queryset.filter(sample_bottle__sample__sample_date_time__range=(
-            #    date_after_sample_plus, date_before_sample_minus))
-            # the filter below is date-exclusive
-            queryset = queryset.filter(sample_bottle__sample__sample_date_time__gt=startdate_plus,
-                                       sample_bottle__sample__sample_date_time__lt=enddate_minus)
+            queryset = queryset.filter(start_date__gt=startdate,
+                                       end_date__lt=enddate)
         elif startdate is not None:
-            queryset = queryset.filter(sample_bottle__sample__sample_date_time__gt=startdate_plus)
+            queryset = queryset.filter(start_date__gt=startdate)
         elif enddate is not None:
-            queryset = queryset.filter(sample_bottle__sample__sample_date_time__lt=enddate_minus)
+            queryset = queryset.filter(end_date__lt=enddate)
         # filter by owner ID, exact
         owner = self.request.query_params.get('owner', None)
         if owner is not None:
-            queryset = queryset.filter(owner__exact=owner)
+            queryset = queryset.filter(created_by__exact=owner)
         # filter by ownerorg ID, exact
-        ownerorg = self.request.query_params.get('ownerorg', None)
-        if ownerorg is not None:
-            queryset = queryset.filter(ownerorg__exact=ownerorg)
-        # filter by group ID, exact
-        group = self.request.query_params.get('group', None)
-        if group is not None:
-            queryset = queryset.filter(group__exact=group)
-        return queryset
+        # ownerorg = self.request.query_params.get('ownerorg', None)
+        # if ownerorg is not None:
+        #     queryset = queryset.filter(created_by__organization__exact=ownerorg)
+        # # filter by group ID, exact
+        # group = self.request.query_params.get('group', None)
+        # if group is not None:
+        #     queryset = queryset.filter(group__exact=group)
+        # return queryset
