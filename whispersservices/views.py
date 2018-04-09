@@ -225,8 +225,15 @@ class PermissionTypeViewSet(HistoryViewSet):
 
 
 class CommentViewSet(HistoryViewSet):
-    queryset = Comment.objects.all()
+    # queryset = Comment.objects.all()
     serializer_class = CommentSerializer
+
+    def get_queryset(self):
+        queryset = Comment.objects.all()
+        contains = self.request.query_params.get('contains', None)
+        if contains is not None:
+            queryset = queryset.filter(comment__contains=contains)
+        return queryset
 
 
 class ArtifactViewSet(HistoryViewSet):
@@ -280,6 +287,14 @@ class ContactViewSet(HistoryViewSet):
 class GroupViewSet(HistoryViewSet):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
+
+    '''def get_queryset(self):
+        queryset = Group.objects.all()
+        diagnosis_type = self.request.query_params.get('diagnosis_type', None)
+        if diagnosis_type is not None:
+            diagnosis_type_list = diagnosis_type.split(',')
+            queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
+        return queryset'''
 
 
 class EventSummaryViewSet(viewsets.ModelViewSet):
