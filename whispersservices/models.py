@@ -1,6 +1,5 @@
 from django.db import models
 from datetime import date
-from django.db import models
 from django.contrib.auth.models import User
 from django.conf import settings
 from simple_history.models import HistoricalRecords
@@ -164,6 +163,7 @@ class EventAbstract(HistoryModel):
     """
 
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventabstracts')
+    text = models.TextField(blank=True)
     lab_id = models.IntegerField(null=True)
 
     def __str__(self):
@@ -476,7 +476,7 @@ class SpeciesDiagnosis(HistoryModel):
     major = models.BooleanField(default=False)
     priority = models.IntegerField(null=True)
     causal = models.BooleanField(default=False)
-    tested_cout = models.IntegerField(null=True)
+    tested_count = models.IntegerField(null=True)
     positive_count = models.IntegerField(null=True)
     suspect_count = models.IntegerField(null=True)
     pooled = models.BooleanField(default=False)
