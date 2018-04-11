@@ -369,6 +369,8 @@ class GroupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Group
+        # use this when owner added to model
+        # fields = ('id', 'name', 'description', 'owner', 'created_date', 'created_by', 'modified_date', 'modified_by',)
         fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -390,4 +392,61 @@ class EventSummarySerializer(serializers.ModelSerializer):
         fields = ('id', 'superevent', 'legal_number', 'legal_status', 'event_status_string', 'event_status',
                   'epi_staff', 'affected_count', 'end_date', 'start_date', 'complete', 'event_reference',
                   'event_type_string', 'event_type', 'eventdiagnoses', 'states', 'counties', 'species',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    class Meta:
+        model = SpeciesDiagnosis
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
+                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    species_diagnosis = SpeciesDiagnosisDetailSerializer(many=True, source='speciesdiagnoses')
+
+    class Meta:
+        model = LocationSpecies
+        fields = ('id', 'event_location', 'species', 'population_count', 'sick_count', 'dead_count',
+                  'sick_count_estimated', 'dead_count_estimated', 'species_diagnosis', 'priority', 'captive', 'age_bias', 'sex_bias',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class EventLocationDetailSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    county_string = serializers.StringRelatedField(source='county')
+    state_string = serializers.StringRelatedField(source='state')
+    country_string = serializers.StringRelatedField(source='country')
+    location_species = LocationSpeciesDetailSerializer(many=True, source='locationspecies')
+
+    class Meta:
+        model = EventLocation
+        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string', 'state', 'state_string',
+                  'county', 'county_string', 'county_multiple', 'county_unknown', 'location_species', 'latitude', 'longitude', 'priority',
+                  'land_ownership', 'flyway',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class EventDetailSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
+    event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'legal_status', 'legal_status_string', 'event_locations', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)

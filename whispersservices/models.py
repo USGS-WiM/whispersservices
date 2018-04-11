@@ -651,9 +651,10 @@ class Group(NameModel):
     """
     Group
     """
-
     description = models.TextField(blank=True)
-
+    # owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
+    # owner = models.ForeignKey('User', models.PROTECT)
+    
     def __str__(self):
         return self.name
 

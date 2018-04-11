@@ -6,6 +6,7 @@ from rest_framework.routers import DefaultRouter
 router = DefaultRouter()
 
 router.register(r'events', views.EventViewSet, 'events')
+router.register(r'eventdetails', views.EventDetailViewSet, 'eventdetails')
 router.register(r'eventtypes', views.EventTypeViewSet, 'eventtypes')
 router.register(r'epistaff', views.EpiStaffViewSet, 'epistaff')
 router.register(r'eventstatuses', views.EventStatusViewSet, 'eventstatuses')

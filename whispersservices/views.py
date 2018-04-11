@@ -60,6 +60,11 @@ class EventViewSet(HistoryViewSet):
     serializer_class = EventSerializer
 
 
+class EventDetailViewSet(HistoryViewSet):
+    queryset = Event.objects.all()
+    serializer_class = EventDetailSerializer
+
+
 class SuperEventViewSet(HistoryViewSet):
     queryset = SuperEvent.objects.all()
     serializer_class = SuperEventSerializer
@@ -290,7 +295,7 @@ class GroupViewSet(HistoryViewSet):
 
     '''def get_queryset(self):
         queryset = Group.objects.all()
-        diagnosis_type = self.request.query_params.get('diagnosis_type', None)
+        owner_list = self.request.query_params.get('owners', None)
         if diagnosis_type is not None:
             diagnosis_type_list = diagnosis_type.split(',')
             queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
