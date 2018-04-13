@@ -297,8 +297,20 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
-    queryset = Contact.objects.all()
+    # queryset = Contact.objects.all()
     serializer_class = ContactSerializer
+
+    def get_queryset(self):
+        queryset = Contact.objects.all()
+        orgs = self.request.query_params.get('org', None)
+        if orgs is not None:
+            orgs_list = orgs.split(',')
+            queryset = queryset.filter(organization__in=orgs_list)
+        owner_orgs = self.request.query_params.get('ownerorg', None)
+        if owner_orgs is not None:
+            owner_orgs_list = owner_orgs.split(',')
+            queryset = queryset.filter(owner_organization__in=owner_orgs_list)
+        return queryset
 
 
 class GroupViewSet(HistoryViewSet):
