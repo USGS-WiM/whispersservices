@@ -615,7 +615,7 @@ class Organization(NameModel):
     state = models.ForeignKey('State', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
     phone = models.BigIntegerField(null=True, blank=True)
-    parent_organization = models.ForeignKey('self', models.PROTECT, related_name='child_organizations')
+    parent_organization = models.ForeignKey('self', models.PROTECT, related_name='child_organizations', null=True)
     do_not_publish = models.BooleanField(default=False)
 
     def __str__(self):
@@ -652,7 +652,7 @@ class Group(NameModel):
     Group
     """
     description = models.TextField(blank=True)
-    # owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True)
     # owner = models.ForeignKey('User', models.PROTECT)
     
     def __str__(self):
@@ -660,3 +660,15 @@ class Group(NameModel):
 
     class Meta:
         db_table = "whispers_group"
+
+
+class Search(HistoryModel):
+    """
+    User saved searches
+    """
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
+    data = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "whispers_savedsearches"
+

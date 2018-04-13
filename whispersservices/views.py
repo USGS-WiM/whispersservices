@@ -280,8 +280,20 @@ class RoleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    queryset = Organization.objects.all()
+    # queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
+
+    def get_queryset(self):
+        queryset = Organization.objects.all()
+        users = self.request.query_params.get('users', None)
+        if users is not None:
+            users_list = users.split(',')
+            queryset = queryset.filter(users__in=users_list)
+        contacts = self.request.query_params.get('contacts', None)
+        if contacts is not None:
+            contacts_list = contacts.split(',')
+            queryset = queryset.filter(contacts__in=contacts_list)
+        return queryset
 
 
 class ContactViewSet(HistoryViewSet):
@@ -290,16 +302,28 @@ class ContactViewSet(HistoryViewSet):
 
 
 class GroupViewSet(HistoryViewSet):
-    queryset = Group.objects.all()
+    # queryset = Group.objects.all()
     serializer_class = GroupSerializer
 
-    '''def get_queryset(self):
+    def get_queryset(self):
         queryset = Group.objects.all()
-        owner_list = self.request.query_params.get('owners', None)
-        if diagnosis_type is not None:
-            diagnosis_type_list = diagnosis_type.split(',')
-            queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
-        return queryset'''
+        owners = self.request.query_params.get('owner', None)
+        if owners is not None:
+            owners_list = owners.split(',')
+            queryset = queryset.filter(owner__in=owners_list)
+        return queryset
+
+
+class SearchViewSet(viewsets.ModelViewSet):
+    serializer_class = SavedSearchSerializer
+
+    def get_queryset(self):
+        queryset = Search.objects.all()
+        owners = self.request.query_params.get('owner', None)
+        if owners is not None:
+            owners_list = owners.split(',')
+            queryset = queryset.filter(owner__in=owners_list)
+        return queryset
 
 
 class EventSummaryViewSet(viewsets.ModelViewSet):

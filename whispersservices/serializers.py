@@ -370,8 +370,8 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         # use this when owner added to model
-        # fields = ('id', 'name', 'description', 'owner', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-        fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'owner', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        # fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 ######
@@ -450,3 +450,12 @@ class EventDetailSerializer(serializers.ModelSerializer):
                   'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'event_locations', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class SavedSearchSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Search
+        fields = ('id', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)

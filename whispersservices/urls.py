@@ -37,6 +37,7 @@ router.register(r'roles', views.RoleViewSet, 'roles')
 router.register(r'organizations', views.OrganizationViewSet, 'organizations')
 router.register(r'contacts', views.ContactViewSet, 'contacts')
 router.register(r'groups', views.GroupViewSet, 'groups')
+router.register(r'searches', views.SearchViewSet, 'searches')
 
 urlpatterns = [
     url(r'^', include(router.urls)),
