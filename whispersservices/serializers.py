@@ -317,20 +317,48 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    role = serializers.StringRelatedField(source='userprofile.role')
-    organization = serializers.StringRelatedField(source='userprofile.organization')
-    last_visit = serializers.StringRelatedField(source='userprofile.last_visit')
-    active_key = serializers.StringRelatedField(source='userprofile.active_key')
-    user_status = serializers.StringRelatedField(source='userprofile.user_status')
+    password = serializers.CharField(write_only=True)
+    new_role = serializers.IntegerField(write_only=True)
+    new_organization = serializers.IntegerField(write_only=True)
+    role = serializers.PrimaryKeyRelatedField(source='userprofile.role', read_only=True)
+    organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization', read_only=True)
+    last_visit = serializers.DateField(source='userprofile.last_visit', required=False, allow_null=True)
+    active_key = serializers.CharField(source='userprofile.active_key', required=False, allow_blank=True)
+    user_status = serializers.CharField(source='userprofile.user_status', required=False, allow_blank=True)
+
+    def create(self, validated_data):
+        user_profile_data = {}
+        for field in ['role', 'organization', 'last_visit', 'active_key', 'user_status']:
+            if field in validated_data:
+                user_profile_data[field] = validated_data.pop(field)
+        role_id = validated_data.pop('new_role')
+        role = Role.objects.get(pk=role_id)
+        user_profile_data['role'] = role
+        organization_id = validated_data.pop('new_organization')
+        organization = Organization.objects.get(pk=organization_id)
+        user_profile_data['organization'] = organization
+        validated_data.pop('created_by')
+        password = validated_data['password']
+        user = User.objects.create(**validated_data)
+        user.set_password(password)
+        user.save()
+        user_profile_data['user'] = user
+        user_profile_data['created_by'] = self.context['request'].user
+        user_profile_data['modified_by'] = self.context['request'].user
+        UserProfile.objects.create(**user_profile_data)
+        return user
+
+    def update(self, instance, validated_data):
+        return instance
 
     def __str__(self):
         return self.username
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
+        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
                   'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_visit', 'active_key',
-                  'user_status',)
+                  'user_status', 'new_role', 'new_organization')
 
 
 class RoleSerializer(serializers.ModelSerializer):

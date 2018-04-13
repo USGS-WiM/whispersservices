@@ -580,8 +580,8 @@ class UserProfile(HistoryModel):
     role = models.ForeignKey('Role', models.PROTECT, related_name='users')
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='users')
     last_visit = models.DateField(null=True, blank=True)
-    active_key = models.TextField(blank=True)
-    user_status = models.CharField(max_length=128, null=True, blank=True)
+    active_key = models.TextField(blank=True, default='')
+    user_status = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
         return self.user.username
