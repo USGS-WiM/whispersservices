@@ -490,6 +490,17 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    class Meta:
+        model = EventDiagnosis
+        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class EventDetailSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -498,12 +509,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
+    event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'event_locations', 'legal_number', 'superevent',
+                  'legal_status', 'legal_status_string', 'event_locations', 'event_diagnoses', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
