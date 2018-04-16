@@ -267,6 +267,15 @@ class UserProfileViewSet(HistoryViewSet):
         username = self.request.query_params.get('username', None)
         if username is not None:
             queryset = queryset.filter(username__exact=username)
+        email = self.request.query_params.get('email', None)
+        if email is not None:
+            queryset = queryset.filter(email__exact=email)
+        role = self.request.query_params.get('role', None)
+        if role is not None:
+            queryset = queryset.filter(role__exact=role)
+        organization = self.request.query_params.get('organization', None)
+        if email is not None:
+            queryset = queryset.filter(organization__exact=organization)
         return queryset
 
 
