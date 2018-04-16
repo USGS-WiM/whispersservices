@@ -79,6 +79,11 @@ class EpiStaffViewSet(HistoryViewSet):
     serializer_class = EpiStaffSerializer
 
 
+class LegalStatusViewSet(HistoryViewSet):
+    queryset = LegalStatus.objects.all()
+    serializer_class = LegalStatusSerializer
+
+
 class EventStatusViewSet(HistoryViewSet):
     queryset = EventStatus.objects.all()
     serializer_class = EventStatusSerializer
