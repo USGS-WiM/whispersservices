@@ -416,16 +416,15 @@ class SexBias(NameModel):
 ######
 
 
-class Diagnosis(HistoryModel):
+class Diagnosis(NameModel):
     """
     Diagnosis
     """
 
     diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses')
-    diagnosis = models.CharField(max_length=128)
 
     def __str__(self):
-        return self.diagnosis
+        return self.name
 
     class Meta:
         db_table = "whispers_diagnosis"
@@ -664,11 +663,11 @@ class Group(NameModel):
 
 class Search(HistoryModel):
     """
-    User saved searches
+    Searches
     """
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
     data = models.TextField(blank=True)
 
     class Meta:
-        db_table = "whispers_savedsearches"
-
+        db_table = "whispers_search"
+        verbose_name_plural = "searches"

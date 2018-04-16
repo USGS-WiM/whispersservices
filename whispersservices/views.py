@@ -331,7 +331,7 @@ class GroupViewSet(HistoryViewSet):
 
 
 class SearchViewSet(viewsets.ModelViewSet):
-    serializer_class = SavedSearchSerializer
+    serializer_class = SearchSerializer
 
     def get_queryset(self):
         queryset = Search.objects.all()
