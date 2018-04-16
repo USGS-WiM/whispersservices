@@ -446,7 +446,7 @@ class SearchSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
-    eventdiagnoses = EventDiagnosisSerializer()
+    eventdiagnoses = EventDiagnosisSerializer(many=True, source='eventdiagnoses')
     states = StateSerializer(many=True, source='eventlocations.state')
     counties = CountySerializer(many=True, source='eventlocations.county')
     species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
@@ -467,7 +467,7 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
 
 
 class DiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis_type')
+    diagnosis_type_string = serializers.StringRelatedField(many=True, source='diagnosis_type')
 
     class Meta:
         model = Diagnosis
@@ -475,8 +475,8 @@ class DiagnosisDetailSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis = DiagnosisSerializer(source='diagnosis')
-    organization = OrganizationDetailSerializer(source='organization')
+    diagnosis = DiagnosisSerializer(many=True, source='diagnosis')
+    organization = OrganizationDetailSerializer(many=True, source='organization')
 
     class Meta:
         model = SpeciesDiagnosis
@@ -485,7 +485,7 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 
 class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
-    species_string = serializers.StringRelatedField(source='species')
+    species_string = serializers.StringRelatedField(many=True, source='species')
     species_diagnosis = SpeciesDiagnosisDetailSerializer(many=True, source='speciesdiagnoses')
 
     class Meta:
