@@ -575,7 +575,7 @@ class UserProfile(HistoryModel):
     Default fields of the User model: username, first_name, last_name, email, password, groups, user_permissions,
        is_staff, is_active, is_superuser, last_login, date_joined
     """
-    user = models.OneToOneField(User, models.PROTECT)
+    user = models.OneToOneField(User, models.PROTECT, related_name='userprofile')
 
     role = models.ForeignKey('Role', models.PROTECT, related_name='users')
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='users')

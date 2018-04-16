@@ -318,37 +318,55 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    new_role = serializers.IntegerField(write_only=True)
-    new_organization = serializers.IntegerField(write_only=True)
-    role = serializers.PrimaryKeyRelatedField(source='userprofile.role', read_only=True)
-    organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization', read_only=True)
+    role = serializers.PrimaryKeyRelatedField(source='userprofile.role', queryset=Role.objects.all())
+    organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization',
+                                                      queryset=Organization.objects.all())
     last_visit = serializers.DateField(source='userprofile.last_visit', required=False, allow_null=True)
     active_key = serializers.CharField(source='userprofile.active_key', required=False, allow_blank=True)
     user_status = serializers.CharField(source='userprofile.user_status', required=False, allow_blank=True)
 
     def create(self, validated_data):
-        user_profile_data = {}
-        for field in ['role', 'organization', 'last_visit', 'active_key', 'user_status']:
-            if field in validated_data:
-                user_profile_data[field] = validated_data.pop(field)
-        role_id = validated_data.pop('new_role')
-        role = Role.objects.get(pk=role_id)
-        user_profile_data['role'] = role
-        organization_id = validated_data.pop('new_organization')
-        organization = Organization.objects.get(pk=organization_id)
-        user_profile_data['organization'] = organization
+        user_profile_data = validated_data.pop('userprofile')
+
         validated_data.pop('created_by')
+        validated_data.pop('modified_by')
         password = validated_data['password']
         user = User.objects.create(**validated_data)
+
         user.set_password(password)
         user.save()
+
         user_profile_data['user'] = user
         user_profile_data['created_by'] = self.context['request'].user
         user_profile_data['modified_by'] = self.context['request'].user
         UserProfile.objects.create(**user_profile_data)
+
         return user
 
     def update(self, instance, validated_data):
+        user_profile_data = validated_data.pop('userprofile')
+
+        instance.username = validated_data.get('username', instance.username)
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.email = validated_data.get('email', instance.email)
+        instance.is_superuser = validated_data.get('is_superuser', instance.is_superuser)
+        instance.is_staff = validated_data.get('is_staff', instance.is_staff)
+        instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.modified_by = self.context['request'].user
+
+        instance.set_password(validated_data.get('password', instance.password))
+        instance.save()
+
+        user_profile = instance.userprofile
+        user_profile.role = user_profile_data.get('role', user_profile.role)
+        user_profile.organization = user_profile_data.get('organization', user_profile.organization)
+        user_profile.last_visit = user_profile_data.get('last_visit', user_profile.last_visit)
+        user_profile.active_key = user_profile_data.get('active_key', user_profile.active_key)
+        user_profile.user_status = user_profile_data.get('user_status', user_profile.user_status)
+        user_profile.modified_by = self.context['request'].user
+        user_profile.save()
+
         return instance
 
     def __str__(self):
@@ -358,7 +376,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
                   'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_visit', 'active_key',
-                  'user_status', 'new_role', 'new_organization')
+                  'user_status',)
 
 
 class RoleSerializer(serializers.ModelSerializer):

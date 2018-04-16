@@ -41,8 +41,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
-        serializer.save(modified_by=self.request.user)
+        serializer.save(created_by=self.request.user, modified_by=self.request.user)
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
