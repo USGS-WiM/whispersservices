@@ -60,7 +60,7 @@ class Event(HistoryModel):
     """
 
     event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events')
-    event_reference = models.CharField(max_length=128, null=True, blank=True)
+    event_reference = models.CharField(max_length=128, blank=True, default='')
     complete = models.BooleanField(default=False)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
@@ -68,7 +68,7 @@ class Event(HistoryModel):
     epi_staff = models.ForeignKey('EpiStaff', 'events')  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
     event_status = models.ForeignKey('EventStatus', 'events')
     legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
-    legal_number = models.CharField(max_length=128, null=True, blank=True)
+    legal_number = models.CharField(max_length=128, blank=True, default='')
     superevent = models.ForeignKey('SuperEvent', 'events', null=True)
 
     def __str__(self):
@@ -257,7 +257,7 @@ class EventLocation(NameModel):
     longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
     priority = models.IntegerField(null=True)
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, related_name='eventlocations')
-    flyway = models.CharField(max_length=128, null=True, blank=True)
+    flyway = models.CharField(max_length=128, blank=True, default='')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
 
     def __str__(self):
@@ -272,7 +272,7 @@ class Country(NameModel):
     Country
     """
 
-    abbreviation = models.CharField(max_length=128, null=True, blank=True)
+    abbreviation = models.CharField(max_length=128, blank=True, default='')
     calling_code = models.IntegerField(null=True)
 
     def __str__(self):
@@ -289,7 +289,7 @@ class State(NameModel):  # COMMENT: if we're including countries, then we should
     """
 
     country = models.ForeignKey('Country', models.PROTECT, related_name='states')
-    abbreviation = models.CharField(max_length=128, null=True, blank=True)
+    abbreviation = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
         return self.name
@@ -298,22 +298,24 @@ class State(NameModel):  # COMMENT: if we're including countries, then we should
         db_table = "whispers_state"
 
 
-class County(NameModel):  # COMMENT: if we're including countries, then we should probably rename this to 'second-level division' or something not US-specific
+class County(HistoryModel):  # COMMENT: if we're including countries, then we should probably rename this to 'second-level division' or something not US-specific
     """
     County
     """
 
-    state = models.ForeignKey('Country', models.PROTECT, related_name='counties')
-    points = models.CharField(max_length=128, null=True, blank=True)  # QUESTION: what is the purpose of this field?
+    name = models.CharField(max_length=128)
+    state = models.ForeignKey('State', models.PROTECT, related_name='counties')
+    points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
     centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
     centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
-    fips_code = models.CharField(max_length=128, null=True, blank=True)
+    fips_code = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
         return self.name
 
     class Meta:
         db_table = "whispers_county"
+        unique_together = ('name', 'state')
         verbose_name_plural = "counties"
 
 
@@ -366,13 +368,13 @@ class Species(NameModel):
     Species
     """
 
-    class_name = models.CharField(max_length=128, null=True, blank=True)
-    order_name = models.CharField(max_length=128, null=True, blank=True)
-    family_name = models.CharField(max_length=128, null=True, blank=True)
-    sub_family_name = models.CharField(max_length=128, null=True, blank=True)
-    genus_name = models.CharField(max_length=128, null=True, blank=True)
-    species_latin_name = models.CharField(max_length=128, null=True, blank=True)
-    subspecies_latin_name = models.CharField(max_length=128, null=True, blank=True)
+    class_name = models.CharField(max_length=128, blank=True, default='')
+    order_name = models.CharField(max_length=128, blank=True, default='')
+    family_name = models.CharField(max_length=128, blank=True, default='')
+    sub_family_name = models.CharField(max_length=128, blank=True, default='')
+    genus_name = models.CharField(max_length=128, blank=True, default='')
+    species_latin_name = models.CharField(max_length=128, blank=True, default='')
+    subspecies_latin_name = models.CharField(max_length=128, blank=True, default='')
     tsn = models.IntegerField(null=True)
 
     def __str__(self):
@@ -436,7 +438,7 @@ class DiagnosisType(NameModel):
     Diagnosis Type
     """
 
-    color = models.CharField(max_length=128, null=True, blank=True)
+    color = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
         return self.name
@@ -504,7 +506,7 @@ class Permission(HistoryModel):  # TODO: implement relates to other models that 
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='permissions')
     role = models.ForeignKey('Role', models.PROTECT, related_name='permissions')
     group = models.ForeignKey('Group', models.PROTECT, related_name='permissions')
-    table = models.CharField(max_length=128, null=True, blank=True)
+    table = models.CharField(max_length=128, blank=True, default='')
     object = models.IntegerField(null=True, blank=True)
     permission_type = models.ForeignKey('PermissionType', models.PROTECT, related_name='permissions')
 
@@ -532,10 +534,10 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
     Comment
     """
 
-    table = models.CharField(max_length=128, null=True, blank=True)
+    table = models.CharField(max_length=128, blank=True, default='')
     object = models.IntegerField(null=True, blank=True)
     comment = models.TextField(blank=True)
-    keywords = models.CharField(max_length=128, null=True, blank=True)
+    keywords = models.CharField(max_length=128, blank=True, default='')
     link = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
     link_type = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
 
@@ -551,8 +553,8 @@ class Artifact(HistoryModel):  # TODO: implement file fields
     Artifact
     """
 
-    filename = models.CharField(max_length=128, null=True, blank=True)
-    keywords = models.CharField(max_length=128, null=True, blank=True)
+    filename = models.CharField(max_length=128, blank=True, default='')
+    keywords = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
         return str(self.id)
@@ -606,10 +608,10 @@ class Organization(NameModel):
     Organization
     """
 
-    private_name = models.CharField(max_length=128, null=True, blank=True)
-    address_one = models.CharField(max_length=128, null=True, blank=True)
-    address_two = models.CharField(max_length=128, null=True, blank=True)
-    city = models.CharField(max_length=128, null=True, blank=True)
+    private_name = models.CharField(max_length=128, blank=True, default='')
+    address_one = models.CharField(max_length=128, blank=True, default='')
+    address_two = models.CharField(max_length=128, blank=True, default='')
+    city = models.CharField(max_length=128, blank=True, default='')
     zip_postal_code = models.BigIntegerField(null=True, blank=True)
     state = models.ForeignKey('State', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
@@ -629,12 +631,12 @@ class Contact(HistoryModel):
     Contact
     """
 
-    first_name = models.CharField(max_length=128, null=True, blank=True)
-    last_name = models.CharField(max_length=128, null=True, blank=True)
-    email = models.CharField(max_length=128, null=True, blank=True)
+    first_name = models.CharField(max_length=128, blank=True, default='')
+    last_name = models.CharField(max_length=128, blank=True, default='')
+    email = models.CharField(max_length=128, blank=True, default='')
     phone = models.BigIntegerField(null=True, blank=True)
-    title = models.CharField(max_length=128, null=True, blank=True)
-    position = models.CharField(max_length=128, null=True, blank=True)
+    title = models.CharField(max_length=128, blank=True, default='')
+    position = models.CharField(max_length=128, blank=True, default='')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='contacts')
     owner_organization = models.ForeignKey('Organization', models.PROTECT, related_name='owned_contacts')
