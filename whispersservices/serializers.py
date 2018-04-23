@@ -485,7 +485,7 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 
 class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
-    species_string = serializers.StringRelatedField(many=True, source='species')
+    species_string = serializers.StringRelatedField(source='species')
     species_diagnosis = SpeciesDiagnosisDetailSerializer(many=True, source='speciesdiagnoses')
 
     class Meta:
