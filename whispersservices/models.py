@@ -615,7 +615,7 @@ class Organization(NameModel):
     zip_postal_code = models.BigIntegerField(null=True, blank=True)
     state = models.ForeignKey('State', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
-    phone = models.BigIntegerField(null=True, blank=True)
+    phone = models.CharField(max_length=128, blank=True, default='')
     parent_organization = models.ForeignKey('self', models.PROTECT, related_name='child_organizations', null=True)
     do_not_publish = models.BooleanField(default=False)
 
