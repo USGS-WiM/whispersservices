@@ -218,6 +218,7 @@ class EventOrganization(HistoryModel):
         db_table = "whispers_eventorganization"
 
 
+# It was determined that EventContactLocation is what we actually need, leaving this until that is confirmed
 class EventContact(HistoryModel):
     """
     Table to allow many-to-many relationship between Events and Contacts.
@@ -258,6 +259,9 @@ class EventLocation(NameModel):
     priority = models.IntegerField(null=True)
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, related_name='eventlocations')
     flyway = models.CharField(max_length=128, null=True, blank=True)
+    # add contacts here
+    # Ex. samples = models.ManyToManyField('Sample', through='SampleAnalysisBatch', related_name='sampleanalysisbatches')
+    contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocationcontacts')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
 
     def __str__(self):
@@ -265,6 +269,21 @@ class EventLocation(NameModel):
 
     class Meta:
         db_table = "whispers_eventlocation"
+
+
+class EventLocationContact(HistoryModel):
+    """
+    Table to allow many-to-many relationship between Events and Contacts.
+    """
+
+    event_location = models.ForeignKey('EventLocation', models.PROTECT)
+    contact = models.ForeignKey('Contact', models.PROTECT)
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventlocationcontact"
 
 
 class Country(NameModel):

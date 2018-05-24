@@ -133,8 +133,17 @@ class EventLocationSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string', 'state', 'state_string',
                   'county', 'county_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude', 'priority',
-                  'land_ownership', 'flyway',
+                  'land_ownership', 'flyway', 'contacts',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class EventLocationContactSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = EventLocationContact
+        fields = ('id', 'event_location', 'contact', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class CountrySerializer(serializers.ModelSerializer):

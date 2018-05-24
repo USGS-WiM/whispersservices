@@ -133,6 +133,11 @@ class EventLocationViewSet(HistoryViewSet):
     serializer_class = EventLocationSerializer
 
 
+class EventLocationContactViewSet(HistoryViewSet):
+    queryset = EventLocationContact.objects.all()
+    serializer_class = EventLocationContactSerializer
+
+
 class CountryViewSet(HistoryViewSet):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
