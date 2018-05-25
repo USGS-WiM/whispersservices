@@ -125,15 +125,16 @@ class EventContactSerializer(serializers.ModelSerializer):
 class EventLocationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
-    county_string = serializers.StringRelatedField(source='county')
-    state_string = serializers.StringRelatedField(source='state')
+    administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
 
     class Meta:
         model = EventLocation
-        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string', 'state', 'state_string',
-                  'county', 'county_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude', 'priority',
-                  'land_ownership', 'flyway', 'contacts',
+        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
+                  'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
+                  'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
+                  'priority', 'land_ownership', 'flyway', 'contacts',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -156,17 +157,6 @@ class CountrySerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class StateSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-    country_string = serializers.StringRelatedField(source='country')
-
-    class Meta:
-        model = State
-        fields = ('id', 'name', 'country', 'country_string', 'abbreviation',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
 class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -178,17 +168,6 @@ class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class CountySerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-    state_string = serializers.StringRelatedField(source='state')
-
-    class Meta:
-        model = County
-        fields = ('id', 'name', 'state', 'state_string', 'points', 'centroid_latitude', 'centroid_longitude',
-                  'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -196,8 +175,9 @@ class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AdministrativeLevelTwo
-        fields = ('id', 'name', 'administrative_level_one', 'administrative_level_one_string', 'points', 'centroid_latitude', 'centroid_longitude',
-                  'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'administrative_level_one', 'administrative_level_one_string', 'points',
+                  'centroid_latitude', 'centroid_longitude', 'fips_code', 'created_date',
+                  'created_by', 'modified_date', 'modified_by',)
 
 
 class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
@@ -206,7 +186,8 @@ class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AdministrativeLevelLocality
-        fields = ('id', 'country', 'admin_level_one', 'admin_level_two', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'country', 'admin_level_one_name', 'admin_level_two_name',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class LandOwnershipSerializer(serializers.ModelSerializer):
@@ -443,8 +424,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'zip_postal_code', 'state',
-                  'country', 'phone', 'parent_organization', 'do_not_publish',
+        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'zip_postal_code',
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -486,17 +467,22 @@ class SearchSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
-    eventdiagnoses = EventDiagnosisSerializer(many=True, source='eventdiagnoses')
-    states = StateSerializer(many=True, source='eventlocations.state')
-    counties = CountySerializer(many=True, source='eventlocations.county')
+    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    # NOTE: these two admin level fields probably do not work and will likely need to be SerializerMethodFields instead
+    administrativelevelones = AdministrativeLevelOneSerializer(
+        many=True, source='eventlocations.administrative_level_one')
+    administrativeleveltwos = AdministrativeLevelTwoSerializer(
+        many=True, source='eventlocations.administrative_level_two')
     species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_status_string = serializers.StringRelatedField(source='event_status')
 
     class Meta:
         model = Event
         fields = ('id', 'superevent', 'legal_number', 'legal_status', 'event_status_string', 'event_status',
                   'epi_staff', 'affected_count', 'end_date', 'start_date', 'complete', 'event_reference',
-                  'event_type_string', 'event_type', 'eventdiagnoses', 'states', 'counties', 'species',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'event_type_string', 'event_type', 'eventdiagnoses', 'administrativelevelones',
+                  'administrativeleveltwos', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):
@@ -536,16 +522,17 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
 
 
 class EventLocationDetailSerializer(serializers.ModelSerializer):
-    county_string = serializers.StringRelatedField(source='county')
-    state_string = serializers.StringRelatedField(source='state')
+    administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
     location_species = LocationSpeciesDetailSerializer(many=True, source='locationspecies')
 
     class Meta:
         model = EventLocation
-        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string', 'state', 'state_string',
-                  'county', 'county_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude', 'priority',
-                  'land_ownership', 'flyway', 'location_species',)
+        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
+                  'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
+                  'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
+                  'priority', 'land_ownership', 'flyway', 'location_species',)
 
 
 class EventDiagnosisDetailSerializer(serializers.ModelSerializer):

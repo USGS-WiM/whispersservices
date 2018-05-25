@@ -143,11 +143,6 @@ class CountryViewSet(HistoryViewSet):
     serializer_class = CountrySerializer
 
 
-class StateViewSet(HistoryViewSet):
-    queryset = State.objects.all()
-    serializer_class = StateSerializer
-
-
 class AdministrativeLevelOneViewSet(HistoryViewSet):
     # queryset = AdministrativeLevelOne.objects.all()
     serializer_class = AdministrativeLevelOneSerializer
@@ -159,11 +154,6 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
             countries_list = countries.split(',')
             queryset = queryset.filter(country__in=countries_list)
         return queryset
-
-
-class CountyViewSet(HistoryViewSet):
-    queryset = County.objects.all()
-    serializer_class = CountySerializer
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
@@ -387,6 +377,13 @@ class SearchViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+######
+#
+#  Special
+#
+######
+
+
 class EventSummaryViewSet(viewsets.ModelViewSet):
     serializer_class = EventSummarySerializer
 
@@ -413,42 +410,42 @@ class EventSummaryViewSet(viewsets.ModelViewSet):
         diagnosis = self.request.query_params.get('diagnosis', None)
         if diagnosis is not None:
             diagnosis_list = diagnosis.split(',')
-            queryset = queryset.filter(diagnosis__in=diagnosis_list)
+            queryset = queryset.filter(eventdiagnoses__diagnois__in=diagnosis_list)
         # filter by diagnosistype ID, exact list
         diagnosistype = self.request.query_params.get('diagnosistype', None)
         if diagnosistype is not None:
             diagnosistype_list = diagnosistype.split(',')
-            queryset = queryset.filter(diagnosistype__in=diagnosistype_list)
+            queryset = queryset.filter(eventdiagnoses__diagnois__diagnosistype__in=diagnosistype_list)
         # filter by species ID, exact list
         species = self.request.query_params.get('species', None)
         if species is not None:
             species_list = species.split(',')
-            queryset = queryset.filter(species__in=species_list)
-        # filter by state, exact list
-        state = self.request.query_params.get('state', None)
-        if state is not None:
-            state_list = state.split(',')
-            queryset = queryset.filter(state__in=state_list)
-        # filter by county, exact list
-        county = self.request.query_params.get('county', None)
-        if county is not None:
-            county_list = county.split(',')
-            queryset = queryset.filter(county__in=county_list)
+            queryset = queryset.filter(eventlocations__locationspecies__species__in=species_list)
+        # filter by administrative_level_one, exact list
+        administrative_level_one = self.request.query_params.get('administrative_level_one', None)
+        if administrative_level_one is not None:
+            administrative_level_one_list = administrative_level_one.split(',')
+            queryset = queryset.filter(eventlocations__administrative_level_one__in=administrative_level_one_list)
+        # filter by administrative_level_two, exact list
+        administrative_level_two = self.request.query_params.get('administrative_level_two', None)
+        if administrative_level_two is not None:
+            administrative_level_two_list = administrative_level_two.split(',')
+            queryset = queryset.filter(eventlocations__administrative_level_two__in=administrative_level_two_list)
         # filter by flyway, exact list
         flyway = self.request.query_params.get('flyway', None)
         if flyway is not None:
             flyway_list = flyway.split(',')
-            queryset = queryset.filter(flyway__in=flyway_list)
+            queryset = queryset.filter(eventlocations__flyway__in=flyway_list)
         # filter by country, exact list
         country = self.request.query_params.get('country', None)
         if country is not None:
             country_list = country.split(',')
-            queryset = queryset.filter(country__in=country_list)
+            queryset = queryset.filter(eventlocations__country__in=country_list)
         # filter by affected, exact list
-        affected = self.request.query_params.get('affected', None)
-        if affected is not None:
-            affected_list = affected.split(',')
-            queryset = queryset.filter(affected__in=affected_list)
+        affected_count = self.request.query_params.get('affected_count', None)
+        if affected_count is not None:
+            affected_count_list = affected_count.split(',')
+            queryset = queryset.filter(affected_count__in=affected_count_list)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
         startdate = self.request.query_params.get('startdate', None)

@@ -250,8 +250,10 @@ class EventLocation(NameModel):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     country = models.ForeignKey('Country', models.PROTECT, related_name='eventlocations')
-    state = models.ForeignKey('State', models.PROTECT, related_name='eventlocations')
-    county = models.ForeignKey('County', models.PROTECT, related_name='eventlocations')
+    administrative_level_one = models.ForeignKey(
+        'AdministrativeLevelOne', models.PROTECT, related_name='eventlocations')
+    administrative_level_two = models.ForeignKey(
+        'AdministrativeLevelTwo', models.PROTECT, related_name='eventlocations')
     county_multiple = models.BooleanField(default=False)
     county_unknown = models.BooleanField(default=False)
     latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
@@ -302,27 +304,12 @@ class Country(NameModel):
         verbose_name_plural = "countries"
 
 
-class State(NameModel):  # COMMENT: if we're including countries, then we should probably rename this to 'first-level division' or something not US-specific
-    """
-    State
-    """
-
-    country = models.ForeignKey('Country', models.PROTECT, related_name='states')
-    abbreviation = models.CharField(max_length=128, blank=True, default='')
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_state"
-
-
 class AdministrativeLevelOne(NameModel):
     """
     Administrative Level One (ex. in US it is State)
     """
 
-    country = models.ForeignKey('Country', models.PROTECT, related_name='administrativelevelone')
+    country = models.ForeignKey('Country', models.PROTECT, related_name='administrativelevelones')
     abbreviation = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
@@ -332,34 +319,14 @@ class AdministrativeLevelOne(NameModel):
         db_table = "whispers_administrativelevelone"
 
 
-class County(HistoryModel):  # COMMENT: if we're including countries, then we should probably rename this to 'second-level division' or something not US-specific
-    """
-    County
-    """
-
-    name = models.CharField(max_length=128)
-    state = models.ForeignKey('State', models.PROTECT, related_name='counties')
-    points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
-    centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
-    centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
-    fips_code = models.CharField(max_length=128, blank=True, default='')
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_county"
-        unique_together = ('name', 'state')
-        verbose_name_plural = "counties"
-
-
 class AdministrativeLevelTwo(HistoryModel):
     """
     Administrative Level Two (ex. in US it is counties)
     """
 
     name = models.CharField(max_length=128)
-    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='administrativeleveltwo')
+    administrative_level_one = models.ForeignKey(
+        'AdministrativeLevelOne', models.PROTECT, related_name='administrativeleveltwos')
     points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
     centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
     centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
@@ -371,7 +338,6 @@ class AdministrativeLevelTwo(HistoryModel):
     class Meta:
         db_table = "whispers_administrativeleveltwo"
         unique_together = ('name', 'administrative_level_one')
-        # verbose_name_plural = "counties"
 
 
 class AdministrativeLevelLocality(NameModel):
@@ -380,9 +346,9 @@ class AdministrativeLevelLocality(NameModel):
     """
 
     country = models.ForeignKey('Country', models.PROTECT, related_name='country')
-    admin_level_one = models.CharField(max_length=128, blank=True, default='')
-    admin_level_two = models.CharField(max_length=128, blank=True, default='')
-    
+    admin_level_one_name = models.CharField(max_length=128, blank=True, default='')
+    admin_level_two_name = models.CharField(max_length=128, blank=True, default='')
+
     def __str__(self):
         return str(self.id)
 
@@ -684,7 +650,7 @@ class Organization(NameModel):
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
     zip_postal_code = models.BigIntegerField(null=True, blank=True)
-    state = models.ForeignKey('State', models.PROTECT, related_name='organizations')
+    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
     parent_organization = models.ForeignKey('self', models.PROTECT, related_name='child_organizations', null=True)
