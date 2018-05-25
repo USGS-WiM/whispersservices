@@ -359,7 +359,7 @@ class AdministrativeLevelTwo(HistoryModel):
     """
 
     name = models.CharField(max_length=128)
-    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='administrativelevelone')
+    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='administrativeleveltwo')
     points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
     centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
     centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)

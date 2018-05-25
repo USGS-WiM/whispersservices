@@ -149,8 +149,16 @@ class StateViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
-    queryset = AdministrativeLevelOne.objects.all()
+    # queryset = AdministrativeLevelOne.objects.all()
     serializer_class = AdministrativeLevelOneSerializer
+
+    def get_queryset(self):
+        queryset = AdministrativeLevelOne.objects.all()
+        countries = self.request.query_params.get('country', None)
+        if countries is not None:
+            countries_list = countries.split(',')
+            queryset = queryset.filter(country__in=countries_list)
+        return queryset
 
 
 class CountyViewSet(HistoryViewSet):
@@ -159,8 +167,16 @@ class CountyViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
-    queryset = AdministrativeLevelTwo.objects.all()
+    # queryset = AdministrativeLevelTwo.objects.all()
     serializer_class = AdministrativeLevelTwoSerializer
+
+    def get_queryset(self):
+        queryset = AdministrativeLevelTwo.objects.all()
+        administrative_level_one = self.request.query_params.get('administrativelevelone', None)
+        if administrative_level_one is not None:
+            administrative_level_one_list = administrative_level_one.split(',')
+            queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
+        return queryset
 
 
 class AdministrativeLevelLocalityViewSet(HistoryViewSet):

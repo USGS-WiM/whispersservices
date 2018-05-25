@@ -192,7 +192,7 @@ class CountySerializer(serializers.ModelSerializer):
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
-    administrative_level_one_string = serializers.StringRelatedField(source='administrativelevelone')
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
 
     class Meta:
         model = AdministrativeLevelTwo
