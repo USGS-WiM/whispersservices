@@ -200,6 +200,15 @@ class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
                   'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = AdministrativeLevelLocality
+        fields = ('id', 'country', 'admin_level_one', 'admin_level_two', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class LandOwnershipSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()

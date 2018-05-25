@@ -374,6 +374,22 @@ class AdministrativeLevelTwo(HistoryModel):
         # verbose_name_plural = "counties"
 
 
+class AdministrativeLevelLocality(NameModel):
+    """
+    Table for looking up local names for adminstrative levels based on country
+    """
+
+    country = models.ForeignKey('Country', models.PROTECT, related_name='country')
+    admin_level_one = models.CharField(max_length=128, blank=True, default='')
+    admin_level_two = models.CharField(max_length=128, blank=True, default='')
+    
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_adminstrativelevellocality"
+
+
 class LandOwnership(NameModel):
     """
     Land Ownership
