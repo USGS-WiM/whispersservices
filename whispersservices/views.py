@@ -148,9 +148,19 @@ class StateViewSet(HistoryViewSet):
     serializer_class = StateSerializer
 
 
+class AdministrativeLevelOneViewSet(HistoryViewSet):
+    queryset = AdministrativeLevelOne.objects.all()
+    serializer_class = AdministrativeLevelOneSerializer
+
+
 class CountyViewSet(HistoryViewSet):
     queryset = County.objects.all()
     serializer_class = CountySerializer
+
+
+class AdministrativeLevelTwoViewSet(HistoryViewSet):
+    queryset = AdministrativeLevelTwo.objects.all()
+    serializer_class = AdministrativeLevelTwoSerializer
 
 
 class LandOwnershipViewSet(HistoryViewSet):

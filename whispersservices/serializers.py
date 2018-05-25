@@ -167,6 +167,17 @@ class StateSerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    country_string = serializers.StringRelatedField(source='country')
+
+    class Meta:
+        model = AdministrativeLevelOne
+        fields = ('id', 'name', 'country', 'country_string', 'abbreviation',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class CountySerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -175,6 +186,17 @@ class CountySerializer(serializers.ModelSerializer):
     class Meta:
         model = County
         fields = ('id', 'name', 'state', 'state_string', 'points', 'centroid_latitude', 'centroid_longitude',
+                  'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    administrative_level_one_string = serializers.StringRelatedField(source='administrativelevelone')
+
+    class Meta:
+        model = AdministrativeLevelTwo
+        fields = ('id', 'name', 'administrative_level_one', 'administrative_level_one_string', 'points', 'centroid_latitude', 'centroid_longitude',
                   'fips_code', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

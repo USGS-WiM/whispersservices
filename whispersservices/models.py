@@ -317,6 +317,21 @@ class State(NameModel):  # COMMENT: if we're including countries, then we should
         db_table = "whispers_state"
 
 
+class AdministrativeLevelOne(NameModel):
+    """
+    Administrative Level One (ex. in US it is State)
+    """
+
+    country = models.ForeignKey('Country', models.PROTECT, related_name='administrativelevelone')
+    abbreviation = models.CharField(max_length=128, blank=True, default='')
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_administrativelevelone"
+
+
 class County(HistoryModel):  # COMMENT: if we're including countries, then we should probably rename this to 'second-level division' or something not US-specific
     """
     County
@@ -336,6 +351,27 @@ class County(HistoryModel):  # COMMENT: if we're including countries, then we sh
         db_table = "whispers_county"
         unique_together = ('name', 'state')
         verbose_name_plural = "counties"
+
+
+class AdministrativeLevelTwo(HistoryModel):
+    """
+    Administrative Level Two (ex. in US it is counties)
+    """
+
+    name = models.CharField(max_length=128)
+    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='administrativelevelone')
+    points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
+    centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
+    centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
+    fips_code = models.CharField(max_length=128, blank=True, default='')
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_administrativeleveltwo"
+        unique_together = ('name', 'administrative_level_one')
+        # verbose_name_plural = "counties"
 
 
 class LandOwnership(NameModel):
