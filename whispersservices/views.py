@@ -1,18 +1,22 @@
 import datetime as dtmod
 from datetime import datetime as dt
+from django.utils import timezone
 from django.shortcuts import render
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, generics, permissions, authentication, status
 from rest_framework.response import Response
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
+from dry_rest_permissions.generics import DRYPermissions
+User = get_user_model()
 
 
 ########################################################################################################################
 #
 #  copyright: 2017 WiM - USGS
-#  authors: Aaron Stephenson USGS WiM (Web Informatics and Mapping)
+#  authors: Aaron Stephenson USGS WIM (Web Informatics and Mapping)
 #
 #  In Django, a view is what takes a Web request and returns a Web response. The response can be many things, but most
 #  of the time it will be a Web page, a redirect, or a document. In this case, the response will almost always be data
@@ -33,12 +37,25 @@ from whispersservices.permissions import *
 ######
 
 
-class HistoryViewSet(viewsets.ModelViewSet):
+class AuthLastLoginMixin(object):
     """
-    This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
+    This class will update the user's last_login field each time a request is received
     """
 
     permission_classes = (permissions.IsAuthenticated,)
+
+    def finalize_response(self, request, *args, **kwargs):
+        user = request.user
+        if user.is_authenticated:
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+        return super(AuthLastLoginMixin, self).finalize_response(request, *args, **kwargs)
+
+
+class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
+    """
+    This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
+    """
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, modified_by=self.request.user)
@@ -55,6 +72,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
 
 
 class EventViewSet(HistoryViewSet):
+    permission_classes = (DRYPermissions,)
     queryset = Event.objects.all()
     serializer_class = EventSerializer
 
@@ -283,7 +301,7 @@ class ArtifactViewSet(HistoryViewSet):
 ######
 
 
-class UserProfileViewSet(HistoryViewSet):
+class UserViewSet(HistoryViewSet):
     serializer_class = UserSerializer
 
     def get_queryset(self):
@@ -310,7 +328,11 @@ class AuthView(views.APIView):
     serializer_class = UserSerializer
 
     def post(self, request):
-        return Response(self.serializer_class(request.user).data)
+        user = request.user
+        if user.is_authenticated:
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+        return Response(self.serializer_class(user).data)
 
 
 class RoleViewSet(HistoryViewSet):
@@ -365,7 +387,7 @@ class GroupViewSet(HistoryViewSet):
         return queryset
 
 
-class SearchViewSet(viewsets.ModelViewSet):
+class SearchViewSet(HistoryViewSet):
     serializer_class = SearchSerializer
 
     def get_queryset(self):
@@ -384,7 +406,7 @@ class SearchViewSet(viewsets.ModelViewSet):
 ######
 
 
-class EventSummaryViewSet(viewsets.ModelViewSet):
+class EventSummaryViewSet(HistoryViewSet):
     serializer_class = EventSummarySerializer
 
     # override the default queryset to allow filtering by URL arguments

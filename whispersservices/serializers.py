@@ -405,7 +405,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
-                  'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_visit', 'active_key',
+                  'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_login', 'active_key',
                   'user_status',)
 
 
@@ -424,8 +424,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'zip_postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
+        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
+                  'countrysubdivisionlevelone', 'country', 'phone', 'parent_organization', 'do_not_publish',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

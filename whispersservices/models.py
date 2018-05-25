@@ -1,7 +1,8 @@
 from django.db import models
 from datetime import date
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
 
@@ -218,7 +219,6 @@ class EventOrganization(HistoryModel):
         db_table = "whispers_eventorganization"
 
 
-# It was determined that EventContactLocation is what we actually need, leaving this until that is confirmed
 class EventContact(HistoryModel):
     """
     Table to allow many-to-many relationship between Events and Contacts.
@@ -607,31 +607,46 @@ class Artifact(HistoryModel):  # TODO: implement file fields
 ######
 
 
-class UserProfile(HistoryModel):
+class User(AbstractUser):
     """
     Extends the default User model.
     Default fields of the User model: username, first_name, last_name, email, password, groups, user_permissions,
        is_staff, is_active, is_superuser, last_login, date_joined
     """
-    user = models.OneToOneField(User, models.PROTECT, related_name='userprofile')
-
-    role = models.ForeignKey('Role', models.PROTECT, related_name='users')
-    organization = models.ForeignKey('Organization', models.PROTECT, related_name='users')
-    last_visit = models.DateField(null=True, blank=True)
+    role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users')
+    organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users')
     active_key = models.TextField(blank=True, default='')
     user_status = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
-        return self.user.username
+        return self.username
 
     class Meta:
-        db_table = "whispers_userprofile"
+        db_table = "whispers_user"
 
 
 class Role(NameModel):
     """
     User Role
     """
+
+    def is_superadmin(self):
+        return True if self.name == 'SuperAdmin' else False
+
+    def is_admin(self):
+        return True if self.name == 'Admin' else False
+
+    def is_partneradmin(self):
+        return True if self.name == 'PartnerAdmin' else False
+
+    def is_partnermanager(self):
+        return True if self.name == 'PartnerManager' else False
+
+    def is_partner(self):
+        return True if self.name == 'Partner' else False
+
+    def is_public(self):
+        return True if self.name == 'Public' else False
 
     def __str__(self):
         return self.name
@@ -649,7 +664,7 @@ class Organization(NameModel):
     address_one = models.CharField(max_length=128, blank=True, default='')
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
-    zip_postal_code = models.BigIntegerField(null=True, blank=True)
+    postal_code = models.BigIntegerField(null=True, blank=True)
     administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')

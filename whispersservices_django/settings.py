@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'simple_history',
     'rest_framework',
     'corsheaders',
+    'dry_rest_permissions',
     'whispersservices',
 ]
 
@@ -104,6 +105,7 @@ DATABASES = {
     }
 }
 
+AUTH_USER_MODEL = 'whispersservices.User'
 
 # Password validation
 # https://docs.djangoproject.com/en/2.0/ref/settings/#auth-password-validators
@@ -129,7 +131,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'America/Chicago'
+TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
