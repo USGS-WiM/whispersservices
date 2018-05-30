@@ -352,6 +352,11 @@ class ContactViewSet(HistoryViewSet):
         return queryset
 
 
+class ContactTypeViewSet(HistoryViewSet):
+    queryset = ContactType.objects.all()
+    serializer_class = ContactTypeSerializer
+
+
 class GroupViewSet(HistoryViewSet):
     # queryset = Group.objects.all()
     serializer_class = GroupSerializer
