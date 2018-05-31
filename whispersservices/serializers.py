@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from whispersservices.models import *
+from dry_rest_permissions.generics import DRYPermissionsField
 
 
 ######
@@ -12,6 +13,7 @@ from whispersservices.models import *
 class EventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     epi_staff_string = serializers.StringRelatedField(source='epi_staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
@@ -22,7 +24,7 @@ class EventSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'superevent',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
 class SuperEventSerializer(serializers.ModelSerializer):
@@ -351,31 +353,17 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.PrimaryKeyRelatedField(source='userprofile.role', queryset=Role.objects.all())
     organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization',
                                                       queryset=Organization.objects.all())
-    last_visit = serializers.DateField(source='userprofile.last_visit', required=False, allow_null=True)
-    active_key = serializers.CharField(source='userprofile.active_key', required=False, allow_blank=True)
-    user_status = serializers.CharField(source='userprofile.user_status', required=False, allow_blank=True)
 
     def create(self, validated_data):
-        user_profile_data = validated_data.pop('userprofile')
-
-        validated_data.pop('created_by')
-        validated_data.pop('modified_by')
         password = validated_data['password']
         user = User.objects.create(**validated_data)
 
         user.set_password(password)
         user.save()
 
-        user_profile_data['user'] = user
-        user_profile_data['created_by'] = self.context['request'].user
-        user_profile_data['modified_by'] = self.context['request'].user
-        UserProfile.objects.create(**user_profile_data)
-
         return user
 
     def update(self, instance, validated_data):
-        user_profile_data = validated_data.pop('userprofile')
-
         instance.username = validated_data.get('username', instance.username)
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
@@ -383,19 +371,14 @@ class UserSerializer(serializers.ModelSerializer):
         instance.is_superuser = validated_data.get('is_superuser', instance.is_superuser)
         instance.is_staff = validated_data.get('is_staff', instance.is_staff)
         instance.is_active = validated_data.get('is_active', instance.is_active)
+        instance.role = validated_data.get('role', instance.role)
+        instance.organization = validated_data.get('organization', instance.organization)
+        instance.active_key = validated_data.get('active_key', instance.active_key)
+        instance.user_status = validated_data.get('user_status', instance.user_status)
         instance.modified_by = self.context['request'].user
 
         instance.set_password(validated_data.get('password', instance.password))
         instance.save()
-
-        user_profile = instance.userprofile
-        user_profile.role = user_profile_data.get('role', user_profile.role)
-        user_profile.organization = user_profile_data.get('organization', user_profile.organization)
-        user_profile.last_visit = user_profile_data.get('last_visit', user_profile.last_visit)
-        user_profile.active_key = user_profile_data.get('active_key', user_profile.active_key)
-        user_profile.user_status = user_profile_data.get('user_status', user_profile.user_status)
-        user_profile.modified_by = self.context['request'].user
-        user_profile.save()
 
         return instance
 

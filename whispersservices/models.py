@@ -72,6 +72,32 @@ class Event(HistoryModel):
     legal_number = models.CharField(max_length=128, blank=True, default='')
     superevent = models.ForeignKey('SuperEvent', 'events', null=True)
 
+    # NOTE: the several permission methods below are just tests and not intended for production use
+
+    @staticmethod
+    def has_read_permission(request):
+        # Everyone can read (list and retrieve) all events (for my testing purposes)
+        return True
+
+    def has_object_read_permission(self, request):
+        # Everyone can read (list and retrieve) all events (for my testing purposes)
+        return True
+
+    @staticmethod
+    def has_write_permission(request):
+        # All users with roles other than Public and Affiliate roles can 'write' an event
+        allowed_role_names = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner']
+        allowed_role_ids = Role.objects.filter(name__in=allowed_role_names).values_list('id', flat=True)
+        return request.user.role in allowed_role_ids
+
+    def has_object_update_permission(self, request):
+        # Only the creator or a member of the creator's organization can update an event
+        return request.user == self.created_by or request.user.organization == self.created_by.organization
+
+    def has_object_destroy_permission(self, request):
+        # Only the creator can delete an event
+        return request.user == self.created_by
+
     def __str__(self):
         return str(self.id)
 
@@ -644,6 +670,9 @@ class Role(NameModel):
 
     def is_partner(self):
         return True if self.name == 'Partner' else False
+
+    def is_affiliate(self):
+        return True if self.name == 'Affiliate' else False
 
     def is_public(self):
         return True if self.name == 'Public' else False
