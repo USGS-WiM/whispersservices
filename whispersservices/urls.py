@@ -22,8 +22,7 @@ router.register(r'eventlocationcontacts', views.EventLocationContactViewSet, 'ev
 router.register(r'countries', views.CountryViewSet, 'countries')
 router.register(r'administrativelevelones', views.AdministrativeLevelOneViewSet, 'administrativelevelones')
 router.register(r'administrativeleveltwos', views.AdministrativeLevelTwoViewSet, 'administrativeleveltwos')
-router.register(
-    r'administrativelevellocalities', views.AdministrativeLevelLocalityViewSet, 'administrativelevellocalities')
+router.register(r'administrativelevellocalities', views.AdministrativeLevelLocalityViewSet, 'administrativelevellocalities')
 router.register(r'landownerships', views.LandOwnershipViewSet, 'landownerships')
 router.register(r'locationspecies', views.LocationSpeciesViewSet, 'locationspecies')
 router.register(r'species', views.SpeciesViewSet, 'species')
@@ -41,6 +40,7 @@ router.register(r'users', views.UserViewSet, 'users')
 router.register(r'roles', views.RoleViewSet, 'roles')
 router.register(r'organizations', views.OrganizationViewSet, 'organizations')
 router.register(r'contacts', views.ContactViewSet, 'contacts')
+router.register(r'contacttypes', views.ContactTypeViewSet, 'contacttypes')
 router.register(r'groups', views.GroupViewSet, 'groups')
 router.register(r'searches', views.SearchViewSet, 'searches')
 

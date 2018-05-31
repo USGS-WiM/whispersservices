@@ -146,7 +146,7 @@ class EventLocationContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventLocationContact
-        fields = ('id', 'event_location', 'contact', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event_location', 'contact', 'contact_type', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class CountrySerializer(serializers.ModelSerializer):
@@ -420,6 +420,15 @@ class ContactSerializer(serializers.ModelSerializer):
         model = Contact
         fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'title', 'position', 'organization',
                   'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class ContactTypeSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = ContactType
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class GroupSerializer(serializers.ModelSerializer):

@@ -306,7 +306,8 @@ class EventLocationContact(HistoryModel):
 
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
     contact = models.ForeignKey('Contact', models.PROTECT)
-
+    contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts')
+    
     def __str__(self):
         return str(self.id)
 
@@ -727,6 +728,20 @@ class Contact(HistoryModel):
 
     class Meta:
         db_table = "whispers_contact"
+
+
+class ContactType(HistoryModel):
+    """
+    Contact Type
+    """
+
+    name = models.CharField(max_length=128, blank=True, default='')
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_contacttype"
 
 
 class Group(NameModel):
