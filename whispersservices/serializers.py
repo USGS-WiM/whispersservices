@@ -52,6 +52,15 @@ class EpiStaffSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class StaffSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Staff
+        fields = ('id', 'first_name', 'last_name', 'role', 'active', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class LegalStatusSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
