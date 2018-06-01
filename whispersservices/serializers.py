@@ -13,14 +13,14 @@ class EventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -563,7 +563,7 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 class EventDetailSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
-    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
@@ -572,6 +572,6 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'event_diagnoses',
                   'event_locations', 'created_date', 'created_by', 'modified_date', 'modified_by',)
