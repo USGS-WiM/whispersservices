@@ -736,6 +736,7 @@ class Search(HistoryModel):
     """
     Searches
     """
+    name = models.CharField(max_length=128, blank=True, default='')
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
     data = models.TextField(blank=True)
 
