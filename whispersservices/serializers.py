@@ -474,7 +474,7 @@ class SearchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Search
-        fields = ('id', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 ######
