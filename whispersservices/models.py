@@ -132,6 +132,23 @@ class EpiStaff(NameModel):  # QUESTION: what is the purpose of this table? see r
         db_table = "whispers_epistaff"
 
 
+class Staff(HistoryModel):
+    """
+    Staff
+    """
+
+    first_name = models.CharField(max_length=128)
+    last_name = models.CharField(max_length=128)
+    role = models.ForeignKey('Role', models.PROTECT, related_name='staff')
+    active = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.first_name + " " + self.last_name
+
+    class Meta:
+        db_table = "whispers_staff"
+
+
 class LegalStatus(NameModel):
     """
     Legal Status
