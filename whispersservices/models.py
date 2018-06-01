@@ -65,7 +65,7 @@ class Event(HistoryModel):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     affected_count = models.IntegerField(null=True)
-    epi_staff = models.ForeignKey('EpiStaff', 'events')  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
+    staff = models.ForeignKey('Staff', 'events', null=True)
     event_status = models.ForeignKey('EventStatus', 'events')
     legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
     legal_number = models.CharField(max_length=128, blank=True, default='')
