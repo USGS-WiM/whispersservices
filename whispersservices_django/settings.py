@@ -91,8 +91,8 @@ WSGI_APPLICATION = 'whispersservices_django.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
-# DATABASES = {
-"""     'default': {
+DATABASES = {
+    'default': {
         'ENGINE': CONFIG.get('databases', 'ENGINE'),
         'NAME': CONFIG.get('databases', 'NAME'),
         'USER': CONFIG.get('databases', 'USER'),
@@ -101,13 +101,6 @@ WSGI_APPLICATION = 'whispersservices_django.wsgi.application'
         'PORT': CONFIG.get('databases', 'PORT'),
         #'CONN_MAX_AGE': CONFIG.get('databases', 'CONN_MAX_AGE'),
         'CONN_MAX_AGE': 60,
-    }
-} """
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
 
