@@ -335,8 +335,17 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ('id', 'table', 'object', 'comment', 'keywords', 'link', 'link_type',
+        fields = ('id', 'table', 'object', 'comment', 'comment_type', 'keywords', 'link', 'link_type',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class CommentTypeSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = CommentType
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class ArtifactSerializer(serializers.ModelSerializer):
