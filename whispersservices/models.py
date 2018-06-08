@@ -743,6 +743,14 @@ class Contact(HistoryModel):
     Contact
     """
 
+    @property
+    def owner_organization(self):
+        """Returns the organization ID of the record owner ('created_by')"""
+        owner_id = self.created_by
+        owner = UserProfile.objects.get(user=owner_id)
+        owner_org = owner.organization
+        return owner_org.id
+
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
     email = models.CharField(max_length=128, blank=True, default='')
@@ -750,8 +758,7 @@ class Contact(HistoryModel):
     title = models.CharField(max_length=128, blank=True, default='')
     position = models.CharField(max_length=128, blank=True, default='')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
-    organization = models.ForeignKey('Organization', models.PROTECT, related_name='contacts')
-    owner_organization = models.ForeignKey('Organization', models.PROTECT, related_name='owned_contacts')
+    organization = models.ForeignKey('Organization', models.PROTECT, related_name='contacts', null=True)
 
     def __str__(self):
         return str(self.id)
