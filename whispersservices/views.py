@@ -276,6 +276,11 @@ class CommentViewSet(HistoryViewSet):
         return queryset
 
 
+class CommentTypeViewSet(HistoryViewSet):
+    queryset = CommentType.objects.all()
+    serializer_class = CommentTypeSerializer
+
+
 class ArtifactViewSet(HistoryViewSet):
     queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer

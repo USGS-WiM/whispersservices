@@ -592,6 +592,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
     table = models.CharField(max_length=128, blank=True, default='')
     object = models.IntegerField(null=True, blank=True)
     comment = models.TextField(blank=True)
+    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', null=True)
     keywords = models.CharField(max_length=128, blank=True, default='')
     link = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
     link_type = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
@@ -601,6 +602,18 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
 
     class Meta:
         db_table = "whispers_comment"
+
+
+class CommentType(NameModel):
+    """
+    Comment Type
+    """
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_commenttype"
 
 
 class Artifact(HistoryModel):  # TODO: implement file fields

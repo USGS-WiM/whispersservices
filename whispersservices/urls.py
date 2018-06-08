@@ -36,6 +36,7 @@ router.register(r'speciesdiagnoses', views.SpeciesDiagnosisViewSet, 'speciesdiag
 router.register(r'permissions', views.PermissionViewSet, 'permissions')
 router.register(r'permissiontypes', views.PermissionTypeViewSet, 'permissiontypes')
 router.register(r'comments', views.CommentViewSet, 'comments')
+router.register(r'commenttypes', views.CommentTypeViewSet, 'commenttypes')
 router.register(r'artifacts', views.ArtifactViewSet, 'artifacts')
 router.register(r'users', views.UserProfileViewSet, 'users')
 router.register(r'roles', views.RoleViewSet, 'roles')
