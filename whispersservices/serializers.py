@@ -17,11 +17,39 @@ class EventSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
 
+    """def create(self, data):
+        # pull out child event_locations list from the request
+        event_locations = data.pop('event_locations', None)
+
+        # pull out child location_species from the event_locations
+        location_species = event_locations.pop('location_species', None)
+
+        # pull out child location_contacts form the event_locations
+        # don't want to do this yet
+        location_contacts = event_locations.pop('location_contacts', None)
+        
+        user = self.context['request'].user
+        event = Event.objects.create(**data)
+
+        # create the child event_locations for this event
+        if event_locations is not None:
+            for event_location in event_locations:
+                event_location['event'] = event
+                location_contacts = event_location.pop('location_contacts', None)
+                if (location_contacts is not None):
+                    event_location['contacts'] = location_contacts
+
+
+        
+
+        # need to create comments with correct comment types during handling of event_locations"""
+
+
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'superevent',
+                  'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'quality_check',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -453,7 +481,7 @@ class ContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contact
-        fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'title', 'position', 'organization',
+        fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
                   'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

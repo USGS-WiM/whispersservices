@@ -70,6 +70,7 @@ class Event(HistoryModel):
     legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
     legal_number = models.CharField(max_length=128, blank=True, default='')
     superevent = models.ForeignKey('SuperEvent', 'events', null=True)
+    quality_check = models.BooleanField(default=False)
 
     def __str__(self):
         return str(self.id)
@@ -710,7 +711,8 @@ class Contact(HistoryModel):
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
     email = models.CharField(max_length=128, blank=True, default='')
-    phone = models.BigIntegerField(null=True, blank=True)
+    phone = models.TextField(blank=True, default='')
+    affiliation = models.TextField(blank=True)
     title = models.CharField(max_length=128, blank=True, default='')
     position = models.CharField(max_length=128, blank=True, default='')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
