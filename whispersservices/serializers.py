@@ -15,14 +15,14 @@ class EventSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'superevent',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
@@ -52,6 +52,15 @@ class EpiStaffSerializer(serializers.ModelSerializer):
     class Meta:
         model = EpiStaff
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class StaffSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Staff
+        fields = ('id', 'first_name', 'last_name', 'role', 'active', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class LegalStatusSerializer(serializers.ModelSerializer):
@@ -328,8 +337,17 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ('id', 'table', 'object', 'comment', 'keywords', 'link', 'link_type',
+        fields = ('id', 'table', 'object', 'comment', 'comment_type', 'keywords', 'link', 'link_type',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class CommentTypeSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = CommentType
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class ArtifactSerializer(serializers.ModelSerializer):
@@ -448,7 +466,7 @@ class SearchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Search
-        fields = ('id', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 ######
@@ -537,7 +555,7 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 class EventDetailSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
-    epi_staff_string = serializers.StringRelatedField(source='epi_staff')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
@@ -546,6 +564,6 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'epi_staff', 'epi_staff_string', 'event_status', 'event_status_string',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'event_diagnoses',
                   'event_locations', 'created_date', 'created_by', 'modified_date', 'modified_by',)

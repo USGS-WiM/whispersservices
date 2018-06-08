@@ -66,7 +66,7 @@ class Event(HistoryModel):
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     affected_count = models.IntegerField(null=True)
-    epi_staff = models.ForeignKey('EpiStaff', 'events')  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
+    staff = models.ForeignKey('Staff', 'events', null=True)
     event_status = models.ForeignKey('EventStatus', 'events')
     legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
     legal_number = models.CharField(max_length=128, blank=True, default='')
@@ -157,6 +157,23 @@ class EpiStaff(NameModel):  # QUESTION: what is the purpose of this table? see r
 
     class Meta:
         db_table = "whispers_epistaff"
+
+
+class Staff(HistoryModel):
+    """
+    Staff
+    """
+
+    first_name = models.CharField(max_length=128)
+    last_name = models.CharField(max_length=128)
+    role = models.ForeignKey('Role', models.PROTECT, related_name='staff')
+    active = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.first_name + " " + self.last_name
+
+    class Meta:
+        db_table = "whispers_staff"
 
 
 class LegalStatus(NameModel):
@@ -601,6 +618,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
     table = models.CharField(max_length=128, blank=True, default='')
     object = models.IntegerField(null=True, blank=True)
     comment = models.TextField(blank=True)
+    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', null=True)
     keywords = models.CharField(max_length=128, blank=True, default='')
     link = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
     link_type = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
@@ -610,6 +628,18 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
 
     class Meta:
         db_table = "whispers_comment"
+
+
+class CommentType(NameModel):
+    """
+    Comment Type
+    """
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_commenttype"
 
 
 class Artifact(HistoryModel):  # TODO: implement file fields
@@ -763,6 +793,7 @@ class Search(HistoryModel):
     """
     Searches
     """
+    name = models.CharField(max_length=128, blank=True, default='')
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
     data = models.TextField(blank=True)
 

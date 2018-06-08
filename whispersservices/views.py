@@ -97,6 +97,11 @@ class EpiStaffViewSet(HistoryViewSet):
     serializer_class = EpiStaffSerializer
 
 
+class StaffViewSet(HistoryViewSet):
+    queryset = Staff.objects.all()
+    serializer_class = StaffSerializer
+
+
 class LegalStatusViewSet(HistoryViewSet):
     queryset = LegalStatus.objects.all()
     serializer_class = LegalStatusSerializer
@@ -287,6 +292,11 @@ class CommentViewSet(HistoryViewSet):
         if contains is not None:
             queryset = queryset.filter(comment__contains=contains)
         return queryset
+
+
+class CommentTypeViewSet(HistoryViewSet):
+    queryset = CommentType.objects.all()
+    serializer_class = CommentTypeSerializer
 
 
 class ArtifactViewSet(HistoryViewSet):
