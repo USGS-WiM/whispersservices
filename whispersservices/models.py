@@ -48,6 +48,42 @@ class NameModel(HistoryModel):
         abstract = True
 
 
+class PermissionsModel(HistoryModel):
+    """
+    An abstract base class model for the common permissions.
+    """
+
+    @staticmethod
+    def has_read_permission(request):
+        # Everyone can read (list and retrieve) all events, but some fields may be private
+        return True
+
+    def has_object_read_permission(self, request):
+        # Everyone can read (list and retrieve) all events, but some fields may be private
+        return True
+
+    @staticmethod
+    def has_write_permission(request):
+        # Only users with specific roles can 'write' an event
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
+        # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
+        allowed_role_names = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner']
+        allowed_role_ids = Role.objects.filter(name__in=allowed_role_names).values_list('id', flat=True)
+        return request.user.role.id in allowed_role_ids
+
+    def has_object_update_permission(self, request):
+        # Only the creator or a member of the creator's organization can update an event
+        return request.user == self.created_by or request.user.organization == self.created_by.organization
+
+    def has_object_destroy_permission(self, request):
+        # Only the creator or a member of the creator's organization can delete an event
+        return request.user == self.created_by or request.user.organization == self.created_by.organization
+
+    class Meta:
+        abstract = True
+
+
 ######
 #
 #  Events
@@ -55,7 +91,7 @@ class NameModel(HistoryModel):
 ######
 
 
-class Event(HistoryModel):
+class Event(PermissionsModel):
     """
     Event
     """
@@ -67,36 +103,10 @@ class Event(HistoryModel):
     end_date = models.DateField(null=True, blank=True)
     affected_count = models.IntegerField(null=True)
     staff = models.ForeignKey('Staff', 'events', null=True)
-    event_status = models.ForeignKey('EventStatus', 'events')
-    legal_status = models.ForeignKey('LegalStatus', 'events', null=True)
+    event_status = models.ForeignKey('EventStatus', 'events', default=1)
+    legal_status = models.ForeignKey('LegalStatus', 'events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
     superevent = models.ForeignKey('SuperEvent', 'events', null=True)
-
-    # NOTE: the several permission methods below are just tests and not intended for production use
-
-    @staticmethod
-    def has_read_permission(request):
-        # Everyone can read (list and retrieve) all events (for my testing purposes)
-        return True
-
-    def has_object_read_permission(self, request):
-        # Everyone can read (list and retrieve) all events (for my testing purposes)
-        return True
-
-    @staticmethod
-    def has_write_permission(request):
-        # All users with roles other than Public and Affiliate roles can 'write' an event
-        allowed_role_names = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner']
-        allowed_role_ids = Role.objects.filter(name__in=allowed_role_names).values_list('id', flat=True)
-        return request.user.role in allowed_role_ids
-
-    def has_object_update_permission(self, request):
-        # Only the creator or a member of the creator's organization can update an event
-        return request.user == self.created_by or request.user.organization == self.created_by.organization
-
-    def has_object_destroy_permission(self, request):
-        # Only the creator can delete an event
-        return request.user == self.created_by
 
     def __str__(self):
         return str(self.id)
@@ -687,24 +697,31 @@ class Role(NameModel):
     User Role
     """
 
+    @property
     def is_superadmin(self):
         return True if self.name == 'SuperAdmin' else False
 
+    @property
     def is_admin(self):
         return True if self.name == 'Admin' else False
 
+    @property
     def is_partneradmin(self):
         return True if self.name == 'PartnerAdmin' else False
 
+    @property
     def is_partnermanager(self):
         return True if self.name == 'PartnerManager' else False
 
+    @property
     def is_partner(self):
         return True if self.name == 'Partner' else False
 
+    @property
     def is_affiliate(self):
         return True if self.name == 'Affiliate' else False
 
+    @property
     def is_public(self):
         return True if self.name == 'Public' else False
 
@@ -746,10 +763,8 @@ class Contact(HistoryModel):
     @property
     def owner_organization(self):
         """Returns the organization ID of the record owner ('created_by')"""
-        owner_id = self.created_by
-        owner = UserProfile.objects.get(user=owner_id)
-        owner_org = owner.organization
-        return owner_org.id
+        owner = User.objects.get(user=self.created_by)
+        return owner.organization.id
 
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
@@ -785,6 +800,7 @@ class Group(NameModel):
     """
     Group
     """
+
     description = models.TextField(blank=True)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True)
     # owner = models.ForeignKey('User', models.PROTECT)
@@ -796,11 +812,11 @@ class Group(NameModel):
         db_table = "whispers_group"
 
 
-class Search(HistoryModel):
+class Search(NameModel):
     """
     Searches
     """
-    name = models.CharField(max_length=128, blank=True, default='')
+
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
     data = models.TextField(blank=True)
 

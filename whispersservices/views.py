@@ -74,7 +74,32 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 class EventViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = Event.objects.all()
-    serializer_class = EventSerializer
+    # serializer_class = EventSerializer
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        pk_requests = ['retrieve', 'update', 'partial_update', 'destroy']
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return EventAdminSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return EventSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in pk_requests:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = Event.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return EventSerializer
+            return EventPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventPublicSerializer
 
 
 class EventDetailViewSet(HistoryViewSet):

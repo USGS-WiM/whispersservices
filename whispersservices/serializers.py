@@ -10,7 +10,31 @@ from dry_rest_permissions.generics import DRYPermissionsField
 ######
 
 
+class EventPublicSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    permissions = DRYPermissionsField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+
+
 class EventSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    permissions = DRYPermissionsField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+
+
+class EventAdminSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
