@@ -534,10 +534,9 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Event
-        fields = ('id', 'superevent', 'legal_number', 'legal_status', 'event_status_string', 'event_status',
-                  'epi_staff', 'affected_count', 'end_date', 'start_date', 'complete', 'event_reference',
-                  'event_type_string', 'event_type', 'eventdiagnoses', 'administrativelevelones',
-                  'administrativeleveltwos', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+                  'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'species',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):
