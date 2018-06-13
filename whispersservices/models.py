@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.utils import timezone
 from simple_history.models import HistoricalRecords
+from dry_rest_permissions.generics import unauthenticated_users
 
 
 # Users will be stored in the core User model instead of a custom model.
@@ -48,16 +49,18 @@ class NameModel(HistoryModel):
         abstract = True
 
 
-class PermissionsModel(HistoryModel):
+class PermissionsHistoryModel(HistoryModel):
     """
     An abstract base class model for the common permissions.
     """
 
     @staticmethod
+    @unauthenticated_users
     def has_read_permission(request):
         # Everyone can read (list and retrieve) all events, but some fields may be private
         return True
 
+    @unauthenticated_users
     def has_object_read_permission(self, request):
         # Everyone can read (list and retrieve) all events, but some fields may be private
         return True
@@ -84,6 +87,17 @@ class PermissionsModel(HistoryModel):
         abstract = True
 
 
+class PermissionsNameModel(PermissionsHistoryModel):
+    """
+    An abstract base class model for the common name field and the common permissions.
+    """
+
+    name = models.CharField(max_length=128, unique=True)
+
+    class Meta:
+        abstract = True
+
+
 ######
 #
 #  Events
@@ -91,7 +105,7 @@ class PermissionsModel(HistoryModel):
 ######
 
 
-class Event(PermissionsModel):
+class Event(PermissionsHistoryModel):
     """
     Event
     """
@@ -107,6 +121,7 @@ class Event(PermissionsModel):
     legal_status = models.ForeignKey('LegalStatus', 'events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
     superevent = models.ForeignKey('SuperEvent', 'events', null=True)
+    quality_check = models.BooleanField(default=False)
 
     def __str__(self):
         return str(self.id)
@@ -257,7 +272,7 @@ class EventLabsite(HistoryModel):
         db_table = "whispers_eventlabsite"
 
 
-class EventOrganization(HistoryModel):
+class EventOrganization(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Events and Organizations.
     """
@@ -272,7 +287,7 @@ class EventOrganization(HistoryModel):
         db_table = "whispers_eventorganization"
 
 
-class EventContact(HistoryModel):
+class EventContact(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Events and Contacts.
     """
@@ -294,7 +309,7 @@ class EventContact(HistoryModel):
 ######
 
 
-class EventLocation(NameModel):
+class EventLocation(PermissionsNameModel):
     """
     Event Location
     """
@@ -429,7 +444,7 @@ class LandOwnership(NameModel):
 ######
 
 
-class LocationSpecies(HistoryModel):
+class LocationSpecies(PermissionsHistoryModel):
     """
     Location Species
     """
@@ -538,7 +553,7 @@ class DiagnosisType(NameModel):
         db_table = "whispers_diagnosistype"
 
 
-class EventDiagnosis(HistoryModel):
+class EventDiagnosis(PermissionsHistoryModel):
     """
     Event Diagnosis
     """
@@ -769,7 +784,8 @@ class Contact(HistoryModel):
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
     email = models.CharField(max_length=128, blank=True, default='')
-    phone = models.BigIntegerField(null=True, blank=True)
+    phone = models.TextField(blank=True, default='')
+    affiliation = models.TextField(blank=True)
     title = models.CharField(max_length=128, blank=True, default='')
     position = models.CharField(max_length=128, blank=True, default='')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD

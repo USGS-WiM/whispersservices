@@ -19,7 +19,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'permissions',)
 
 
 class EventSerializer(serializers.ModelSerializer):
@@ -84,7 +84,8 @@ class StaffSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Staff
-        fields = ('id', 'first_name', 'last_name', 'role', 'active', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'first_name', 'last_name', 'role', 'active',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class LegalStatusSerializer(serializers.ModelSerializer):
@@ -132,6 +133,13 @@ class EventLabsiteSerializer(serializers.ModelSerializer):
         fields = ('id', 'event', 'lab_id', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class EventOrganizationPublicSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = EventOrganization
+        fields = ('organization',)
+
+
 class EventOrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -157,6 +165,18 @@ class EventContactSerializer(serializers.ModelSerializer):
 ######
 
 
+class EventLocationPublicSerializer(serializers.ModelSerializer):
+    administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
+    country_string = serializers.StringRelatedField(source='country')
+
+    class Meta:
+        model = EventLocation
+        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
+                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
+                  'county_multiple', 'county_unknown', 'flyway',)
+
+
 class EventLocationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -179,7 +199,8 @@ class EventLocationContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventLocationContact
-        fields = ('id', 'event_location', 'contact', 'contact_type', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event_location', 'contact', 'contact_type',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class CountrySerializer(serializers.ModelSerializer):
@@ -239,6 +260,14 @@ class LandOwnershipSerializer(serializers.ModelSerializer):
 #  Species
 #
 ######
+
+
+class LocationSpeciesPublicSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = LocationSpecies
+        fields = ('species', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
+                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias',)
 
 
 class LocationSpeciesSerializer(serializers.ModelSerializer):
@@ -304,6 +333,14 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = DiagnosisType
         fields = ('id', 'name', 'color', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    class Meta:
+        model = EventDiagnosis
+        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major',)
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
@@ -424,9 +461,6 @@ class UserSerializer(serializers.ModelSerializer):
 
         return instance
 
-    def __str__(self):
-        return self.username
-
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
@@ -460,7 +494,7 @@ class ContactSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Contact
-        fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'title', 'position', 'organization',
+        fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
                   'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

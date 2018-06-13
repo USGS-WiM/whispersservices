@@ -30,6 +30,9 @@ User = get_user_model()
 ########################################################################################################################
 
 
+PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
+
+
 ######
 #
 #  Abstract Base Classes
@@ -79,7 +82,6 @@ class EventViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
-        pk_requests = ['retrieve', 'update', 'partial_update', 'destroy']
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
             return EventPublicSerializer
@@ -90,7 +92,7 @@ class EventViewSet(HistoryViewSet):
         elif self.action == 'create':
             return EventSerializer
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in pk_requests:
+        elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
                 obj = Event.objects.filter(id=pk).first()
@@ -161,7 +163,31 @@ class EventLabsiteViewSet(HistoryViewSet):
 
 class EventOrganizationViewSet(HistoryViewSet):
     queryset = EventOrganization.objects.all()
-    serializer_class = EventOrganizationSerializer
+    # serializer_class = EventOrganizationSerializer
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventOrganizationPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return EventOrganizationSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return EventOrganizationSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = EventOrganization.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return EventOrganizationSerializer
+            return EventOrganizationPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventOrganizationPublicSerializer
 
 
 class EventContactViewSet(HistoryViewSet):
@@ -177,8 +203,33 @@ class EventContactViewSet(HistoryViewSet):
 
 
 class EventLocationViewSet(HistoryViewSet):
+    permission_classes = (DRYPermissions,)
     queryset = EventLocation.objects.all()
-    serializer_class = EventLocationSerializer
+    # serializer_class = EventLocationSerializer
+
+# override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventLocationPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return EventLocationSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return EventLocationSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = EventLocation.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return EventLocationSerializer
+            return EventLocationPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventLocationPublicSerializer
 
 
 class EventLocationContactViewSet(HistoryViewSet):
@@ -236,8 +287,31 @@ class LandOwnershipViewSet(HistoryViewSet):
 
 class LocationSpeciesViewSet(HistoryViewSet):
     queryset = LocationSpecies.objects.all()
-    serializer_class = LocationSpeciesSerializer
+    # serializer_class = LocationSpeciesSerializer
 
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return LocationSpeciesPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return LocationSpeciesSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return LocationSpeciesSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = LocationSpecies.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return LocationSpeciesSerializer
+            return LocationSpeciesPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return LocationSpeciesPublicSerializer
 
 class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
@@ -281,8 +355,33 @@ class DiagnosisTypeViewSet(HistoryViewSet):
 
 
 class EventDiagnosisViewSet(HistoryViewSet):
+    permission_classes = (DRYPermissions,)
     queryset = EventDiagnosis.objects.all()
-    serializer_class = EventDiagnosisSerializer
+    # serializer_class = EventDiagnosisSerializer
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventDiagnosisPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return EventDiagnosisSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return EventDiagnosisSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = EventDiagnosis.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return EventDiagnosisSerializer
+            return EventDiagnosisPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventDiagnosisPublicSerializer
 
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
