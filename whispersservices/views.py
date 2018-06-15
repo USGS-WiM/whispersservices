@@ -4,6 +4,9 @@ from django.shortcuts import render
 from django.contrib.auth import authenticate, login, logout
 from rest_framework import views, viewsets, generics, permissions, authentication, status
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
+from rest_framework_csv import renderers as csv_renderers
+from drf_renderer_xlsx import renderers as xlsx_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
@@ -402,14 +405,38 @@ class SearchViewSet(viewsets.ModelViewSet):
 class EventSummaryViewSet(viewsets.ModelViewSet):
     serializer_class = EventSummarySerializer
 
+    # override the default renderers to use a csv or xslx renderer when requested
+    def get_renderers(self):
+        frmt = self.request.query_params.get('format', None)
+        if frmt is not None and frmt == 'csv':
+            renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        elif frmt is not None and frmt == 'xlsx':
+            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        else:
+            renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        return [renderer_class() for renderer_class in renderer_classes]
+
+    # override the default finalize_response to assign a filename to CSV and XLSX files
+    # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
+    def finalize_response(self, request, *args, **kwargs):
+        response = super(viewsets.ModelViewSet, self).finalize_response(request, *args, **kwargs)
+        renderer_format = self.request.accepted_renderer.format
+        if renderer_format == 'csv':
+            fileextension = '.csv'
+        elif renderer_format == 'xlsx':
+            fileextension = '.xlsx'
+        if renderer_format in ['csv', 'xlsx']:
+            filename = 'event_summary_'
+            filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
+            filename += fileextension
+            response['Content-Disposition'] = "attachment; filename=%s" % filename
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         queryset = Event.objects.all().prefetch_related(
-            'sample_bottle', 'sample_bottle__bottle',
-            'sample_bottle__bottle__bottle_prefix', 'sample_bottle__sample',
-            'sample_bottle__sample__site', 'sample_bottle__sample__project', 'constituent', 'isotope_flag',
-            'detection_flag', 'method'
-        )
+            'eventdiagnoses', 'eventlocations')#, 'affected_count', 'start_date', 'end_date', 'complete', 'event_type')
 
         # filter by eventtype ID, exact list
         eventtype = self.request.query_params.get('eventtype', None)
@@ -477,11 +504,11 @@ class EventSummaryViewSet(viewsets.ModelViewSet):
         if owner is not None:
             queryset = queryset.filter(created_by__exact=owner)
         # filter by ownerorg ID, exact
-        # ownerorg = self.request.query_params.get('ownerorg', None)
-        # if ownerorg is not None:
-        #     queryset = queryset.filter(created_by__organization__exact=ownerorg)
+        ownerorg = self.request.query_params.get('ownerorg', None)
+        if ownerorg is not None:
+            queryset = queryset.filter(created_by__organization__exact=ownerorg)
         # # filter by group ID, exact
         # group = self.request.query_params.get('group', None)
         # if group is not None:
         #     queryset = queryset.filter(group__exact=group)
-        # return queryset
+        return queryset

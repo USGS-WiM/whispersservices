@@ -1,3 +1,4 @@
+from django.forms.models import model_to_dict
 from rest_framework import serializers
 from whispersservices.models import *
 
@@ -522,15 +523,54 @@ class SearchSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
+
+    def get_administrativelevelones(self, obj):
+        unique_l1_ids = []
+        unique_l1s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s.append(model_to_dict(al1))
+        return unique_l1s
+
+    def get_administrativeleveltwos(self, obj):
+        unique_l2_ids = []
+        unique_l2s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    unique_l2s.append(model_to_dict(al2))
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species.append(model_to_dict(species))
+        return unique_species
+
     eventdiagnoses = EventDiagnosisSerializer(many=True)
-    # NOTE: these two admin level fields probably do not work and will likely need to be SerializerMethodFields instead
-    administrativelevelones = AdministrativeLevelOneSerializer(
-        many=True, source='eventlocations.administrative_level_one')
-    administrativeleveltwos = AdministrativeLevelTwoSerializer(
-        many=True, source='eventlocations.administrative_level_two')
-    species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
+    administrativelevelones = serializers.SerializerMethodField()
+    administrativeleveltwos = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
 
     class Meta:
         model = Event
