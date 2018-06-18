@@ -17,40 +17,89 @@ class EventSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
+    new_event_locations = serializers.ListField(write_only=True)
 
-    """def create(self, data):
+    def create(self, data):
+
         # pull out child event_locations list from the request
-        event_locations = data.pop('event_locations', None)
-
-        # pull out child location_species from the event_locations
-        location_species = event_locations.pop('location_species', None)
-
-        # pull out child location_contacts form the event_locations
-        # don't want to do this yet
-        location_contacts = event_locations.pop('location_contacts', None)
+        event_locations = data.pop('new_event_locations', None)
         
         user = self.context['request'].user
         event = Event.objects.create(**data)
 
         # create the child event_locations for this event
-        if event_locations is not None:
-            for event_location in event_locations:
-                event_location['event'] = event
-                location_contacts = event_location.pop('location_contacts', None)
-                if (location_contacts is not None):
-                    event_location['contacts'] = location_contacts
+        # if event_locations is not None:
+        for event_location in event_locations:
+            # use event to populate event field on event_location
+            event_location['event'] = event
+            location_contacts = event_location.pop('location_contacts', None)
+            location_species = event_location.pop('location_species', None)
+
+            # use id for country to get Country instance
+            event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
+            # same for other things
+            event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(pk=event_location['administrative_level_one']).first()
+            event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(pk=event_location['administrative_level_two']).first()
+            event_location['land_ownership'] = LandOwnership.objects.filter(pk=event_location['land_ownership']).first()
+
+            # create object for comment creation while removing unserialized fields for EventLocation
+            comments = {'site_description': event_location.pop('site_description', None),
+                        'history': event_location.pop('history', None),
+                        'environmental_factors': event_location.pop('environmental_factors', None),
+                        'clinical_signs': event_location.pop('clinical_signs', None)}
+            
+            # delete comments in object until I have methods to deal with them
+            comment_temp = event_location.pop('comment', None)
+
+            # create the event_location and return object for use in event_location_contacts object
+            evt_location = EventLocation.objects.create(**event_location)
+
+            # loop through comments and create comments that will add to event_location as a FK
+            comment_names = {'site_description': 3, 'history': 4, 'environmental_factors': 5, 'clinical_signs': 6}
+
+            for key, value in comment_names.items():
+
+                comment_type = CommentType.objects.filter(pk=value).first()
+                
+                if (comments[key] is not None and len(comments[key]) > 0):
+                    # need to figure out how to get instance of event for the id field in Comment
+                    Comment.objects.create(table="EventLocation",object=evt_location.id,comment=comments[key],comment_type=comment_type,keywords="")
+
+            # Create EventLocationContacts
+            if (location_contacts is not None):
+                for location_contact in location_contacts:
+                    
+                    location_contact['event_location'] = evt_location
+
+                    # Convert ids to ForeignKey objects
+                    location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                    location_contact['contact_type'] = ContactType.objects.filter(pk=location_contact['contact_type']).first()
+                    del location_contact['id']
+
+                    EventLocationContact.objects.create(**location_contact)
+
+            # Create EventLocationSpecies
+            if (location_species is not None):
+                for location_spec in location_species:
+
+                    location_spec['event_location'] = evt_location
+
+                    # Convert ids to ForeignKey objects
+                    location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
+                    location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
+                    location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
+
+                    LocationSpecies.objects.create(**location_spec)
 
 
-        
-
-        # need to create comments with correct comment types during handling of event_locations"""
+        return event
 
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'quality_check',
+                  'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'quality_check', 'new_event_locations',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
