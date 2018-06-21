@@ -16,6 +16,9 @@ class EventPublicSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    staff_string = serializers.StringRelatedField(source='staff')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
 
     class Meta:
         model = Event
@@ -435,17 +438,31 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.PrimaryKeyRelatedField(source='userprofile.role', queryset=Role.objects.all())
     organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization',
                                                       queryset=Organization.objects.all())
+    last_visit = serializers.DateField(source='userprofile.last_visit', required=False, allow_null=True)
+    active_key = serializers.CharField(source='userprofile.active_key', required=False, allow_blank=True)
+    user_status = serializers.CharField(source='userprofile.user_status', required=False, allow_blank=True)
 
     def create(self, validated_data):
+        user_profile_data = validated_data.pop('userprofile')
+
+        validated_data.pop('created_by')
+        validated_data.pop('modified_by')
         password = validated_data['password']
         user = User.objects.create(**validated_data)
 
         user.set_password(password)
         user.save()
 
+        user_profile_data['user'] = user
+        user_profile_data['created_by'] = self.context['request'].user
+        user_profile_data['modified_by'] = self.context['request'].user
+        UserProfile.objects.create(**user_profile_data)
+
         return user
 
     def update(self, instance, validated_data):
+        user_profile_data = validated_data.pop('userprofile')
+
         instance.username = validated_data.get('username', instance.username)
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
@@ -462,7 +479,19 @@ class UserSerializer(serializers.ModelSerializer):
         instance.set_password(validated_data.get('password', instance.password))
         instance.save()
 
+        user_profile = instance.userprofile
+        user_profile.role = user_profile_data.get('role', user_profile.role)
+        user_profile.organization = user_profile_data.get('organization', user_profile.organization)
+        user_profile.last_visit = user_profile_data.get('last_visit', user_profile.last_visit)
+        user_profile.active_key = user_profile_data.get('active_key', user_profile.active_key)
+        user_profile.user_status = user_profile_data.get('user_status', user_profile.user_status)
+        user_profile.modified_by = self.context['request'].user
+        user_profile.save()
+
         return instance
+
+    def __str__(self):
+        return self.username
 
     class Meta:
         model = User
@@ -544,8 +573,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'countrysubdivisionlevelone', 'country', 'phone', 'parent_organization', 'do_not_publish',
+        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'zip_postal_code',
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -568,6 +597,17 @@ class ContactTypeSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class GroupSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Group
+        # use this when owner added to model
+        fields = ('id', 'name', 'owner', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        # fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class SearchSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -585,37 +625,61 @@ class SearchSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
+
+    def get_administrativelevelones(self, obj):
+        unique_l1_ids = []
+        unique_l1s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s.append(model_to_dict(al1))
+        return unique_l1s
+
+    def get_administrativeleveltwos(self, obj):
+        unique_l2_ids = []
+        unique_l2s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    unique_l2s.append(model_to_dict(al2))
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species.append(model_to_dict(species))
+        return unique_species
+
+    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    administrativelevelones = serializers.SerializerMethodField()
+    administrativeleveltwos = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_status_string = serializers.StringRelatedField(source='event_status')
-    eventdiagnoses = EventDiagnosisSerializer(many=True)
-    # NOTE: these three location fields probably do not work and will likely need to be SerializerMethodFields instead
-    countries = CountrySerializer(many=True, source='eventlocations.country')
-    administrativelevelones = AdministrativeLevelOneSerializer(
-        many=True, source='eventlocations.administrative_level_one')
-    administrativeleveltwos = AdministrativeLevelTwoSerializer(
-        many=True, source='eventlocations.administrative_level_two')
-    flyways = serializers.SerializerMethodField()
-    species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
-
-    def get_flyways(self, obj):
-        unique_flyway_ids = []
-        unique_flyways = []
-        # TODO: implement this once flyways are figured out
-        # eventlocations = obj.eventlocations.values()
-        # if eventlocations is not None:
-        #     for eventlocation in eventlocations:
-        #         flyway_id = eventlocation.get('flyway_id')
-        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-        #             unique_flyway_ids.append(flyway_id)
-        #             flyway = Flyway.objects.filter(id=flyway_id).first()
-        #             unique_flyways.append(model_to_dict(flyway))
-        return unique_flyways
 
     class Meta:
         model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'countries', 'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species',
-                  'eventdiagnoses', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+                  'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'species',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):
