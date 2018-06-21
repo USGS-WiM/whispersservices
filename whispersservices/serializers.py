@@ -1,3 +1,4 @@
+from django.forms.models import model_to_dict
 from rest_framework import serializers
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
@@ -31,7 +32,8 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'affected_count', 'public',
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
 class EventAdminSerializer(serializers.ModelSerializer):
@@ -47,7 +49,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'superevent',
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                  'superevents', 'organizations', 'contacts',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
@@ -57,7 +60,7 @@ class SuperEventSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SuperEvent
-        fields = ('id', 'category', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'category', 'events', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class EventTypeSerializer(serializers.ModelSerializer):
@@ -464,8 +467,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
-                  'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'last_login', 'active_key',
-                  'user_status',)
+                  'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'circles',
+                  'last_login', 'active_key', 'user_status',)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -475,6 +478,64 @@ class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class CircleSerlializer(serializers.ModelSerializer):
+    new_users = serializers.ListField(write_only=True)
+
+    # on create, also create child objects (circle-user M:M relates)
+    def create(self, validated_data):
+        # pull out user ID list from the request
+        new_users = validated_data.pop('new_users', None)
+
+        # create the Circle object
+        circle = Circle.objects.create(**validated_data)
+
+        # create a Sample Analysis Batch object for each sample ID submitted
+        if new_users:
+            user = self.context['request'].user
+            for new_user_id in new_users:
+                new_user = User.objects.get(id=new_user_id)
+                CircleUser.objects.create(user=new_user, circle=circle, created_by=user, modified_by=user)
+
+        return circle
+
+    # on update, also update child objects (circle-user M:M relates), including additions and deletions
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        # get the old (current) user ID list for this circle
+        old_users = User.objects.filter(circles=instance.id)
+
+        # pull out user ID list from the request
+        if 'new_users' in self.initial_data:
+            new_user_ids = self.initial_data['new_users']
+            new_users = User.objects.filter(id__in=new_user_ids)
+        else:
+            new_users = []
+
+        # update the Circle object
+        instance.name = validated_data.get('name', instance.name)
+        instance.modified_by = user
+        instance.save()
+
+        # identify and delete relates where user IDs are present in old list but not new list
+        delete_users = list(set(old_users) - set(new_users))
+        for user_id in delete_users:
+            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+            delete_user.delete()
+
+        # identify and create relates where user IDs are present in new list but not old list
+        add_users = list(set(new_users) - set(old_users))
+        for user_id in add_users:
+            CircleUser.objects.create(user=user_id, circle=instance, created_by=user, modified_by=user)
+
+        return instance
+
+    class Meta:
+        model = Circle
+        fields = ('id', 'name', 'description', 'new_users',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -507,17 +568,6 @@ class ContactTypeSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class GroupSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = Group
-        # use this when owner added to model
-        fields = ('id', 'name', 'owner', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-        # fields = ('id', 'name', 'description', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
 class SearchSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -535,22 +585,37 @@ class SearchSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_status_string = serializers.StringRelatedField(source='event_status')
     eventdiagnoses = EventDiagnosisSerializer(many=True)
-    # NOTE: these two admin level fields probably do not work and will likely need to be SerializerMethodFields instead
+    # NOTE: these three location fields probably do not work and will likely need to be SerializerMethodFields instead
+    countries = CountrySerializer(many=True, source='eventlocations.country')
     administrativelevelones = AdministrativeLevelOneSerializer(
         many=True, source='eventlocations.administrative_level_one')
     administrativeleveltwos = AdministrativeLevelTwoSerializer(
         many=True, source='eventlocations.administrative_level_two')
+    flyways = serializers.SerializerMethodField()
     species = SpeciesSerializer(many=True, source='eventlocations.locationspecies.species')
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
+
+    def get_flyways(self, obj):
+        unique_flyway_ids = []
+        unique_flyways = []
+        # TODO: implement this once flyways are figured out
+        # eventlocations = obj.eventlocations.values()
+        # if eventlocations is not None:
+        #     for eventlocation in eventlocations:
+        #         flyway_id = eventlocation.get('flyway_id')
+        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
+        #             unique_flyway_ids.append(flyway_id)
+        #             flyway = Flyway.objects.filter(id=flyway_id).first()
+        #             unique_flyways.append(model_to_dict(flyway))
+        return unique_flyways
 
     class Meta:
         model = Event
-        fields = ('id', 'superevent', 'legal_number', 'legal_status', 'event_status_string', 'event_status',
-                  'epi_staff', 'affected_count', 'end_date', 'start_date', 'complete', 'event_reference',
-                  'event_type_string', 'event_type', 'eventdiagnoses', 'administrativelevelones',
-                  'administrativeleveltwos', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                  'countries', 'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species',
+                  'eventdiagnoses', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):

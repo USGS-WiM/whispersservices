@@ -113,15 +113,20 @@ class Event(PermissionsHistoryModel):
     event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events')
     event_reference = models.CharField(max_length=128, blank=True, default='')
     complete = models.BooleanField(default=False)
-    start_date = models.DateField(null=True, blank=True)
-    end_date = models.DateField(null=True, blank=True)
-    affected_count = models.IntegerField(null=True)
+    start_date = models.DateField(null=True, blank=True, db_index=True)
+    end_date = models.DateField(null=True, blank=True, db_index=True)
+    affected_count = models.IntegerField(null=True, db_index=True)
     staff = models.ForeignKey('Staff', 'events', null=True)
     event_status = models.ForeignKey('EventStatus', 'events', default=1)
     legal_status = models.ForeignKey('LegalStatus', 'events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
-    superevent = models.ForeignKey('SuperEvent', 'events', null=True)
     quality_check = models.BooleanField(default=False)
+    public = models.BooleanField(default=True)
+    circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
+    circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
+    superevents = models.ManyToManyField('SuperEvent', through='EventSuperEvent', related_name='events')
+    organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
+    contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
 
     def __str__(self):
         return str(self.id)
@@ -328,9 +333,7 @@ class EventLocation(PermissionsNameModel):
     longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
     priority = models.IntegerField(null=True)
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, related_name='eventlocations')
-    # add contacts here
-    # Ex. samples = models.ManyToManyField('Sample', through='SampleAnalysisBatch', related_name='sampleanalysisbatches')
-    contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocationcontacts')
+    contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
     flyway = models.CharField(max_length=128, blank=True, default='')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
 
@@ -697,6 +700,7 @@ class User(AbstractUser):
     """
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users')
+    circles = models.ManyToManyField('Circle', through='CircleUser', related_name='users')
     active_key = models.TextField(blank=True, default='')
     user_status = models.CharField(max_length=128, blank=True, default='')
 
@@ -745,6 +749,35 @@ class Role(NameModel):
 
     class Meta:
         db_table = "whispers_role"
+
+
+class Circle(NameModel):
+    """
+    Circle of Trust
+    """
+
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_circle"
+
+
+class CircleUser(HistoryModel):
+    """
+    Table to allow many-to-many relationship between Circles and Users.
+    """
+
+    circle = models.ForeignKey('Circle', models.PROTECT)
+    user = models.ForeignKey('User', models.PROTECT)
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_circleuser"
 
 
 class Organization(NameModel):
@@ -810,22 +843,6 @@ class ContactType(HistoryModel):
 
     class Meta:
         db_table = "whispers_contacttype"
-
-
-class Group(NameModel):
-    """
-    Group
-    """
-
-    description = models.TextField(blank=True)
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True)
-    # owner = models.ForeignKey('User', models.PROTECT)
-    
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_group"
 
 
 class Search(NameModel):

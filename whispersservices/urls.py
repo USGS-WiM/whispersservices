@@ -40,10 +40,10 @@ router.register(r'commenttypes', views.CommentTypeViewSet, 'commenttypes')
 router.register(r'artifacts', views.ArtifactViewSet, 'artifacts')
 router.register(r'users', views.UserViewSet, 'users')
 router.register(r'roles', views.RoleViewSet, 'roles')
+router.register(r'circles', views.CircleViewSet, 'circles')
 router.register(r'organizations', views.OrganizationViewSet, 'organizations')
 router.register(r'contacts', views.ContactViewSet, 'contacts')
 router.register(r'contacttypes', views.ContactTypeViewSet, 'contacttypes')
-router.register(r'groups', views.GroupViewSet, 'groups')
 router.register(r'searches', views.SearchViewSet, 'searches')
 
 urlpatterns = [
