@@ -314,11 +314,12 @@ class EventContact(PermissionsHistoryModel):
 ######
 
 
-class EventLocation(PermissionsNameModel):
+class EventLocation(PermissionsHistoryModel):
     """
     Event Location
     """
 
+    name = models.CharField(max_length=128)
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventlocations')
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
@@ -342,6 +343,7 @@ class EventLocation(PermissionsNameModel):
 
     class Meta:
         db_table = "whispers_eventlocation"
+        unique_together = ('name', 'event')
 
 
 class EventLocationContact(HistoryModel):
@@ -461,8 +463,8 @@ class LocationSpecies(PermissionsHistoryModel):
     dead_count_estimated = models.IntegerField(null=True)
     priority = models.IntegerField(null=True)
     captive = models.BooleanField(default=False)
-    age_bias = models.ForeignKey('AgeBias', models.PROTECT, related_name='locationspecies')
-    sex_bias = models.ForeignKey('SexBias', models.PROTECT, related_name='locationspecies')
+    age_bias = models.ForeignKey('AgeBias', models.PROTECT, null=True, related_name='locationspecies')
+    sex_bias = models.ForeignKey('SexBias', models.PROTECT, null=True, related_name='locationspecies')
 
     def __str__(self):
         return str(self.id)
@@ -607,37 +609,6 @@ class SpeciesDiagnosis(HistoryModel):
 ######
 
 
-class Permission(HistoryModel):  # TODO: implement relates to other models that use permissions
-    """
-    Permission
-    """
-
-    organization = models.ForeignKey('Organization', models.PROTECT, related_name='permissions')
-    role = models.ForeignKey('Role', models.PROTECT, related_name='permissions')
-    group = models.ForeignKey('Group', models.PROTECT, related_name='permissions')
-    table = models.CharField(max_length=128, blank=True, default='')
-    object = models.IntegerField(null=True, blank=True)
-    permission_type = models.ForeignKey('PermissionType', models.PROTECT, related_name='permissions')
-
-    def __str__(self):
-        return str(self.id)
-
-    class Meta:
-        db_table = "whispers_permission"
-
-
-class PermissionType(NameModel):
-    """
-    Permission Type: read, write, read+write
-    """
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_permissiontype"
-
-
 class Comment(HistoryModel):  # TODO: implement relates to other models that use comments
     """
     Comment
@@ -700,7 +671,8 @@ class User(AbstractUser):
     """
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users')
-    circles = models.ManyToManyField('Circle', through='CircleUser', related_name='users')
+    circles = models.ManyToManyField(
+        'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users')
     active_key = models.TextField(blank=True, default='')
     user_status = models.CharField(max_length=128, blank=True, default='')
 

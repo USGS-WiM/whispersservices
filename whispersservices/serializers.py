@@ -12,8 +12,6 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 
 class EventPublicSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     staff_string = serializers.StringRelatedField(source='staff')
@@ -456,25 +454,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 ######
 
 
-class PermissionSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = Permission
-        fields = ('id', 'organization', 'role', 'group', 'table', 'object', 'permission_type',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
-class PermissionTypeSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = PermissionType
-        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
 class CommentSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -546,7 +525,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'groups', 'user_permissions',
+        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'user_permissions',
                   'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'circles',
                   'last_login', 'active_key', 'user_status',)
 
@@ -664,7 +643,161 @@ class SearchSerializer(serializers.ModelSerializer):
 ######
 
 
+# TODO: Make these three EventSummary serializers adhere to DRY Principle
+class EventSummaryPublicSerializer(serializers.ModelSerializer):
+
+    def get_administrativelevelones(self, obj):
+        unique_l1_ids = []
+        unique_l1s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s.append(model_to_dict(al1))
+        return unique_l1s
+
+    def get_administrativeleveltwos(self, obj):
+        unique_l2_ids = []
+        unique_l2s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    unique_l2s.append(model_to_dict(al2))
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species.append(model_to_dict(species))
+        return unique_species
+
+    def get_flyways(self, obj):
+        unique_flyway_ids = []
+        unique_flyways = []
+        # TODO: implement this once flyways are figured out
+        # eventlocations = obj.eventlocations.values()
+        # if eventlocations is not None:
+        #     for eventlocation in eventlocations:
+        #         flyway_id = eventlocation.get('flyway_id')
+        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
+        #             unique_flyway_ids.append(flyway_id)
+        #             flyway = Flyway.objects.filter(id=flyway_id).first()
+        #             unique_flyways.append(model_to_dict(flyway))
+        return unique_flyways
+
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    administrativelevelones = serializers.SerializerMethodField()
+    administrativeleveltwos = serializers.SerializerMethodField()
+    flyways = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+    staff_string = serializers.StringRelatedField(source='staff')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
+    permissions = DRYPermissionsField()
+
+    class Meta:
+        model = Event
+        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+                  'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species',
+                  'permissions',)
+
+
 class EventSummarySerializer(serializers.ModelSerializer):
+
+    def get_administrativelevelones(self, obj):
+        unique_l1_ids = []
+        unique_l1s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s.append(model_to_dict(al1))
+        return unique_l1s
+
+    def get_administrativeleveltwos(self, obj):
+        unique_l2_ids = []
+        unique_l2s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    unique_l2s.append(model_to_dict(al2))
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species.append(model_to_dict(species))
+        return unique_species
+
+    def get_flyways(self, obj):
+        unique_flyway_ids = []
+        unique_flyways = []
+        # TODO: implement this once flyways are figured out
+        # eventlocations = obj.eventlocations.values()
+        # if eventlocations is not None:
+        #     for eventlocation in eventlocations:
+        #         flyway_id = eventlocation.get('flyway_id')
+        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
+        #             unique_flyway_ids.append(flyway_id)
+        #             flyway = Flyway.objects.filter(id=flyway_id).first()
+        #             unique_flyways.append(model_to_dict(flyway))
+        return unique_flyways
+
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    administrativelevelones = serializers.SerializerMethodField()
+    administrativeleveltwos = serializers.SerializerMethodField()
+    flyways = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
+                  'event_type_string', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos',
+                  'flyways', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+
+
+class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -732,9 +865,11 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Event
-        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
-                  'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
+                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'superevents', 'organizations',
+                  'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
+                  'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
 class OrganizationDetailSerializer(serializers.ModelSerializer):
