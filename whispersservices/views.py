@@ -81,10 +81,35 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 ######
 
 
+# TODO: implement greater controls over specific actions
+# e.g., circle_read members should not be able to update or delete and no circle_write members should be able to delete
+# and no regular org partner should be able to delete, only owner or org partner manager(?) or org partner admin
 class EventViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
-    queryset = Event.objects.all()
+    # queryset = Event.objects.all()
     # serializer_class = EventSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = self.request.user
+        queryset = Event.objects.all()
+
+        # all list requests, and all requests from public users, must only return public data
+        if self.action == 'list' or user.role.is_public:
+            return queryset.filter(public=True)
+        # for all non-admins, non-public data can only be returned to the owner or their org or shared circles
+        # and only for primary key requests
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = Event.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                        or user in obj.circle_read or user in obj.circle_write):
+                    return obj
+            else:
+                return queryset.filter(public=True)
+        else:
+            return queryset
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -98,12 +123,13 @@ class EventViewSet(HistoryViewSet):
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
             return EventSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
                 obj = Event.objects.filter(id=pk).first()
-                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                        or user in obj.circle_read or user in obj.circle_write):
                     return EventSerializer
             return EventPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -539,6 +565,7 @@ class SearchViewSet(viewsets.ModelViewSet):
 ######
 
 
+# TODO: implement greater controls over specific actions (this endpoint should be read-only)
 class EventSummaryViewSet(HistoryViewSet):
     serializer_class = EventSummarySerializer
 
@@ -605,6 +632,11 @@ class EventSummaryViewSet(HistoryViewSet):
     def build_queryset(self, query_params, get_user_events):
         user = self.request.user
         queryset = Event.objects.all()
+
+        # non-user-specific event requests can only return public data
+        if not get_user_events:
+            queryset = queryset.filter(public=True)
+        # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         if get_user_events and not user.is_superuser and not user.role.is_admin and not user.role.is_superadmin:
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)
