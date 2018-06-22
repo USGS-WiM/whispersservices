@@ -14,9 +14,6 @@ from dry_rest_permissions.generics import DRYPermissionsField
 class EventPublicSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    staff_string = serializers.StringRelatedField(source='staff')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    legal_status_string = serializers.StringRelatedField(source='legal_status')
 
     class Meta:
         model = Event
@@ -516,9 +513,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'user_permissions',
-                  'is_superuser', 'is_staff', 'is_active', 'role', 'organization', 'circles',
-                  'last_login', 'active_key', 'user_status',)
+        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
+                  'is_active', 'role', 'organization', 'circles', 'last_login', 'active_key', 'user_status',)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -594,7 +590,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'zip_postal_code',
+        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
                   'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -701,9 +697,6 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     flyways = serializers.SerializerMethodField()
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    staff_string = serializers.StringRelatedField(source='staff')
-    legal_status_string = serializers.StringRelatedField(source='legal_status')
     permissions = DRYPermissionsField()
 
     class Meta:
@@ -779,7 +772,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
     flyways = serializers.SerializerMethodField()
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
+    permissions = DRYPermissionsField()
 
     class Meta:
         model = Event
@@ -853,6 +846,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    permissions = DRYPermissionsField()
 
     class Meta:
         model = Event
@@ -933,5 +927,5 @@ class EventDetailSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'superevent', 'event_diagnoses',
+                  'legal_status', 'legal_status_string', 'legal_number', 'superevents', 'event_diagnoses',
                   'event_locations', 'created_date', 'created_by', 'modified_date', 'modified_by',)

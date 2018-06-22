@@ -137,6 +137,7 @@ class EventViewSet(HistoryViewSet):
             return EventPublicSerializer
 
 
+# TODO: implement permissions and greater controls over specific actions (this endpoint should be read-only)
 class EventDetailViewSet(HistoryViewSet):
     queryset = Event.objects.all()
     serializer_class = EventDetailSerializer

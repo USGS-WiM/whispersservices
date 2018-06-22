@@ -55,12 +55,10 @@ class PermissionsHistoryModel(HistoryModel):
     """
 
     @staticmethod
-    @unauthenticated_users
     def has_read_permission(request):
         # Everyone can read (list and retrieve) all events, but some fields may be private
         return True
 
-    @unauthenticated_users
     def has_object_read_permission(self, request):
         # Everyone can read (list and retrieve) all events, but some fields may be private
         return True
@@ -771,8 +769,7 @@ class Contact(HistoryModel):
     @property
     def owner_organization(self):
         """Returns the organization ID of the record owner ('created_by')"""
-        owner = User.objects.get(user=self.created_by)
-        return owner.organization.id
+        return self.created_by.organization.id
 
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
