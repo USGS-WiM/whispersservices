@@ -150,15 +150,6 @@ class EventTypeSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class EpiStaffSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = EpiStaff
-        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
 class StaffSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()

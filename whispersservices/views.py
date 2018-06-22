@@ -126,11 +126,6 @@ class EventTypeViewSet(HistoryViewSet):
     serializer_class = EventTypeSerializer
 
 
-class EpiStaffViewSet(HistoryViewSet):
-    queryset = EpiStaff.objects.all()
-    serializer_class = EpiStaffSerializer
-
-
 class StaffViewSet(HistoryViewSet):
     queryset = Staff.objects.all()
     serializer_class = StaffSerializer

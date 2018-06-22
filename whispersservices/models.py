@@ -177,18 +177,6 @@ class EventType(NameModel):
         db_table = "whispers_eventtype"
 
 
-class EpiStaff(NameModel):  # QUESTION: what is the purpose of this table? see related comment in Event model
-    """
-    Epi Staff
-    """
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_epistaff"
-
-
 class Staff(HistoryModel):
     """
     Staff
