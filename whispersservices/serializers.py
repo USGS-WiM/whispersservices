@@ -777,7 +777,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
-                  'event_type_string', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos',
+                  'event_type_string', 'public', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos',
                   'flyways', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 

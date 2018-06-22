@@ -102,12 +102,13 @@ class EventViewSet(HistoryViewSet):
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
-                obj = Event.objects.filter(id=pk).first()
+                queryset = Event.objects.filter(id=pk)
+                obj = queryset[0]
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
-                                        or user in obj.circle_read or user in obj.circle_write):
-                    return obj
-            else:
-                return queryset.filter(public=True)
+                                        or user in obj.circle_read or user in obj.circle_write
+                                        or user.is_superuser or user.role.is_superadmin or user.role.is_admin):
+                    return queryset
+            return queryset.filter(public=True)
         else:
             return queryset
 
