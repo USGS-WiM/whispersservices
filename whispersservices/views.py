@@ -644,6 +644,10 @@ class EventSummaryViewSet(HistoryViewSet):
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)
                 | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
 
+        # TODO: implement this
+        # check for params that should use the 'and' operator
+        and_params = query_params.get('and_params', None)
+
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None:
@@ -657,7 +661,15 @@ class EventSummaryViewSet(HistoryViewSet):
         if diagnosis is not None:
             if LIST_DELIMETER in diagnosis:
                 diagnosis_list = diagnosis.split(',')
-                queryset = queryset.select_related('eventdiagnoses').filter(eventdiagnoses__diagnois__in=diagnosis_list)
+                if and_params is not None and 'diagnosis' in and_params:
+                    queries = [Q(eventdiagnoses__diagnois__exact=val) for val in diagnosis_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query)
+                else:
+                    queryset = queryset.prefetch_related('eventdiagnoses').filter(
+                        eventdiagnoses__diagnois__in=diagnosis_list)
             else:
                 queryset = queryset.filter(eventdiagnoses__diagnois__exact=diagnosis)
         # filter by diagnosistype ID, exact list
@@ -665,8 +677,15 @@ class EventSummaryViewSet(HistoryViewSet):
         if diagnosis_type is not None:
             if LIST_DELIMETER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
-                queryset = queryset.select_related('eventdiagnoses__diagnois__diagnosis_type').filter(
-                    eventdiagnoses__diagnois__diagnosis_type__in=diagnosis_type_list)
+                if and_params is not None and 'diagnosis_type' in and_params:
+                    queries = [Q(eventdiagnoses__diagnois__diagnosis_type__exact=val) for val in diagnosis_type_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query)
+                else:
+                    queryset = queryset.prefetch_related('eventdiagnoses__diagnois__diagnosis_type').filter(
+                        eventdiagnoses__diagnois__diagnosis_type__in=diagnosis_type_list)
             else:
                 queryset = queryset.filter(eventdiagnoses__diagnois__diagnosis_type__exact=diagnosis_type)
         # filter by species ID, exact list
@@ -674,32 +693,53 @@ class EventSummaryViewSet(HistoryViewSet):
         if species is not None:
             if LIST_DELIMETER in species:
                 species_list = species.split(',')
-                queryset = queryset.select_related('eventlocations__locationspecies__species').filter(
-                    eventlocations__locationspecies__species__in=species_list)
+                if and_params is not None and 'species' in and_params:
+                    queries = [Q(eventlocations__locationspecies__species__in=val) for val in species_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query)
+                else:
+                    queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
+                        eventlocations__locationspecies__species__in=species_list)
             else:
                 queryset = queryset.filter(eventlocations__locationspecies__species__exact=species)
         # filter by administrative_level_one, exact list
         administrative_level_one = query_params.get('administrative_level_one', None)
         if administrative_level_one is not None:
             if LIST_DELIMETER in administrative_level_one:
-                administrative_level_one_list = administrative_level_one.split(',')
-                queryset = queryset.select_related('eventlocations__administrative_level_one').filter(
-                    eventlocations__administrative_level_one__in=administrative_level_one_list)
+                admin_level_one_list = administrative_level_one.split(',')
+                if and_params is not None and 'administrative_level_one' in and_params:
+                    queries = [Q(eventlocations__administrative_level_one__exact=val) for val in admin_level_one_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query)
+                else:
+                    queryset = queryset.prefetch_related('eventlocations__administrative_level_one').filter(
+                        eventlocations__administrative_level_one__in=admin_level_one_list)
             else:
                 queryset = queryset.filter(eventlocations__administrative_level_one__exact=administrative_level_one)
         # filter by administrative_level_two, exact list
         administrative_level_two = query_params.get('administrative_level_two', None)
         if administrative_level_two is not None:
-            queryset = queryset.select_related('')
             if LIST_DELIMETER in administrative_level_two:
-                administrative_level_two_list = administrative_level_two.split(',')
-                queryset = queryset.filter(eventlocations__administrative_level_two__in=administrative_level_two_list)
+                admin_level_two_list = administrative_level_two.split(',')
+                if and_params is not None and 'administrative_level_two' in and_params:
+                    queries = [Q(eventlocations__administrative_level_two__exact=val) for val in admin_level_two_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query)
+                else:
+                    queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
+                        eventlocations__administrative_level_two__in=admin_level_two_list)
             else:
                 queryset = queryset.filter(eventlocations__administrative_level_two__exact=administrative_level_two)
         # filter by flyway, exact list
         flyway = query_params.get('flyway', None)
         if flyway is not None:
-            queryset = queryset.select_related('')
+            queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in flyway:
                 flyway_list = flyway.split(',')
                 queryset = queryset.filter(eventlocations__flyway__in=flyway_list)
@@ -708,7 +748,7 @@ class EventSummaryViewSet(HistoryViewSet):
         # filter by country, exact list
         country = query_params.get('country', None)
         if country is not None:
-            queryset = queryset.select_related('')
+            queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(eventlocations__country__in=country_list)
@@ -717,7 +757,7 @@ class EventSummaryViewSet(HistoryViewSet):
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
-            queryset = queryset.select_related('')
+            queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in affected_count:
                 affected_count_list = affected_count.split(',')
                 queryset = queryset.filter(affected_count__in=affected_count_list)
@@ -745,7 +785,7 @@ class EventSummaryViewSet(HistoryViewSet):
         # # filter by ownerorg ID, exact
         # owner_org = query_params.get('owner_org', None)
         # if owner_org is not None:
-        #     queryset = queryset.select_related('created_by__organization')
+        #     queryset = queryset.prefetch_related('created_by__organization')
         #     queryset = queryset.filter(created_by__organization__exact=owner_org)
         # # filter by circle ID, exact
         # TODO: this might need to be changed to select only events where the user is in a circle attached to this event
