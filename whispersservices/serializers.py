@@ -26,19 +26,33 @@ class EventSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
 
     def create(self, data):
 
+        comment_types = {'site_description': 'Site description', 'history': 'History',
+                         'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
+                         'general': 'General'}
+
+        # pull out child comments list from the request
+        new_comments = data.pop('new_comments', None)
+
         # pull out child event_locations list from the request
-        event_locations = data.pop('new_event_locations', None)
+        new_event_locations = data.pop('new_event_locations', None)
 
         user = self.context['request'].user
         event = Event.objects.create(**data)
 
+        # create the child comments for this event
+        if new_comments is not None:
+            for comment in new_comments:
+                comment_type = CommentType.objects.filter(id=comment['type']).first()
+                Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type)
+
         # create the child event_locations for this event
         # if event_locations is not None:
-        for event_location in event_locations:
+        for event_location in new_event_locations:
             # use event to populate event field on event_location
             event_location['event'] = event
             location_contacts = event_location.pop('location_contacts', None)
@@ -57,25 +71,24 @@ class EventSerializer(serializers.ModelSerializer):
             comments = {'site_description': event_location.pop('site_description', None),
                         'history': event_location.pop('history', None),
                         'environmental_factors': event_location.pop('environmental_factors', None),
-                        'clinical_signs': event_location.pop('clinical_signs', None)}
-
-            # delete comments in object until I have methods to deal with them
-            comment_temp = event_location.pop('comment', None)
+                        'clinical_signs': event_location.pop('clinical_signs', None),
+                        'general': event_location.pop('comments', None)}
 
             # create the event_location and return object for use in event_location_contacts object
             evt_location = EventLocation.objects.create(**event_location)
 
-            # loop through comments and create comments that will add to event_location as a FK
-            comment_names = {'site_description': 3, 'history': 4, 'environmental_factors': 5, 'clinical_signs': 6}
+            for key, value in comment_types.items():
 
-            for key, value in comment_names.items():
-
-                comment_type = CommentType.objects.filter(pk=value).first()
+                comment_type = CommentType.objects.filter(name=value).first()
 
                 if comments[key] is not None and len(comments[key]) > 0:
-                    # need to figure out how to get instance of event for the id field in Comment
-                    Comment.objects.create(table="EventLocation", object=evt_location.id, comment=comments[key],
-                                           comment_type=comment_type, keywords="")
+                    if key == 'general':
+                        for comment in comments[key]:
+                            Comment.objects.create(content_object=evt_location, comment=comment,
+                                                   comment_type=comment_type)
+                    else:
+                        Comment.objects.create(content_object=evt_location, comment=comments[key],
+                                               comment_type=comment_type)
 
             # Create EventLocationContacts
             if location_contacts is not None:
@@ -107,7 +120,7 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'public',
+                  'affected_count', 'public', 'new_comments', 'new_event_locations',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
@@ -448,7 +461,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ('id', 'table', 'object', 'comment', 'comment_type', 'keywords', 'link', 'link_type',
+        fields = ('id', 'comment', 'comment_type',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

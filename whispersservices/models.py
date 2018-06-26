@@ -1,6 +1,8 @@
 from django.db import models
 from datetime import date
 from django.contrib.auth.models import AbstractUser
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django.utils import timezone
 from simple_history.models import HistoricalRecords
@@ -125,6 +127,7 @@ class Event(PermissionsHistoryModel):
     superevents = models.ManyToManyField('SuperEvent', through='EventSuperEvent', related_name='events')
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
+    comments = GenericRelation('Comment', related_name='events')
 
     def __str__(self):
         return str(self.id)
@@ -155,6 +158,7 @@ class SuperEvent(HistoryModel):
     """
 
     category = models.IntegerField(null=True)
+    comments = GenericRelation('Comment', related_name='superevents')
 
     def __str__(self):
         return str(self.id)
@@ -323,6 +327,7 @@ class EventLocation(PermissionsHistoryModel):
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
     flyway = models.CharField(max_length=128, blank=True, default='')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
+    comments = GenericRelation('Comment', related_name='eventlocations')
 
     def __str__(self):
         return self.name
@@ -600,13 +605,13 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
     Comment
     """
 
-    table = models.CharField(max_length=128, blank=True, default='')
-    object = models.IntegerField(null=True, blank=True)
     comment = models.TextField(blank=True)
     comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', null=True)
-    keywords = models.CharField(max_length=128, blank=True, default='')
-    link = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
-    link_type = models.IntegerField(null=True, blank=True)  # QUESTION: what is the purpose of this field? shouldn't it be a relate to the User table?
+
+    # Below the mandatory fields for generic relation
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey()
 
     def __str__(self):
         return str(self.id)
