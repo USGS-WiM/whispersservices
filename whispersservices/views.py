@@ -648,6 +648,13 @@ class EventSummaryViewSet(HistoryViewSet):
         # check for params that should use the 'and' operator
         and_params = query_params.get('and_params', None)
 
+        # filter by complete, exact
+        complete = query_params.get('complete', None)
+        if complete is not None and complete.lower() in ['true', 'false']:
+            if complete.lower() == 'true':
+                queryset = queryset.filter(complete__exact=True)
+            else:
+                queryset = queryset.filter(complete__exact=False)
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None:
