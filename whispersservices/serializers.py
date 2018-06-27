@@ -47,7 +47,7 @@ class EventSerializer(serializers.ModelSerializer):
         # create the child comments for this event
         if new_comments is not None:
             for comment in new_comments:
-                comment_type = CommentType.objects.filter(id=comment['type']).first()
+                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                 Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type)
 
         # create the child event_locations for this event
@@ -399,13 +399,23 @@ class SexBiasSerializer(serializers.ModelSerializer):
 ######
 
 
-class DiagnosisSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
+class DiagnosisPublicSerializer(serializers.ModelSerializer):
+    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis_type')
 
     class Meta:
         model = Diagnosis
-        fields = ('id', 'name', 'diagnosis_type', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('name', 'diagnosis_type', 'diagnosis_type_string')
+
+
+class DiagnosisSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis_type')
+
+    class Meta:
+        model = Diagnosis
+        fields = ('id', 'name', 'diagnosis_type', 'diagnosis_type_string',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class DiagnosisTypeSerializer(serializers.ModelSerializer):
@@ -870,29 +880,34 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                   'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
 
 
-class OrganizationDetailSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Organization
-        fields = ('id', 'name',)
-
-
-class DiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis_type_string = serializers.StringRelatedField(many=True, source='diagnosis_type')
-
-    class Meta:
-        model = Diagnosis
-        fields = ('id', 'name', 'diagnosis_type', 'diagnosis_type_string')
-
-
-class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis = DiagnosisSerializer(many=True, source='diagnosis')
-    organization = OrganizationDetailSerializer(many=True, source='organization')
+class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    organization_string = serializers.StringRelatedField(source='organization')
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'confirmed', 'major', 'priority', 'causal',
-                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization',)
+        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major', 'tested_count', 'positive_count',
+                  'suspect_count', 'pooled', 'organization', 'organization_string')
+
+
+class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    organization_string = serializers.StringRelatedField(source='organization')
+
+    class Meta:
+        model = SpeciesDiagnosis
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
+                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization', 'organization_string',)
+
+
+class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
+    species_string = serializers.StringRelatedField(source='species')
+    species_diagnosis = SpeciesDiagnosisDetailPublicSerializer(many=True, source='speciesdiagnoses')
+
+    class Meta:
+        model = LocationSpecies
+        fields = ('species', 'species_string', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
+                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias', 'species_diagnosis',)
 
 
 class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
@@ -904,6 +919,19 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_location', 'species', 'species_string', 'population_count', 'sick_count', 'dead_count',
                   'sick_count_estimated', 'dead_count_estimated', 'priority', 'captive', 'age_bias', 'sex_bias',
                   'species_diagnosis',)
+
+
+class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
+    administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
+    country_string = serializers.StringRelatedField(source='country')
+    location_species = LocationSpeciesDetailPublicSerializer(many=True, source='locationspecies')
+
+    class Meta:
+        model = EventLocation
+        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
+                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
+                  'county_multiple', 'county_unknown', 'flyway', 'location_species',)
 
 
 class EventLocationDetailSerializer(serializers.ModelSerializer):
@@ -920,6 +948,14 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                   'priority', 'land_ownership', 'flyway', 'location_species',)
 
 
+class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    class Meta:
+        model = EventDiagnosis
+        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major',)
+
+
 class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
@@ -928,7 +964,31 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority',)
 
 
+class EventDetailPublicSerializer(serializers.ModelSerializer):
+    permissions = DRYPermissionsField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_locations = EventLocationDetailPublicSerializer(many=True, source='eventlocations')
+    event_diagnoses = EventDiagnosisDetailPublicSerializer(many=True, source='eventdiagnoses')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                  'event_diagnoses', 'event_locations', 'permissions',)
+
+
 class EventDetailSerializer(serializers.ModelSerializer):
+    permissions = DRYPermissionsField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
+    event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
+
+    class Meta:
+        model = Event
+        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'permissions',)
+
+
+class EventDetailAdminSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
@@ -940,5 +1000,6 @@ class EventDetailSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'superevents', 'event_diagnoses',
-                  'event_locations', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                  'superevents', 'event_diagnoses', 'event_locations',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
