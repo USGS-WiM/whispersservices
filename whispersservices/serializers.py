@@ -502,14 +502,15 @@ class ArtifactSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    role = serializers.PrimaryKeyRelatedField(source='userprofile.role', queryset=Role.objects.all())
-    organization = serializers.PrimaryKeyRelatedField(source='userprofile.organization',
-                                                      queryset=Organization.objects.all())
 
     def create(self, validated_data):
+        created_by = validated_data.pop('created_by')
+        modified_by = validated_data.pop('modified_by')
         password = validated_data['password']
         user = User.objects.create(**validated_data)
 
+        user.created_by = created_by
+        user.modified_by = modified_by
         user.set_password(password)
         user.save()
 

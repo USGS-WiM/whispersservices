@@ -51,6 +51,7 @@ class NameModel(HistoryModel):
         abstract = True
 
 
+# TODO: impose read-only permissions on lookup tables except for admins
 class PermissionsHistoryModel(HistoryModel):
     """
     An abstract base class model for the common permissions.
