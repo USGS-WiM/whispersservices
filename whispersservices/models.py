@@ -74,16 +74,25 @@ class PermissionsHistoryModel(HistoryModel):
         # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
         allowed_role_names = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner']
         allowed_role_ids = Role.objects.filter(name__in=allowed_role_names).values_list('id', flat=True)
-        return request.user.role.id in allowed_role_ids or request.user.is_superuser
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.id in allowed_role_ids or request.user.is_superuser
 
     def has_object_update_permission(self, request):
         # Only the creator or a manager/admin member of the creator's organization or a superuser can update an event
-        return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
                 request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     def has_object_destroy_permission(self, request):
         # Only the creator or a manager/admin member of the creator's organization or a superuser can delete an event
-        return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
                 request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     class Meta:

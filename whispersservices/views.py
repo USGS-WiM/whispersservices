@@ -105,8 +105,11 @@ class EventViewSet(HistoryViewSet):
         user = self.request.user
         queryset = Event.objects.all()
 
+        # all requests from anonymous users must only return public data
+        if not user.is_authenticated:
+            return queryset.filter(public=True)
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
-        if self.action in PK_REQUESTS:
+        elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
                 queryset = Event.objects.filter(id=pk)
@@ -128,6 +131,9 @@ class EventViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventPublicSerializer
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         if self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
@@ -229,6 +235,9 @@ class EventOrganizationViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventOrganizationPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
             return EventOrganizationPublicSerializer
@@ -271,6 +280,9 @@ class EventLocationViewSet(HistoryViewSet):
 # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventLocationPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
             return EventLocationPublicSerializer
@@ -353,6 +365,9 @@ class LocationSpeciesViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return LocationSpeciesPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
             return LocationSpeciesPublicSerializer
@@ -424,6 +439,9 @@ class EventDiagnosisViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventDiagnosisPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
             return EventDiagnosisPublicSerializer
@@ -496,6 +514,9 @@ class UserViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         user = self.request.user
+        # do not allow an anonymous user to see anything at all
+        if not user.is_authenticated:
+            return None
         # do not allow a public user to see anything except their own user data
         if user.role.is_public:
             return user
@@ -637,8 +658,11 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         user = self.request.user
 
         # determine the appropriate serializer to ensure the requester sees only permitted data
+        # anonymous user must use the public serializer
+        if not user.is_authenticated:
+            serializer = EventSummaryPublicSerializer(data=queryset)
         # public users must use the public serializer
-        if user.role.is_public:
+        elif user.role.is_public:
             if user in queryset[0].circle_write or user in queryset[0].circle_read:
                 serializer = EventSummarySerializer(data=queryset)
             else:
@@ -667,8 +691,11 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         user = self.request.user
         queryset = Event.objects.all()
 
+        # anonymous users can only see public data
+        if not user.is_authenticated:
+            queryset = queryset.filter(public=True)
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
-        if get_user_events:
+        elif get_user_events:
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)
                 | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
@@ -844,8 +871,11 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         user = self.request.user
         queryset = Event.objects.all()
 
+        if not user.is_authenticated:
+            return queryset
+
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
-        if self.action == 'retrieve':
+        elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
                 queryset = Event.objects.filter(id=pk)
@@ -864,8 +894,10 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return EventDetailPublicSerializer
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
-        if self.action == 'retrieve':
+        elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None:
                 obj = Event.objects.filter(id=pk).first()
