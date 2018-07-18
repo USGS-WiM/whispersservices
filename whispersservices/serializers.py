@@ -812,8 +812,6 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
     eventdiagnoses = EventDiagnosisSerializer(many=True)
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
