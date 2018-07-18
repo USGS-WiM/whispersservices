@@ -40,7 +40,6 @@ User = get_user_model()
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
-# TODO: figure out how to handle anonymous (unauthenticated) requesters
 
 ######
 #
@@ -54,7 +53,7 @@ class AuthLastLoginMixin(object):
     This class will update the user's last_login field each time a request is received
     """
 
-    permission_classes = (permissions.IsAuthenticated,)
+    # permission_classes = (permissions.IsAuthenticated,)
 
     def finalize_response(self, request, *args, **kwargs):
         user = request.user
@@ -97,8 +96,6 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
 class EventViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
-    # queryset = Event.objects.all()
-    # serializer_class = EventSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -207,7 +204,6 @@ class EventStatusViewSet(HistoryViewSet):
 
 
 class EventAbstractViewSet(HistoryViewSet):
-    # queryset = EventAbstract.objects.all()
     serializer_class = EventAbstractSerializer
 
     def get_queryset(self):
@@ -230,7 +226,6 @@ class EventLabsiteViewSet(HistoryViewSet):
 
 class EventOrganizationViewSet(HistoryViewSet):
     queryset = EventOrganization.objects.all()
-    # serializer_class = EventOrganizationSerializer
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -275,9 +270,8 @@ class EventContactViewSet(HistoryViewSet):
 class EventLocationViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = EventLocation.objects.all()
-    # serializer_class = EventLocationSerializer
 
-# override the default serializer_class to ensure the requester sees only permitted data
+    # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
         # all requests from anonymous users must use the public serializer
@@ -316,7 +310,6 @@ class CountryViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
-    # queryset = AdministrativeLevelOne.objects.all()
     serializer_class = AdministrativeLevelOneSerializer
 
     def get_queryset(self):
@@ -329,7 +322,6 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
-    # queryset = AdministrativeLevelTwo.objects.all()
     serializer_class = AdministrativeLevelTwoSerializer
 
     def get_queryset(self):
@@ -360,7 +352,6 @@ class LandOwnershipViewSet(HistoryViewSet):
 
 class LocationSpeciesViewSet(HistoryViewSet):
     queryset = LocationSpecies.objects.all()
-    # serializer_class = LocationSpeciesSerializer
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -413,7 +404,6 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
-    # queryset = Diagnosis.objects.all()
     serializer_class = DiagnosisSerializer
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
@@ -434,7 +424,6 @@ class DiagnosisTypeViewSet(HistoryViewSet):
 class EventDiagnosisViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = EventDiagnosis.objects.all()
-    # serializer_class = EventDiagnosisSerializer
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -562,7 +551,6 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    # queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
 
     def get_queryset(self):
@@ -579,16 +567,49 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
-    # queryset = Contact.objects.all()
     serializer_class = ContactSerializer
 
+    @action(detail=False)
+    def user_contacts(self, request):
+        # limit data to what the user owns and what the user's org owns
+        query_params = self.request.query_params
+        queryset = self.build_queryset(query_params, get_user_contacts=True)
+        serializer = ContactSerializer(queryset, many=True, context={'request': request})
+
+        return Response(serializer.data, status=200)
+
+    # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        queryset = Contact.objects.all()
-        orgs = self.request.query_params.get('org', None)
+        query_params = self.request.query_params
+        return self.build_queryset(query_params, get_user_contacts=False)
+
+    # build a queryset using query_params
+    # NOTE: this is being done in its own method to adhere to the DRY Principle
+    def build_queryset(self, query_params, get_user_contacts):
+        user = self.request.user
+
+        # anonymous users cannot see anything
+        if not user.is_authenticated:
+            return Contact.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return Contact.objects.none()
+        # user-specific requests and requests from a partner user can only return data owned by the user or user's org
+        elif get_user_contacts or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            queryset = Contact.objects.all().filter(
+                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = Contact.objects.all()
+        # otherwise return nothing
+        else:
+            return Contact.objects.none()
+
+        orgs = query_params.get('org', None)
         if orgs is not None:
             orgs_list = orgs.split(',')
             queryset = queryset.filter(organization__in=orgs_list)
-        owner_orgs = self.request.query_params.get('ownerorg', None)
+        owner_orgs = query_params.get('ownerorg', None)
         if owner_orgs is not None:
             owner_orgs_list = owner_orgs.split(',')
             queryset = queryset.filter(owner_organization__in=owner_orgs_list)
@@ -603,9 +624,39 @@ class ContactTypeViewSet(HistoryViewSet):
 class SearchViewSet(viewsets.ModelViewSet):
     serializer_class = SearchSerializer
 
+    @action(detail=False)
+    def user_searches(self, request):
+        # limit data to what the user owns and what the user's org owns
+        query_params = self.request.query_params
+        queryset = self.build_queryset(query_params, get_user_searches=True)
+        serializer = SearchSerializer(queryset, many=True, context={'request': request})
+
+        return Response(serializer.data, status=200)
+
+    # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        queryset = Search.objects.all()
-        owners = self.request.query_params.get('owner', None)
+        query_params = self.request.query_params
+        return self.build_queryset(query_params, get_user_searches=False)
+
+    # build a queryset using query_params
+    # NOTE: this is being done in its own method to adhere to the DRY Principle
+    def build_queryset(self, query_params, get_user_searches):
+        user = self.request.user
+
+        # anonymous users cannot see anything
+        if not user.is_authenticated:
+            return Search.objects.none()
+        # user-specific requests and requests from non-admin user can only return data owned by the user
+        elif get_user_searches or not (user.role.is_admin or user.role.is_superadmin or user.is_superuser):
+            queryset = Search.objects.all().filter(created_by__exact=user)
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = Search.objects.all()
+        # otherwise return nothing
+        else:
+            return Search.objects.none()
+
+        owners = query_params.get('owner', None)
         if owners is not None:
             owners_list = owners.split(',')
             queryset = queryset.filter(owner__in=owners_list)
@@ -651,7 +702,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         return response
 
     @action(detail=False)
-    def user_events(self):
+    def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
         query_params = self.request.query_params
         queryset = self.build_queryset(query_params, get_user_events=True)
@@ -660,23 +711,23 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # determine the appropriate serializer to ensure the requester sees only permitted data
         # anonymous user must use the public serializer
         if not user.is_authenticated:
-            serializer = EventSummaryPublicSerializer(data=queryset)
+            serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
         # public users must use the public serializer
         elif user.role.is_public:
             if user in queryset[0].circle_write or user in queryset[0].circle_read:
-                serializer = EventSummarySerializer(data=queryset)
+                serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
             else:
-                serializer = EventSummaryPublicSerializer(data=queryset)
+                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
         # admins have access to all fields
         elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
-            serializer = EventSummaryAdminSerializer(data=queryset)
+            serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
         # partner users can see public fields and event_reference field
         elif (user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin or user.role.is_affiliate
               or user in queryset[0].circle_write or user in queryset[0].circle_read):
-            serializer = EventSummarySerializer(data=queryset)
+            serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
         else:
-            serializer = EventSummaryPublicSerializer(data=queryset)
+            serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
 
@@ -697,8 +748,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
             queryset = queryset.filter(
-                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)
-                | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+                #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(public=True)

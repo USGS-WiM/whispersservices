@@ -13,21 +13,53 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 class EventPublicSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'permissions',)
+                  'permissions', 'permission_source',)
 
 
 class EventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
+
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
 
     def create(self, data):
 
@@ -72,7 +104,7 @@ class EventSerializer(serializers.ModelSerializer):
                         'history': event_location.pop('history', None),
                         'environmental_factors': event_location.pop('environmental_factors', None),
                         'clinical_signs': event_location.pop('clinical_signs', None),
-                        'general': event_location.pop('comments', None)}
+                        'general': event_location.pop('comment', None)}
 
             # create the event_location and return object for use in event_location_contacts object
             evt_location = EventLocation.objects.create(**event_location)
@@ -121,17 +153,33 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'public', 'new_comments', 'new_event_locations',
-                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
 class EventAdminSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
+
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
 
     class Meta:
         model = Event
@@ -139,7 +187,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                   'superevents', 'organizations', 'contacts',
-                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
 class SuperEventSerializer(serializers.ModelSerializer):
@@ -622,11 +670,29 @@ class OrganizationSerializer(serializers.ModelSerializer):
 class ContactSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
+
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
 
     class Meta:
         model = Contact
         fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
-                  'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',
+                  'permission_source',)
 
 
 class ContactTypeSerializer(serializers.ModelSerializer):
@@ -641,10 +707,28 @@ class ContactTypeSerializer(serializers.ModelSerializer):
 class SearchSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
+
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
 
     class Meta:
         model = Search
-        fields = ('id', 'name', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'name', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',
+                  'permissions', 'permission_source',)
 
 
 ######
@@ -713,6 +797,21 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         #             unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     eventdiagnoses = EventDiagnosisSerializer(many=True)
@@ -722,12 +821,13 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
                   'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species',
-                  'permissions',)
+                  'permissions', 'permission_source',)
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
@@ -788,6 +888,21 @@ class EventSummarySerializer(serializers.ModelSerializer):
         #             unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     eventdiagnoses = EventDiagnosisSerializer(many=True)
@@ -797,12 +912,14 @@ class EventSummarySerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
                   'event_type_string', 'public', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos',
-                  'flyways', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'flyways', 'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',
+                  'permission_source',)
 
 
 class EventSummaryAdminSerializer(serializers.ModelSerializer):
@@ -863,14 +980,32 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         #             unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     eventdiagnoses = EventDiagnosisSerializer(many=True)
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
     flyways = serializers.SerializerMethodField()
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
@@ -878,7 +1013,8 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
                   'legal_status_string', 'legal_number', 'quality_check', 'public', 'superevents', 'organizations',
                   'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
-                  'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',)
+                  'species', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',
+                  'permission_source',)
 
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
@@ -967,29 +1103,63 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 class EventDetailPublicSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_locations = EventLocationDetailPublicSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailPublicSerializer(many=True, source='eventdiagnoses')
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_diagnoses', 'event_locations', 'permissions',)
+                  'event_diagnoses', 'event_locations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'permissions',)
+                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'permissions', 'permission_source',)
 
 
 class EventDetailAdminSerializer(serializers.ModelSerializer):
+    permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
@@ -997,10 +1167,25 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
 
+    def get_permission_source(self, obj):
+        user = self.context['request'].user
+        if not user.is_authenticated:
+            permission_source = ''
+        elif user.id == obj.created_by.id:
+            permission_source = 'user'
+        elif user.organization.id == obj.created_by.organization.id:
+            permission_source = 'organization'
+        elif obj.circle_read is not None and obj.circle_write is not None and (
+                user in obj.circle_read or user in obj.circle_write):
+            permission_source = 'circle'
+        else:
+            permission_source = ''
+        return permission_source
+
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                   'superevents', 'event_diagnoses', 'event_locations',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
