@@ -80,7 +80,8 @@ class EventSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type)
+                Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
+                                       created_by=user, modified_by=user)
 
         # create the child event_locations for this event
         # if event_locations is not None:
@@ -107,6 +108,8 @@ class EventSerializer(serializers.ModelSerializer):
                         'general': event_location.pop('comment', None)}
 
             # create the event_location and return object for use in event_location_contacts object
+            event_location['created_by'] = user
+            event_location['modified_by'] = user
             evt_location = EventLocation.objects.create(**event_location)
 
             for key, value in comment_types.items():
@@ -117,10 +120,10 @@ class EventSerializer(serializers.ModelSerializer):
                     if key == 'general':
                         for comment in comments[key]:
                             Comment.objects.create(content_object=evt_location, comment=comment,
-                                                   comment_type=comment_type)
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
                     else:
                         Comment.objects.create(content_object=evt_location, comment=comments[key],
-                                               comment_type=comment_type)
+                                               comment_type=comment_type, created_by=user, modified_by=user)
 
             # Create EventLocationContacts
             if location_contacts is not None:
@@ -133,6 +136,8 @@ class EventSerializer(serializers.ModelSerializer):
                         pk=location_contact['contact_type']).first()
                     del location_contact['id']
 
+                    location_contact['created_by'] = user
+                    location_contact['modified_by'] = user
                     EventLocationContact.objects.create(**location_contact)
 
             # Create EventLocationSpecies
@@ -145,6 +150,8 @@ class EventSerializer(serializers.ModelSerializer):
                     location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
                     location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
 
+                    location_spec['created_by'] = user
+                    location_spec['modified_by'] = user
                     LocationSpecies.objects.create(**location_spec)
 
         return event
@@ -681,9 +688,6 @@ class ContactSerializer(serializers.ModelSerializer):
             permission_source = 'user'
         elif user.organization.id == obj.created_by.organization.id:
             permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
         else:
             permission_source = ''
         return permission_source
@@ -718,12 +722,17 @@ class SearchSerializer(serializers.ModelSerializer):
             permission_source = 'user'
         elif user.organization.id == obj.created_by.organization.id:
             permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
         else:
             permission_source = ''
         return permission_source
+
+    # def create(self, validated_data):
+    #     print(validated_data)
+    #     user = self.context['request'].user
+    #     validated_data['created_by'] = user
+    #     validated_data['modified_by'] = user
+    #     search = Search.objects.create(**validated_data)
+    #     return search
 
     class Meta:
         model = Search

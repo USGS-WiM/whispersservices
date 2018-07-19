@@ -824,7 +824,7 @@ class Search(NameModel):
     Searches
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)  # QUESTION: is this field necessary? doesn't 'created_by' fulfill the same need?
     data = models.TextField(blank=True)
 
     class Meta:
