@@ -43,6 +43,7 @@ class EventSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    new_organizations = serializers.ListField(write_only=True)
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
 
@@ -159,7 +160,8 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'public', 'new_comments', 'new_event_locations',
+                  'affected_count', 'public', 'circle_read', 'circle_write', 'organizations', 'contacts', 'comments',
+                  'new_organizations', 'new_comments', 'new_event_locations',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
@@ -193,7 +195,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'superevents', 'organizations', 'contacts',
+                  'circle_read', 'circle_write', 'superevents', 'organizations', 'contacts', 'comments',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 

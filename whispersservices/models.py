@@ -141,6 +141,40 @@ class Event(PermissionsHistoryModel):
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
 
+    # override the save method to calculate start_date and end_date and affected_count
+    def save(self, *args, **kwargs):
+        locations = EventLocation.objects.filter(event=self.id)
+
+        # start_date and end_date
+        if len(locations) > 0:
+            self.start_date = min(location.start_date for location in locations)
+            end_dates = (location.end_date for location in locations)
+            if None in end_dates:
+                self.end_date = None
+            else:
+                self.end_date = max(end_dates)
+        else:
+            self.start_date = None
+            self.end_date = None
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type = self.event_type
+        if event_type not in [1,2]:
+            self.affected_count = None
+        else:
+            loc_species = LocationSpecies.objects.filter(eventlocation__in=locations)
+            if event_type == 1:
+                self.affected_count = sum(max(spec.dead_count_estimated, spec.dead_count)
+                                          + max(spec.sick_count_estimated, spec.sick_count) for spec in loc_species)
+            elif event_type == 2:
+                species_dx = SpeciesDiagnosis.objects.filter(locationspecies__in=loc_species)
+                self.affected_count = sum(dx.positive_count for dx in species_dx)
+
+        super(Event, self).save(*args, **kwargs)
+
     def __str__(self):
         return str(self.id)
 
