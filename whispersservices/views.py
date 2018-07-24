@@ -454,8 +454,45 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
+    permission_classes = (DRYPermissions,)
     queryset = SpeciesDiagnosis.objects.all()
-    serializer_class = SpeciesDiagnosisSerializer
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return SpeciesDiagnosisPublicSerializer
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return SpeciesDiagnosisPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return SpeciesDiagnosisSerializer
+        # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return SpeciesDiagnosisSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = EventLocation.objects.filter(id=pk).first()
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
+                    return SpeciesDiagnosisSerializer
+            return SpeciesDiagnosisPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return SpeciesDiagnosisPublicSerializer
+
+
+class DiagnosisBasisViewSet(HistoryViewSet):
+    queryset = DiagnosisBasis.objects.all()
+    serializer_class = DiagnosisBasisSerializer
+
+
+class DiagnosisCauseViewSet(HistoryViewSet):
+    queryset = DiagnosisCause.objects.all()
+    serializer_class = DiagnosisCauseSerializer
 
 
 ######

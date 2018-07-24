@@ -628,18 +628,19 @@ class EventDiagnosis(PermissionsHistoryModel):
         verbose_name_plural = "eventdiagnoses"
 
 
-class SpeciesDiagnosis(HistoryModel):
+class SpeciesDiagnosis(PermissionsHistoryModel):
     """
     SpeciesDiagnosis
     """
 
     location_species = models.ForeignKey('LocationSpecies', models.PROTECT, related_name='speciesdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='speciesdiagnoses')
+    cause = models.ForeignKey('DiagnosisCause', models.PROTECT, null=True, related_name='speciesdiagnoses')
+    basis = models.ForeignKey('DiagnosisBasis', models.PROTECT, null=True, related_name='speciesdiagnoses')
     confirmed = models.BooleanField(default=False)
-    major = models.BooleanField(default=False)
     priority = models.IntegerField(null=True)
-    causal = models.BooleanField(default=False)
     tested_count = models.IntegerField(null=True)
+    diagnosis_count = models.IntegerField(null=True)
     positive_count = models.IntegerField(null=True)
     suspect_count = models.IntegerField(null=True)
     pooled = models.BooleanField(default=False)
@@ -651,6 +652,31 @@ class SpeciesDiagnosis(HistoryModel):
     class Meta:
         db_table = "whispers_speciesdiagnosis"
         verbose_name_plural = "speciesdiagnoses"
+
+
+class DiagnosisBasis(NameModel):
+    """
+    Diagnosis Basis
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_diagnosisbasis"
+        verbose_name_plural = "diagnosisbases"
+
+
+class DiagnosisCause(NameModel):
+    """
+    Diagnosis Cause
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_diagnosiscause"
 
 
 ######

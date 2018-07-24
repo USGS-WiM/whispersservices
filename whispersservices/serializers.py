@@ -536,6 +536,15 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
+    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    class Meta:
+        model = SpeciesDiagnosis
+        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'tested_count', 'diagnosis_count', 'positive_count',
+                  'suspect_count', 'pooled',)
+
+
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -543,9 +552,27 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
-                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
+                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class DiagnosisBasisSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = DiagnosisBasis
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class DiagnosisCauseSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = DiagnosisCause
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 ######
@@ -1026,12 +1053,11 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
-    organization_string = serializers.StringRelatedField(source='organization')
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major', 'tested_count', 'positive_count',
-                  'suspect_count', 'pooled', 'organization', 'organization_string')
+        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'tested_count', 'diagnosis_count', 'positive_count',
+                  'suspect_count', 'pooled',)
 
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
@@ -1040,8 +1066,9 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
-                  'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization', 'organization_string',)
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
+                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
+                  'organization_string',)
 
 
 class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
