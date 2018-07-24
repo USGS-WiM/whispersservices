@@ -6,6 +6,41 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 ######
 #
+#  Misc
+#
+######
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Comment
+        fields = ('id', 'comment', 'comment_type',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class CommentTypeSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = CommentType
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class ArtifactSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Artifact
+        fields = ('id', 'filename', 'keywords', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+######
+#
 #  Events
 #
 ######
@@ -43,6 +78,7 @@ class EventSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    comments = CommentSerializer(many=True)
     new_organizations = serializers.ListField(write_only=True)
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
@@ -174,6 +210,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
+    comments = CommentSerializer(many=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -322,13 +359,14 @@ class EventLocationSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
+    comments = CommentSerializer(many=True)
 
     class Meta:
         model = EventLocation
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyway', 'contacts',
+                  'priority', 'land_ownership', 'flyway', 'contacts', 'comments',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -513,41 +551,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority', 'causal',
                   'tested_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
-######
-#
-#  Misc
-#
-######
-
-
-class CommentSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = Comment
-        fields = ('id', 'comment', 'comment_type',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
-class CommentTypeSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = CommentType
-        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
-
-
-class ArtifactSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
-
-    class Meta:
-        model = Artifact
-        fields = ('id', 'filename', 'keywords', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 ######
@@ -1085,13 +1088,14 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
     location_species = LocationSpeciesDetailSerializer(many=True, source='locationspecies')
+    comments = CommentSerializer(many=True)
 
     class Meta:
         model = EventLocation
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyway', 'location_species',)
+                  'priority', 'land_ownership', 'flyway', 'location_species', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
@@ -1144,6 +1148,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
+    event_organizations = EventOrganizationSerializer(many=True, source='organizations')
+    comments = CommentSerializer(many=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1163,7 +1169,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'permissions', 'permission_source',)
+                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'event_organizations', 'comments',
+                  'permissions', 'permission_source',)
 
 
 class EventDetailAdminSerializer(serializers.ModelSerializer):
@@ -1175,6 +1182,8 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
+    event_organizations = EventOrganizationSerializer(many=True, source='organizations')
+    comments = CommentSerializer(many=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1196,5 +1205,5 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'superevents', 'event_diagnoses', 'event_locations',
+                  'superevents', 'event_diagnoses', 'event_locations', 'event_organizations', 'comments',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
