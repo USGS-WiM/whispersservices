@@ -154,13 +154,8 @@ class EventSerializer(serializers.ModelSerializer):
                 comment_type = CommentType.objects.filter(name=value).first()
 
                 if comments[key] is not None and len(comments[key]) > 0:
-                    if key == 'general':
-                        for comment in comments[key]:
-                            Comment.objects.create(content_object=evt_location, comment=comment,
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-                    else:
-                        Comment.objects.create(content_object=evt_location, comment=comments[key],
-                                               comment_type=comment_type, created_by=user, modified_by=user)
+                    Comment.objects.create(content_object=evt_location, comment=comments[key],
+                                           comment_type=comment_type, created_by=user, modified_by=user)
 
             # Create EventLocationContacts
             if location_contacts is not None:
