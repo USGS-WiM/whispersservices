@@ -243,6 +243,15 @@ class EventAdminSerializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
+class EventSuperEventSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = EventSuperEvent
+        fields = ('id', 'event', 'superevent', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class SuperEventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -329,7 +338,8 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventOrganization
-        fields = ('id', 'event', 'organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event', 'organization', 'priority',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class EventContactSerializer(serializers.ModelSerializer):
@@ -565,7 +575,17 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
-                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
+                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = SpeciesDiagnosisOrganization
+        fields = ('id', 'species_diagnosis', 'organization',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

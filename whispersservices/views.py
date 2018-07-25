@@ -178,6 +178,11 @@ class EventViewSet(HistoryViewSet):
             return EventPublicSerializer
 
 
+class EventSuperEventViewSet(HistoryViewSet):
+    queryset = EventSuperEvent.objects.all()
+    serializer_class = EventSuperEventSerializer
+
+
 class SuperEventViewSet(HistoryViewSet):
     queryset = SuperEvent.objects.all()
     serializer_class = SuperEventSerializer
@@ -483,6 +488,11 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
         else:
             return SpeciesDiagnosisPublicSerializer
+
+
+class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
+    queryset = SpeciesDiagnosisOrganization.objects.all()
+    serializer_class = SpeciesDiagnosisOrganizationSerializer
 
 
 class DiagnosisBasisViewSet(HistoryViewSet):

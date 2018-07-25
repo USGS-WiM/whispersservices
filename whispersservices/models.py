@@ -4,15 +4,12 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
-from django.utils import timezone
 from simple_history.models import HistoricalRecords
-from dry_rest_permissions.generics import unauthenticated_users
 
 
-# Users will be stored in the core User model instead of a custom model.
 # Default fields of the core User model: username, first_name, last_name, email, password, groups, user_permissions,
 # is_staff, is_active, is_superuser, last_login, date_joined
-# For more information, see: https://docs.djangoproject.com/en/1.11/ref/contrib/auth/#user
+# For more information, see: https://docs.djangoproject.com/en/2.0/ref/contrib/auth/#user
 
 
 ######
@@ -132,7 +129,7 @@ class Event(PermissionsHistoryModel):
     event_status = models.ForeignKey('EventStatus', 'events', default=1)
     legal_status = models.ForeignKey('LegalStatus', 'events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
-    quality_check = models.BooleanField(default=False)
+    quality_check = models.BooleanField(default=False)  # TODO: value needs to change when complete field changes
     public = models.BooleanField(default=True)
     circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
     circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
@@ -286,6 +283,7 @@ class EventOrganization(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.PROTECT)
     organization = models.ForeignKey('Organization', models.PROTECT)
+    priority = models.IntegerField(null=True)
 
     def __str__(self):
         return str(self.id)
@@ -644,7 +642,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     positive_count = models.IntegerField(null=True)
     suspect_count = models.IntegerField(null=True)
     pooled = models.BooleanField(default=False)
-    organization = models.ForeignKey('Organization', models.PROTECT, related_name='speciesdiagnoses')
+    organizations = models.ManyToManyField(
+        'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses')
 
     def __str__(self):
         return str(self.id)
@@ -652,6 +651,21 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_speciesdiagnosis"
         verbose_name_plural = "speciesdiagnoses"
+
+
+class SpeciesDiagnosisOrganization(HistoryModel):
+    """
+    Table to allow many-to-many relationship between SpeciesDiagnosis and Organizations.
+    """
+
+    species_diagnosis = models.ForeignKey('SpeciesDiagnosis', models.PROTECT)
+    organization = models.ForeignKey('Organization', models.PROTECT)
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_speciesdiagnosisorganization"
 
 
 class DiagnosisBasis(NameModel):
