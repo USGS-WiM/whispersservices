@@ -104,6 +104,9 @@ class EventSerializer(serializers.ModelSerializer):
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
                          'general': 'General'}
 
+        # pull out child organizations list from the request
+        new_organizations = data.pop('new_organizations', None)
+
         # pull out child comments list from the request
         new_comments = data.pop('new_comments', None)
 
@@ -113,78 +116,87 @@ class EventSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         event = Event.objects.create(**data)
 
+        # create the child organizations for this event
+        if new_organizations is not None:
+            for org in new_organizations:
+                if org is not None:
+                    EventOrganization.objects.create(event=event, organization=org)
+
         # create the child comments for this event
         if new_comments is not None:
             for comment in new_comments:
-                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
+                if comment is not None:
+                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                    Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
                                        created_by=user, modified_by=user)
 
         # create the child event_locations for this event
-        # if event_locations is not None:
-        for event_location in new_event_locations:
-            # use event to populate event field on event_location
-            event_location['event'] = event
-            location_contacts = event_location.pop('location_contacts', None)
-            location_species = event_location.pop('location_species', None)
+        if new_event_locations is not None:
+            for event_location in new_event_locations:
+                if event_location is not None:
+                    # use event to populate event field on event_location
+                    event_location['event'] = event
+                    location_contacts = event_location.pop('location_contacts', None)
+                    location_species = event_location.pop('location_species', None)
 
-            # use id for country to get Country instance
-            event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
-            # same for other things
-            event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
-                pk=event_location['administrative_level_one']).first()
-            event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
-                pk=event_location['administrative_level_two']).first()
-            event_location['land_ownership'] = LandOwnership.objects.filter(pk=event_location['land_ownership']).first()
+                    # use id for country to get Country instance
+                    event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
+                    # same for other things
+                    event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                        pk=event_location['administrative_level_one']).first()
+                    event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                        pk=event_location['administrative_level_two']).first()
+                    event_location['land_ownership'] = LandOwnership.objects.filter(
+                        pk=event_location['land_ownership']).first()
 
-            # create object for comment creation while removing unserialized fields for EventLocation
-            comments = {'site_description': event_location.pop('site_description', None),
-                        'history': event_location.pop('history', None),
-                        'environmental_factors': event_location.pop('environmental_factors', None),
-                        'clinical_signs': event_location.pop('clinical_signs', None),
-                        'general': event_location.pop('comment', None)}
+                    # create object for comment creation while removing unserialized fields for EventLocation
+                    comments = {'site_description': event_location.pop('site_description', None),
+                                'history': event_location.pop('history', None),
+                                'environmental_factors': event_location.pop('environmental_factors', None),
+                                'clinical_signs': event_location.pop('clinical_signs', None),
+                                'general': event_location.pop('comment', None)}
 
-            # create the event_location and return object for use in event_location_contacts object
-            event_location['created_by'] = user
-            event_location['modified_by'] = user
-            evt_location = EventLocation.objects.create(**event_location)
+                    # create the event_location and return object for use in event_location_contacts object
+                    event_location['created_by'] = user
+                    event_location['modified_by'] = user
+                    evt_location = EventLocation.objects.create(**event_location)
 
-            for key, value in comment_types.items():
+                    for key, value in comment_types.items():
 
-                comment_type = CommentType.objects.filter(name=value).first()
+                        comment_type = CommentType.objects.filter(name=value).first()
 
-                if comments[key] is not None and len(comments[key]) > 0:
-                    Comment.objects.create(content_object=evt_location, comment=comments[key],
-                                           comment_type=comment_type, created_by=user, modified_by=user)
+                        if comments[key] is not None and len(comments[key]) > 0:
+                            Comment.objects.create(content_object=evt_location, comment=comments[key],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
-            # Create EventLocationContacts
-            if location_contacts is not None:
-                for location_contact in location_contacts:
-                    location_contact['event_location'] = evt_location
+                    # Create EventLocationContacts
+                    if location_contacts is not None:
+                        for location_contact in location_contacts:
+                            location_contact['event_location'] = evt_location
 
-                    # Convert ids to ForeignKey objects
-                    location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
-                    location_contact['contact_type'] = ContactType.objects.filter(
-                        pk=location_contact['contact_type']).first()
-                    del location_contact['id']
+                            # Convert ids to ForeignKey objects
+                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                            location_contact['contact_type'] = ContactType.objects.filter(
+                                pk=location_contact['contact_type']).first()
+                            del location_contact['id']
 
-                    location_contact['created_by'] = user
-                    location_contact['modified_by'] = user
-                    EventLocationContact.objects.create(**location_contact)
+                            location_contact['created_by'] = user
+                            location_contact['modified_by'] = user
+                            EventLocationContact.objects.create(**location_contact)
 
-            # Create EventLocationSpecies
-            if location_species is not None:
-                for location_spec in location_species:
-                    location_spec['event_location'] = evt_location
+                    # Create EventLocationSpecies
+                    if location_species is not None:
+                        for location_spec in location_species:
+                            location_spec['event_location'] = evt_location
 
-                    # Convert ids to ForeignKey objects
-                    location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
-                    location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
-                    location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
+                            # Convert ids to ForeignKey objects
+                            location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
+                            location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
+                            location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
 
-                    location_spec['created_by'] = user
-                    location_spec['modified_by'] = user
-                    LocationSpecies.objects.create(**location_spec)
+                            location_spec['created_by'] = user
+                            location_spec['modified_by'] = user
+                            LocationSpecies.objects.create(**location_spec)
 
         return event
 
