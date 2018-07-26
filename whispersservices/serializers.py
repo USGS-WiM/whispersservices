@@ -78,7 +78,7 @@ class EventSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    comments = CommentSerializer(many=True)
+    comments = CommentSerializer(many=True, read_only=True)
     new_organizations = serializers.ListField(write_only=True)
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
@@ -98,23 +98,23 @@ class EventSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    def create(self, data):
+    def create(self, validated_data):
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
                          'general': 'General'}
 
         # pull out child organizations list from the request
-        new_organizations = data.pop('new_organizations', None)
+        new_organizations = validated_data.pop('new_organizations', None)
 
         # pull out child comments list from the request
-        new_comments = data.pop('new_comments', None)
+        new_comments = validated_data.pop('new_comments', None)
 
         # pull out child event_locations list from the request
-        new_event_locations = data.pop('new_event_locations', None)
+        new_event_locations = validated_data.pop('new_event_locations', None)
 
         user = self.context['request'].user
-        event = Event.objects.create(**data)
+        event = Event.objects.create(**validated_data)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -128,7 +128,7 @@ class EventSerializer(serializers.ModelSerializer):
                 if comment is not None:
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                     Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
-                                       created_by=user, modified_by=user)
+                                           created_by=user, modified_by=user)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -200,6 +200,111 @@ class EventSerializer(serializers.ModelSerializer):
 
         return event
 
+    # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        # remove child organizations list from the request
+        if 'new_organizations' in validated_data:
+            validated_data.pop('new_organizations')
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
+
+        # remove child event_locations list from the request
+        if 'new_event_locations' in validated_data:
+            validated_data.pop('new_event_locations')
+
+        # # get the old (current) organization ID list for this Event
+        # old_organizations = Organization.objects.filter(events=instance.id)
+        #
+        # # pull out organization ID list from the request
+        # if 'new_organizations' in self.initial_data:
+        #     new_organizations_ids = self.initial_data['new_organizations']
+        #     new_organizations = Organization.objects.filter(id__in=new_organizations_ids)
+        # else:
+        #     new_organizations = []
+        #
+        # # get the old (current) comment ID list for this Event
+        # old_comments = Comment.objects.filter(events=instance.id)
+        #
+        # # pull out organization ID list from the request
+        # if 'new_comments' in self.initial_data:
+        #     new_comments_ids = self.initial_data['new_comments']
+        #     new_comments = Comment.objects.filter(id__in=new_comments_ids)
+        # else:
+        #     new_comments = []
+        #
+        # # get the old (current) event_location ID list for this Event
+        # old_event_locations = Comment.objects.filter(events=instance.id)
+        #
+        # # pull out event_location ID list from the request
+        # if 'new_event_locations' in self.initial_data:
+        #     new_event_locations_ids = self.initial_data['new_event_locations']
+        #     new_event_locations = Comment.objects.filter(id__in=new_event_locations_ids)
+        # else:
+        #     new_event_locations = []
+
+        # update the Event object
+        instance.event_type = validated_data.get('event_type', instance.event_type)
+        instance.event_reference = validated_data.get('event_reference', instance.event_reference)
+        instance.complete = validated_data.get('complete', instance.complete)
+        instance.start_date = validated_data.get('start_date', instance.start_date)
+        instance.end_date = validated_data.get('end_date', instance.end_date)
+        instance.affected_count = validated_data.get('affected_count', instance.affected_count)
+        instance.staff = instance.staff
+        instance.event_status = instance.event_status
+        instance.quality_check = instance.quality_check
+        instance.legal_status = instance.legal_status
+        instance.legal_number = instance.legal_number
+        instance.public = validated_data.get('public', instance.public)
+        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
+        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
+        if 'request' in self.context and 'user' in self.context['request']:
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # # identify and delete relates where organization IDs are present in old list but not new list
+        # delete_organizations = list(set(old_organizations) - set(new_organizations))
+        # for organization in delete_organizations:
+        #     delete_organization = EventOrganization.objects.filter(event=instance, organization=organization)
+        #     delete_organization.delete()
+        #
+        # # identify and create relates where organization IDs are present in new list but not old list
+        # add_organizations = list(set(new_organizations) - set(old_organizations))
+        # for organization in add_organizations:
+        #     EventOrganization.objects.create(event=instance, organization=organization,
+        #                                      created_by=user, modified_by=user)
+        #
+        # # identify and delete relates where organization IDs are present in old list but not new list
+        # delete_comments = list(set(old_comments) - set(new_comments))
+        # for comment in delete_comments:
+        #     delete_comment = Comment.objects.filter(pk=comment.id)
+        #     delete_comment.delete()
+        #
+        # # identify and create relates where organization IDs are present in new list but not old list
+        # add_comments = list(set(new_comments) - set(old_comments))
+        # for comment in add_comments:
+        #     Comment.objects.create(content_object=instance, comment=comment.comment,
+        #                            comment_type=comment.comment_type, created_by=user, modified_by=user)
+        #
+        # # identify and delete relates where event_location IDs are present in old list but not new list
+        # delete_event_locations = list(set(old_event_locations) - set(new_event_locations))
+        # for event_location in delete_event_locations:
+        #     delete_event_location = EventLocation.objects.filter(event=instance, event_location=event_location)
+        #     delete_event_location.delete()
+        #
+        # # identify and create relates where event_location IDs are present in new list but not old list
+        # add_event_locations = list(set(new_event_locations) - set(old_event_locations))
+        # for event_location in add_event_locations:
+        #     EventLocation.objects.create(event=instance, event_location=event_location,
+        #                                  created_by=user, modified_by=user)
+
+        return instance
+
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
@@ -217,7 +322,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
-    comments = CommentSerializer(many=True)
+    comments = CommentSerializer(many=True, read_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -233,6 +338,109 @@ class EventAdminSerializer(serializers.ModelSerializer):
         else:
             permission_source = ''
         return permission_source
+
+    # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
+    def update(self, instance, validated_data):
+        # user = self.context['request'].user
+
+        # remove child organizations list from the request
+        if 'new_organizations' in validated_data:
+            validated_data.pop('new_organizations')
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
+
+        # remove child event_locations list from the request
+        if 'new_event_locations' in validated_data:
+            validated_data.pop('new_event_locations')
+
+        # # get the old (current) organization ID list for this Event
+        # old_organizations = Organization.objects.filter(events=instance.id)
+        #
+        # # pull out organization ID list from the request
+        # if 'new_organizations' in self.initial_data:
+        #     new_organizations_ids = self.initial_data['new_organizations']
+        #     new_organizations = Organization.objects.filter(id__in=new_organizations_ids)
+        # else:
+        #     new_organizations = []
+        #
+        # # get the old (current) comment ID list for this Event
+        # old_comments = Comment.objects.filter(events=instance.id)
+        #
+        # # pull out organization ID list from the request
+        # if 'new_comments' in self.initial_data:
+        #     new_comments_ids = self.initial_data['new_comments']
+        #     new_comments = Comment.objects.filter(id__in=new_comments_ids)
+        # else:
+        #     new_comments = []
+        #
+        # # get the old (current) event_location ID list for this Event
+        # old_event_locations = Comment.objects.filter(events=instance.id)
+        #
+        # # pull out event_location ID list from the request
+        # if 'new_event_locations' in self.initial_data:
+        #     new_event_locations_ids = self.initial_data['new_event_locations']
+        #     new_event_locations = Comment.objects.filter(id__in=new_event_locations_ids)
+        # else:
+        #     new_event_locations = []
+
+        # update the Event object
+        instance.event_type = validated_data.get('event_type', instance.event_type)
+        instance.event_reference = validated_data.get('event_reference', instance.event_reference)
+        instance.complete = validated_data.get('complete', instance.complete)
+        instance.start_date = validated_data.get('start_date', instance.start_date)
+        instance.end_date = validated_data.get('end_date', instance.end_date)
+        instance.affected_count = validated_data.get('affected_count', instance.affected_count)
+        instance.staff = validated_data.get('staff', instance.staff)
+        instance.event_status = validated_data.get('event_status', instance.event_status)
+        instance.quality_check = validated_data.get('quality_check', instance.quality_check)
+        instance.legal_status = validated_data.get('legal_status', instance.legal_status)
+        instance.legal_number = validated_data.get('legal_number', instance.legal_number)
+        instance.public = validated_data.get('public', instance.public)
+        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
+        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
+        if 'request' in self.context and 'user' in self.context['request']:
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # # identify and delete relates where organization IDs are present in old list but not new list
+        # delete_organizations = list(set(old_organizations) - set(new_organizations))
+        # for organization in delete_organizations:
+        #     delete_organization = EventOrganization.objects.filter(event=instance, organization=organization)
+        #     delete_organization.delete()
+        #
+        # # identify and create relates where organization IDs are present in new list but not old list
+        # add_organizations = list(set(new_organizations) - set(old_organizations))
+        # for organization in add_organizations:
+        #     EventOrganization.objects.create(event=instance, organization=organization,
+        #                                      created_by=user, modified_by=user)
+        #
+        # # identify and delete relates where organization IDs are present in old list but not new list
+        # delete_comments = list(set(old_comments) - set(new_comments))
+        # for comment in delete_comments:
+        #     delete_comment = Comment.objects.filter(pk=comment.id)
+        #     delete_comment.delete()
+        #
+        # # identify and create relates where organization IDs are present in new list but not old list
+        # add_comments = list(set(new_comments) - set(old_comments))
+        # for comment in add_comments:
+        #     Comment.objects.create(content_object=instance, comment=comment.comment,
+        #                            comment_type=comment.comment_type, created_by=user, modified_by=user)
+        #
+        # # identify and delete relates where event_location IDs are present in old list but not new list
+        # delete_event_locations = list(set(old_event_locations) - set(new_event_locations))
+        # for event_location in delete_event_locations:
+        #     delete_event_location = EventLocation.objects.filter(event=instance, event_location=event_location)
+        #     delete_event_location.delete()
+        #
+        # # identify and create relates where event_location IDs are present in new list but not old list
+        # add_event_locations = list(set(new_event_locations) - set(old_event_locations))
+        # for event_location in add_event_locations:
+        #     EventLocation.objects.create(event=instance, event_location=event_location,
+        #                                  created_by=user, modified_by=user)
 
     class Meta:
         model = Event
@@ -376,7 +584,80 @@ class EventLocationSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
-    comments = CommentSerializer(many=True)
+    comments = CommentSerializer(many=True, read_only=True)
+    new_location_contacts = serializers.ListField(write_only=True)
+    new_location_species = serializers.ListField(write_only=True)
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+
+        comment_types = {'site_description': 'Site description', 'history': 'History',
+                         'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
+                         'general': 'General'}
+
+        # event = Event.objects.filter(pk=validated_data['event']).first()
+        location_contacts = validated_data.pop('new_location_contacts', None)
+        location_species = validated_data.pop('new_location_species', None)
+
+        # # use id for country to get Country instance
+        # country = Country.objects.filter(pk=validated_data['country']).first()
+        # # same for other things
+        # administrative_level_one = AdministrativeLevelOne.objects.filter(
+        #     pk=validated_data['administrative_level_one']).first()
+        # administrative_level_two = AdministrativeLevelTwo.objects.filter(
+        #     pk=validated_data['administrative_level_two']).first()
+        # land_ownership = LandOwnership.objects.filter(pk=validated_data['land_ownership']).first()
+
+        # create object for comment creation while removing unserialized fields for EventLocation
+        comments = {'site_description': validated_data.pop('site_description', None),
+                    'history': validated_data.pop('history', None),
+                    'environmental_factors': validated_data.pop('environmental_factors', None),
+                    'clinical_signs': validated_data.pop('clinical_signs', None),
+                    'general': validated_data.pop('comment', None)}
+
+        # create the event_location and return object for use in event_location_contacts object
+        # validated_data['created_by'] = user
+        # validated_data['modified_by'] = user
+        evt_location = EventLocation.objects.create(**validated_data)
+
+        for key, value in comment_types.items():
+
+            comment_type = CommentType.objects.filter(name=value).first()
+
+            if comments[key] is not None and len(comments[key]) > 0:
+                Comment.objects.create(content_object=evt_location, comment=comments[key],
+                                       comment_type=comment_type, created_by=user, modified_by=user)
+
+        # Create EventLocationContacts
+        if location_contacts is not None:
+            for location_contact in location_contacts:
+                location_contact['event_location'] = evt_location
+
+                # Convert ids to ForeignKey objects
+                location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                location_contact['contact_type'] = ContactType.objects.filter(
+                    pk=location_contact['contact_type']).first()
+                del location_contact['id']
+
+                location_contact['created_by'] = user
+                location_contact['modified_by'] = user
+                EventLocationContact.objects.create(**location_contact)
+
+        # Create EventLocationSpecies
+        if location_species is not None:
+            for location_spec in location_species:
+                location_spec['event_location'] = evt_location
+
+                # Convert ids to ForeignKey objects
+                location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
+                location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
+                location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
+
+                location_spec['created_by'] = user
+                location_spec['modified_by'] = user
+                LocationSpecies.objects.create(**location_spec)
+
+        return evt_location
 
     class Meta:
         model = EventLocation
@@ -384,6 +665,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
                   'priority', 'land_ownership', 'flyway', 'contacts', 'comments',
+                  'new_location_contacts', 'new_location_species',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
