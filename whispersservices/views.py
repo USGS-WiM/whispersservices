@@ -795,7 +795,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
             queryset = queryset.filter(
-                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
                 #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
         # non-user-specific event requests can only return public data
         else:
@@ -829,12 +829,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     query = queries.pop()
                     for item in queries:
                         query &= item
-                    queryset = queryset.filter(query)
+                    queryset = queryset.filter(query).distinct()
                 else:
                     queryset = queryset.prefetch_related('eventdiagnoses').filter(
-                        eventdiagnoses__diagnosis__in=diagnosis_list)
+                        eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
             else:
-                queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis)
+                queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis).distinct()
         # filter by diagnosistype ID, exact list
         diagnosis_type = query_params.get('diagnosis_type', None)
         if diagnosis_type is not None:
@@ -845,12 +845,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     query = queries.pop()
                     for item in queries:
                         query &= item
-                    queryset = queryset.filter(query)
+                    queryset = queryset.filter(query).distinct()
                 else:
                     queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
-                        eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list)
+                        eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
             else:
-                queryset = queryset.filter(eventdiagnoses__diagnosis__diagnosis_type__exact=diagnosis_type)
+                queryset = queryset.filter(eventdiagnoses__diagnosis__diagnosis_type__exact=diagnosis_type).distinct()
         # filter by species ID, exact list
         species = query_params.get('species', None)
         if species is not None:
@@ -861,12 +861,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     query = queries.pop()
                     for item in queries:
                         query &= item
-                    queryset = queryset.filter(query)
+                    queryset = queryset.filter(query).distinct()
                 else:
                     queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
-                        eventlocations__locationspecies__species__in=species_list)
+                        eventlocations__locationspecies__species__in=species_list).distinct()
             else:
-                queryset = queryset.filter(eventlocations__locationspecies__species__exact=species)
+                queryset = queryset.filter(eventlocations__locationspecies__species__exact=species).distinct()
         # filter by administrative_level_one, exact list
         administrative_level_one = query_params.get('administrative_level_one', None)
         if administrative_level_one is not None:
@@ -877,12 +877,13 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     query = queries.pop()
                     for item in queries:
                         query &= item
-                    queryset = queryset.filter(query)
+                    queryset = queryset.filter(query).distinct()
                 else:
                     queryset = queryset.prefetch_related('eventlocations__administrative_level_one').filter(
-                        eventlocations__administrative_level_one__in=admin_level_one_list)
+                        eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
             else:
-                queryset = queryset.filter(eventlocations__administrative_level_one__exact=administrative_level_one)
+                queryset = queryset.filter(
+                    eventlocations__administrative_level_one__exact=administrative_level_one).distinct()
         # filter by administrative_level_two, exact list
         administrative_level_two = query_params.get('administrative_level_two', None)
         if administrative_level_two is not None:
@@ -893,30 +894,31 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     query = queries.pop()
                     for item in queries:
                         query &= item
-                    queryset = queryset.filter(query)
+                    queryset = queryset.filter(query).distinct()
                 else:
                     queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
-                        eventlocations__administrative_level_two__in=admin_level_two_list)
+                        eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
             else:
-                queryset = queryset.filter(eventlocations__administrative_level_two__exact=administrative_level_two)
+                queryset = queryset.filter(
+                    eventlocations__administrative_level_two__exact=administrative_level_two).distinct()
         # filter by flyway, exact list
         flyway = query_params.get('flyway', None)
         if flyway is not None:
             queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in flyway:
                 flyway_list = flyway.split(',')
-                queryset = queryset.filter(eventlocations__flyway__in=flyway_list)
+                queryset = queryset.filter(eventlocations__flyway__in=flyway_list).distinct()
             else:
-                queryset = queryset.filter(eventlocations__flyway__exact=flyway)
+                queryset = queryset.filter(eventlocations__flyway__exact=flyway).distinct()
         # filter by country, exact list
         country = query_params.get('country', None)
         if country is not None:
             queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
-                queryset = queryset.filter(eventlocations__country__in=country_list)
+                queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
             else:
-                queryset = queryset.filter(eventlocations__country__exact=country)
+                queryset = queryset.filter(eventlocations__country__exact=country).distinct()
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
