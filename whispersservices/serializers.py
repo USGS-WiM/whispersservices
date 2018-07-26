@@ -118,9 +118,11 @@ class EventSerializer(serializers.ModelSerializer):
 
         # create the child organizations for this event
         if new_organizations is not None:
-            for org in new_organizations:
-                if org is not None:
-                    EventOrganization.objects.create(event=event, organization=org)
+            for org_id in new_organizations:
+                if org_id is not None:
+                    org = Organization.objects.filter(pk=org_id).first()
+                    if org is not None:
+                        EventOrganization.objects.create(event=event, organization=org)
 
         # create the child comments for this event
         if new_comments is not None:
