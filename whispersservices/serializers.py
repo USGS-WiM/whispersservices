@@ -539,7 +539,7 @@ class EventOrganizationPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventOrganization
-        fields = ('organization',)
+        fields = ('event', 'organization',)
 
 
 class EventOrganizationSerializer(serializers.ModelSerializer):
