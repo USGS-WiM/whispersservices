@@ -598,10 +598,34 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    serializer_class = OrganizationSerializer
+    # serializer_class = OrganizationSerializer
 
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return OrganizationPublicSerializer
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return OrganizationPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return OrganizationSerializer
+        # non-admins retrieve requests must use the public serializer
+        if self.action == 'retrieve':
+            return OrganizationPublicSerializer
+        # all other requests are rejected
+        else:
+            raise PermissionDenied
+            # message = "You do not have permission to perform this action"
+            # return JsonResponse({"Permission Denied": message}, status=403)
+
+    # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
+        user = self.request.user
         queryset = Organization.objects.all()
+
         users = self.request.query_params.get('users', None)
         if users is not None:
             users_list = users.split(',')
@@ -610,7 +634,26 @@ class OrganizationViewSet(HistoryViewSet):
         if contacts is not None:
             contacts_list = contacts.split(',')
             queryset = queryset.filter(contacts__in=contacts_list)
-        return queryset
+
+        # all requests from anonymous users must only return published data
+        if not user.is_authenticated:
+            return queryset.filter(do_not_publish=False)
+        # for pk requests, unpublished data can only be returned to the owner or their org or admins
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                queryset = Organization.objects.filter(id=pk)
+                obj = queryset[0]
+                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                        or user.is_superuser or user.role.is_superadmin or user.role.is_admin):
+                    return queryset
+            return queryset.filter(do_not_publish=False)
+        # all list requests, and all requests from public users, must only return published data
+        elif self.action == 'list' or user.role.is_public:
+            return queryset.filter(do_not_publish=False)
+        # that leaves the create request, implying that the requester is the owner
+        else:
+            return queryset
 
 
 class ContactViewSet(HistoryViewSet):
@@ -972,7 +1015,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         queryset = Event.objects.all()
 
         if not user.is_authenticated:
-            return queryset
+            return queryset.filter(public=True)
 
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
         elif self.action == 'retrieve':

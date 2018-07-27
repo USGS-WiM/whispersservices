@@ -843,6 +843,7 @@ class CircleUser(HistoryModel):
         db_table = "whispers_circleuser"
 
 
+# TODO: apply permissions to this model such that only admins and up can write (create/update/delete)
 class Organization(NameModel):
     """
     Organization

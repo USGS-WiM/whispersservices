@@ -1006,6 +1006,16 @@ class CircleSerlializer(serializers.ModelSerializer):
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class OrganizationPublicSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Organization
+        fields = ('name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one', 'country',
+                  'phone', 'parent_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
 class OrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -1458,6 +1468,16 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_locations = EventLocationDetailPublicSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailPublicSerializer(many=True, source='eventdiagnoses')
+    event_organizations = serializers.SerializerMethodField()  #OrganizationPublicSerializer(many=True, source='organizations')
+
+    def get_event_organizations(self, obj):
+        pub_orgs = []
+        if obj.organizations is not None:
+            orgs = obj.organizations.all()
+            for org in orgs:
+                if not org.do_not_publish:
+                    pub_orgs.append(org)
+        return pub_orgs
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1477,7 +1497,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_diagnoses', 'event_locations', 'permissions', 'permission_source',)
+                  'event_diagnoses', 'event_locations', 'event_organizations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -1486,7 +1506,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
-    event_organizations = EventOrganizationSerializer(many=True, source='organizations')
+    event_organizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
 
     def get_permission_source(self, obj):
@@ -1520,7 +1540,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
-    event_organizations = EventOrganizationSerializer(many=True, source='organizations')
+    event_organizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
 
     def get_permission_source(self, obj):
