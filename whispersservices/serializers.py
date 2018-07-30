@@ -1390,13 +1390,13 @@ class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
-    organization_string = serializers.StringRelatedField(source='organization')
+    organizations_string = serializers.StringRelatedField(many=True, source='organizations')
 
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
-                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organization',
-                  'organization_string',)
+                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
+                  'organizations_string',)
 
 
 class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
