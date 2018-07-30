@@ -1007,13 +1007,11 @@ class CircleSerlializer(serializers.ModelSerializer):
 
 
 class OrganizationPublicSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField()
-    modified_by = serializers.StringRelatedField()
 
     class Meta:
         model = Organization
         fields = ('name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one', 'country',
-                  'phone', 'parent_organization', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'phone', 'parent_organization',)
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -1476,7 +1474,11 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
             orgs = obj.organizations.all()
             for org in orgs:
                 if not org.do_not_publish:
-                    pub_orgs.append(org)
+                    new_org = {'name': org.name, 'address_one': org.address_one, 'address_two': org.address_two,
+                               'city': org.city, 'postal_code': org.postal_code,
+                               'administrative_level_one': org.administrative_level_one.name,
+                               'country': org.country.name, 'phone': org.phone}
+                    pub_orgs.append(new_org)
         return pub_orgs
 
     def get_permission_source(self, obj):

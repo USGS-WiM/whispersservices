@@ -392,7 +392,6 @@ class EventLocation(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_eventlocation"
-        unique_together = ('name', 'event')
 
 
 class EventLocationContact(HistoryModel):
@@ -853,7 +852,7 @@ class Organization(NameModel):
     address_one = models.CharField(max_length=128, blank=True, default='')
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
-    postal_code = models.BigIntegerField(null=True, blank=True)
+    postal_code = models.CharField(max_length=128, blank=True, default='')  # models.BigIntegerField(null=True, blank=True)
     administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
