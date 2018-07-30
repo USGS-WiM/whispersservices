@@ -936,7 +936,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
-                  'is_active', 'role', 'organization', 'circles', 'last_login', 'active_key', 'user_status',)
+                  'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
+                  'user_status',)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -1030,6 +1031,8 @@ class ContactSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
+    organization_string = serializers.StringRelatedField(source='organization')
+    owner_organization_string = serializers.StringRelatedField(source='owner_organization')
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1046,8 +1049,8 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
-                  'owner_organization', 'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions',
-                  'permission_source',)
+                  'organization_string', 'owner_organization', 'owner_organization_string',
+                  'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
 class ContactTypeSerializer(serializers.ModelSerializer):
