@@ -900,6 +900,7 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
+    organization_string = serializers.StringRelatedField(source='organization')
 
     def create(self, validated_data):
         created_by = validated_data.pop('created_by')
