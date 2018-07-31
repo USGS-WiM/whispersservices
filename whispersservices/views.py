@@ -1005,14 +1005,18 @@ class SearchViewSet(viewsets.ModelViewSet):
 ######
 
 
+class CSVEventSummaryPublicRenderer(csv_renderers.CSVRenderer):
+    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'event_diagnoses']
+
+
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
-    serializer_class = EventSummarySerializer
+    # serializer_class = EventSummarySerializer
 
     # override the default renderers to use a csv or xslx renderer when requested
     def get_renderers(self):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
-            renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+            renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         elif frmt is not None and frmt == 'xlsx':
             renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
@@ -1065,6 +1069,39 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        frmt = self.request.query_params.get('format', None)
+        user = self.request.user
+
+        if frmt is not None and frmt in ['csv', 'xlsx']:
+            return FlatEventSummaryPublicSerializer
+        elif not user.is_authenticated:
+            return EventSummaryPublicSerializer
+        # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
+        elif self.action == 'retrieve':
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None:
+                obj = Event.objects.filter(id=pk).first()
+                if obj is not None:
+                    circle_read = obj.circle_read if obj.circle_read is not None else []
+                    circle_write = obj.circle_write if obj.circle_write is not None else []
+                    # admins have full access to all fields
+                    if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                        return EventSummaryAdminSerializer
+                    # owner and org members and shared circles have full access to non-admin fields
+                    elif user == obj.created_by or (user.organization == obj.created_by.organization and (
+                            user.role.is_partnermanager or user.role.is_partneradmin)
+                            or user in circle_read or user in circle_write):
+                        return EventSummarySerializer
+            return EventSummaryPublicSerializer
+        # admins have access to all fields
+        elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+            return EventSummaryAdminSerializer
+        # everything else must use the public serializer
+        else:
+            return EventSummaryPublicSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
