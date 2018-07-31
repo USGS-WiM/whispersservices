@@ -618,7 +618,7 @@ class EventDiagnosis(PermissionsHistoryModel):
     priority = models.IntegerField(null=True)
 
     def __str__(self):
-        return str(self.id)
+        return str(self.diagnosis)
 
     class Meta:
         db_table = "whispers_eventdiagnosis"

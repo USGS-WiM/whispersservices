@@ -1571,3 +1571,52 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                   'superevents', 'event_diagnoses', 'event_locations', 'event_organizations', 'comments',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
+
+
+class FlatSpeciesDiagnosisSerializer(serializers.ModelSerializer):
+
+    # a flattened (not nested) version of the essential fields of the FullResultSerializer, to populate CSV files
+    # requested from the EventDetails or EventSummaries Search
+    event_id = serializers.PrimaryKeyRelatedField(source='location_species.event_location.event', read_only=True)
+    event_reference = serializers.CharField(source='location_species.event_location.event.event_reference', read_only=True)
+    event_type = serializers.StringRelatedField(source='location_species.event_location.event.event_type')
+    complete = serializers.BooleanField(source='location_species.event_location.event.complete', read_only=True)
+    organization = serializers.StringRelatedField(source='location_species.event_location.event.organizations', many=True)
+    start_date = serializers.DateField(source='location_species.event_location.event.start_date', read_only=True)
+    end_date = serializers.DateField(source='location_species.event_location.event.end_date', read_only=True)
+    affected_count = serializers.IntegerField(source='location_species.event_location.event.affected_count')
+    event_diagnosis = serializers.StringRelatedField(source='location_species.event_location.event.eventdiagnoses', many=True)
+    location_id = serializers.PrimaryKeyRelatedField(source='location_species.event_location', read_only=True)
+    location_priority = serializers.IntegerField(source='location_species.event_location.priority', read_only=True)
+    county = serializers.StringRelatedField(source='location_species.event_location.administrative_level_two')
+    state = serializers.StringRelatedField(source='location_species.event_location.administrative_level_one')
+    nation = serializers.StringRelatedField(source='location_species.event_location.country')
+    location_start = serializers.DateField(source='location_species.event_location.start_date', read_only=True)
+    location_end = serializers.DateField(source='location_species.event_location.end_date', read_only=True)
+    location_species_id = serializers.PrimaryKeyRelatedField(source='location_species', read_only=True)
+    species_priority = serializers.IntegerField(source='location_species.priority', read_only=True)
+    species_name = serializers.StringRelatedField(source='location_species.species')
+    population = serializers.IntegerField(source='location_species.population_count', read_only=True)
+    sick = serializers.IntegerField(source='location_species.sick_count', read_only=True)
+    dead = serializers.IntegerField(source='location_species.dead_count', read_only=True)
+    estimated_sick = serializers.IntegerField(source='location_species.sick_count_estimated', read_only=True)
+    estimated_dead = serializers.IntegerField(source='location_species.dead_count_estimated', read_only=True)
+    captive = serializers.BooleanField(source='location_species.captive', read_only=True)
+    age_bias = serializers.StringRelatedField(source='location_species.sample.age_bias')
+    sex_bias = serializers.StringRelatedField(source='location_species.sample.age_bias')
+    species_diagnosis_id = serializers.IntegerField(source='id', read_only=True)
+    species_diagnosis_priority = serializers.IntegerField(source='priority', read_only=True)
+    speciesdx = serializers.StringRelatedField(source='diagnosis')
+    causal = serializers.StringRelatedField(source='cause')
+    # confirmed = serializers.BooleanField(source='confirmed', read_only=True)
+    number_tested = serializers.IntegerField(source='tested_count', read_only=True)
+    number_positive = serializers.IntegerField(source='positive_count', read_only=True)
+
+    class Meta:
+        model = SpeciesDiagnosis
+        fields = ('event_id', 'event_reference', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
+                  'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
+                  'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name',
+                  'population', 'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
+                  'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed',
+                  'number_tested', 'number_positive')

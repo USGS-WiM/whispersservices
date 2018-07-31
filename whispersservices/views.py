@@ -490,6 +490,53 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             return SpeciesDiagnosisPublicSerializer
 
 
+class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
+    permission_classes = (DRYPermissions,)
+    serializer_class = FlatSpeciesDiagnosisSerializer
+
+    # override the default renderers to use a csv or xslx renderer when requested
+    def get_renderers(self):
+        frmt = self.request.query_params.get('format', None)
+        if frmt is not None and frmt == 'csv':
+            renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        elif frmt is not None and frmt == 'xlsx':
+            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        else:
+            renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+        return [renderer_class() for renderer_class in renderer_classes]
+
+    # override the default finalize_response to assign a filename to CSV and XLSX files
+    # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
+    def finalize_response(self, request, *args, **kwargs):
+        response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
+        renderer_format = self.request.accepted_renderer.format
+        if renderer_format == 'csv':
+            fileextension = '.csv'
+        elif renderer_format == 'xlsx':
+            fileextension = '.xlsx'
+        if renderer_format in ['csv', 'xlsx']:
+            filename = 'event_summary_'
+            filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
+            filename += fileextension
+            response['Content-Disposition'] = "attachment; filename=%s" % filename
+            response['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return response
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species',
+                                                                   'location_species__event_location',
+                                                                   'location_species__event_location__event')
+        # queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species__priority',
+        #     'location_species__species', 'location_species__population_count', 'location_species__sick_count',
+        #     'location_species__dead_count', 'location_species__sick_count_estimated',
+        #     'location_species__dead_count_estimated', 'location_species__captive', 'location_species__age_bias',
+        #     'location_species__sex_bias', 'id', 'priority', 'diagnosis', 'cause', 'confirmed', 'tested_count',
+        #     'positive_count'
+        # )
+
+        return queryset
+
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
     queryset = SpeciesDiagnosisOrganization.objects.all()
     serializer_class = SpeciesDiagnosisOrganizationSerializer
