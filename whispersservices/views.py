@@ -695,7 +695,7 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         # filter by flyway, exact list
         flyway = query_params.get('flyway', None)
         if flyway is not None:
-            queryset = queryset.prefetch_related('')
+            queryset = queryset.prefetch_related('location_species__event_location__flyway')
             if LIST_DELIMETER in flyway:
                 flyway_list = flyway.split(',')
                 queryset = queryset.filter(location_species__event_location__flyway__in=flyway_list).distinct()
@@ -704,7 +704,7 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         # filter by country, exact list
         country = query_params.get('country', None)
         if country is not None:
-            queryset = queryset.prefetch_related('')
+            queryset = queryset.prefetch_related('location_species__event_location__country')
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(location_species__event_location__country__in=country_list).distinct()
@@ -713,7 +713,6 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
-            queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in affected_count:
                 affected_count_list = affected_count.split(',')
                 queryset = queryset.filter(
@@ -1193,7 +1192,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by flyway, exact list
         flyway = query_params.get('flyway', None)
         if flyway is not None:
-            queryset = queryset.prefetch_related('')
+            queryset = queryset.prefetch_related('eventlocations__flyway')
             if LIST_DELIMETER in flyway:
                 flyway_list = flyway.split(',')
                 queryset = queryset.filter(eventlocations__flyway__in=flyway_list).distinct()
@@ -1202,7 +1201,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by country, exact list
         country = query_params.get('country', None)
         if country is not None:
-            queryset = queryset.prefetch_related('')
+            queryset = queryset.prefetch_related('eventlocations__country')
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
@@ -1211,7 +1210,6 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
-            queryset = queryset.prefetch_related('')
             if LIST_DELIMETER in affected_count:
                 affected_count_list = affected_count.split(',')
                 queryset = queryset.filter(affected_count__in=affected_count_list)
