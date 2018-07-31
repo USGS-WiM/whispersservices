@@ -522,20 +522,219 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
             response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
 
+    # # override the default queryset to allow filtering by URL arguments
+    # def get_queryset(self):
+    #     queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species',
+    #                                                                'location_species__event_location',
+    #                                                                'location_species__event_location__event')
+    #     # queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species__priority',
+    #     #     'location_species__species', 'location_species__population_count', 'location_species__sick_count',
+    #     #     'location_species__dead_count', 'location_species__sick_count_estimated',
+    #     #     'location_species__dead_count_estimated', 'location_species__captive', 'location_species__age_bias',
+    #     #     'location_species__sex_bias', 'id', 'priority', 'diagnosis', 'cause', 'confirmed', 'tested_count',
+    #     #     'positive_count'
+    #     # )
+    #
+    #     return queryset
+
+    @action(detail=False)
+    def user_events(self, request):
+        # limit data to what the user owns, what the user's org owns, and what has been shared with the user
+        query_params = self.request.query_params
+        queryset = self.build_queryset(query_params, get_user_events=True)
+
+        serializer = FlatSpeciesDiagnosisSerializer(queryset, many=True, context={'request': request})
+
+        return Response(serializer.data, status=200)
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
+        query_params = self.request.query_params
+        return self.build_queryset(query_params, get_user_events=False)
+
+    # build a queryset using query_params
+    # NOTE: this is being done in its own method to adhere to the DRY Principle
+    def build_queryset(self, query_params, get_user_events):
+        user = self.request.user
         queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species',
                                                                    'location_species__event_location',
                                                                    'location_species__event_location__event')
-        # queryset = SpeciesDiagnosis.objects.all().prefetch_related('location_species__priority',
-        #     'location_species__species', 'location_species__population_count', 'location_species__sick_count',
-        #     'location_species__dead_count', 'location_species__sick_count_estimated',
-        #     'location_species__dead_count_estimated', 'location_species__captive', 'location_species__age_bias',
-        #     'location_species__sex_bias', 'id', 'priority', 'diagnosis', 'cause', 'confirmed', 'tested_count',
-        #     'positive_count'
-        # )
+
+        # anonymous users can only see public data
+        if not user.is_authenticated:
+            queryset = queryset.filter(location_species__event_location__event__public=True)
+        # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
+        elif get_user_events:
+            queryset = queryset.filter(
+                Q(location_species__event_location__event__created_by__exact=user)
+                | Q(location_species__event_location__event__created_by__organization__exact=user.organization)
+            ).distinct()
+            # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # non-user-specific event requests can only return public data
+        else:
+            queryset = queryset.filter(location_species__event_location__event__public=True)
+
+        # check for params that should use the 'and' operator
+        and_params = query_params.get('and_params', None)
+
+        # filter by complete, exact
+        complete = query_params.get('complete', None)
+        if complete is not None and complete.lower() in ['true', 'false']:
+            if complete.lower() == 'true':
+                queryset = queryset.filter(location_species__event_location__event__complete__exact=True)
+            else:
+                queryset = queryset.filter(location_species__event_location__event__complete__exact=False)
+        # filter by event_type ID, exact list
+        event_type = query_params.get('event_type', None)
+        if event_type is not None:
+            if LIST_DELIMETER in event_type:
+                event_type_list = event_type.split(',')
+                queryset = queryset.filter(location_species__event_location__event__event_type__in=event_type_list)
+            else:
+                queryset = queryset.filter(location_species__event_location__event__event_type__exact=event_type)
+        # filter by diagnosis ID, exact list
+        diagnosis = query_params.get('diagnosis', None)
+        if diagnosis is not None:
+            if LIST_DELIMETER in diagnosis:
+                diagnosis_list = diagnosis.split(',')
+                if and_params is not None and 'diagnosis' in and_params:
+                    queries = [Q(
+                        location_species__event_location__event__eventdiagnoses__diagnosis__exact=val
+                    ) for val in diagnosis_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query).distinct()
+                else:
+                    queryset = queryset.prefetch_related(
+                        'location_species__event_location__event__eventdiagnoses').filter(
+                        location_species__event_location__event__eventdiagnoses__diagnosis__in=diagnosis_list
+                    ).distinct()
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__event__eventdiagnoses__diagnosis__exact=diagnosis).distinct()
+        # filter by diagnosistype ID, exact list
+        diagnosis_type = query_params.get('diagnosis_type', None)
+        if diagnosis_type is not None:
+            if LIST_DELIMETER in diagnosis_type:
+                diagnosis_type_list = diagnosis_type.split(',')
+                if and_params is not None and 'diagnosis_type' in and_params:
+                    queries = [Q(
+                        location_species__event_location__event__eventdiagnoses__diagnosis__diagnosis_type__exact=val
+                    ) for val in diagnosis_type_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query).distinct()
+                else:
+                    queryset = queryset.prefetch_related(
+                        'location_species__event_location__event__eventdiagnoses__diagnosis__diagnosis_type').filter(
+                        eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__event__eventdiagnoses__diagnosis__diagnosis_type__exact=
+                    diagnosis_type).distinct()
+        # filter by species ID, exact list
+        species = query_params.get('species', None)
+        if species is not None:
+            if LIST_DELIMETER in species:
+                species_list = species.split(',')
+                if and_params is not None and 'species' in and_params:
+                    queries = [Q(location_species__species__in=val) for val in species_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query).distinct()
+                else:
+                    queryset = queryset.prefetch_related('location_species__species').filter(
+                        location_species__species__in=species_list).distinct()
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__event__eventlocations__locationspecies__species__exact=species
+                ).distinct()
+        # filter by administrative_level_one, exact list
+        administrative_level_one = query_params.get('administrative_level_one', None)
+        if administrative_level_one is not None:
+            if LIST_DELIMETER in administrative_level_one:
+                admin_level_one_list = administrative_level_one.split(',')
+                if and_params is not None and 'administrative_level_one' in and_params:
+                    queries = [Q(location_species__event_location__administrative_level_one__exact=val) for val in
+                               admin_level_one_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query).distinct()
+                else:
+                    queryset = queryset.prefetch_related(
+                        'location_species__event_location__administrative_level_one').filter(
+                        location_species__event_location_administrative_level_one__in=admin_level_one_list).distinct()
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__administrative_level_one__exact=administrative_level_one
+                ).distinct()
+        # filter by administrative_level_two, exact list
+        administrative_level_two = query_params.get('administrative_level_two', None)
+        if administrative_level_two is not None:
+            if LIST_DELIMETER in administrative_level_two:
+                admin_level_two_list = administrative_level_two.split(',')
+                if and_params is not None and 'administrative_level_two' in and_params:
+                    queries = [Q(location_species__event_location__administrative_level_two__exact=val) for val in
+                               admin_level_two_list]
+                    query = queries.pop()
+                    for item in queries:
+                        query &= item
+                    queryset = queryset.filter(query).distinct()
+                else:
+                    queryset = queryset.prefetch_related(
+                        'location_species__event_location__administrative_level_two').filter(
+                        location_species__event_location__administrative_level_two__in=admin_level_two_list).distinct()
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__administrative_level_two__exact=administrative_level_two
+                ).distinct()
+        # filter by flyway, exact list
+        flyway = query_params.get('flyway', None)
+        if flyway is not None:
+            queryset = queryset.prefetch_related('')
+            if LIST_DELIMETER in flyway:
+                flyway_list = flyway.split(',')
+                queryset = queryset.filter(location_species__event_location__flyway__in=flyway_list).distinct()
+            else:
+                queryset = queryset.filter(location_species__event_location__flyway__exact=flyway).distinct()
+        # filter by country, exact list
+        country = query_params.get('country', None)
+        if country is not None:
+            queryset = queryset.prefetch_related('')
+            if LIST_DELIMETER in country:
+                country_list = country.split(',')
+                queryset = queryset.filter(location_species__event_location__country__in=country_list).distinct()
+            else:
+                queryset = queryset.filter(location_species__event_location__country__exact=country).distinct()
+        # filter by affected, exact list
+        affected_count = query_params.get('affected_count', None)
+        if affected_count is not None:
+            queryset = queryset.prefetch_related('')
+            if LIST_DELIMETER in affected_count:
+                affected_count_list = affected_count.split(',')
+                queryset = queryset.filter(
+                    location_species__event_location__event__affected_count__in=affected_count_list)
+            else:
+                queryset = queryset.filter(
+                    location_species__event_location__event__affected_count__exact=affected_count)
+        # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
+        # the date filters below are date-exclusive
+        startdate = query_params.get('startdate', None)
+        enddate = query_params.get('enddate', None)
+        if startdate is not None and enddate is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate,
+                                       location_species__event_location__event__end_date__lt=enddate)
+        elif startdate is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate)
+        elif enddate is not None:
+            queryset = queryset.filter(location_species__event_location__event__end_date__lt=enddate)
 
         return queryset
+
 
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
     queryset = SpeciesDiagnosisOrganization.objects.all()
