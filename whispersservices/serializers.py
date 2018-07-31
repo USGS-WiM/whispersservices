@@ -1478,8 +1478,8 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
             orgs = obj.organizations.all()
             for org in orgs:
                 if not org.do_not_publish:
-                    new_org = {'name': org.name, 'address_one': org.address_one, 'address_two': org.address_two,
-                               'city': org.city, 'postal_code': org.postal_code,
+                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
                                'administrative_level_one': org.administrative_level_one.name,
                                'country': org.country.name, 'phone': org.phone}
                     pub_orgs.append(new_org)
