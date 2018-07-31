@@ -1012,8 +1012,8 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ('name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one', 'country',
-                  'phone', 'parent_organization',)
+        fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
+                  'country', 'phone', 'parent_organization',)
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
