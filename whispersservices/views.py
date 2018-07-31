@@ -1017,6 +1017,11 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         return Response({"count": self.build_queryset(query_params, get_user_events=False).count()})
 
     @action(detail=False)
+    def get_user_events_count(self, request):
+        query_params = self.request.query_params
+        return Response({"count": self.build_queryset(query_params, get_user_events=True).count()})
+
+    @action(detail=False)
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
         query_params = self.request.query_params
@@ -1120,7 +1125,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # anonymous users can only see public data
         if not user.is_authenticated:
-            queryset = queryset.filter(public=True)
+            if get_user_events:
+                return queryset.none()
+            else:
+                queryset = queryset.filter(public=True)
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
             queryset = queryset.filter(
