@@ -125,9 +125,9 @@ class Event(PermissionsHistoryModel):
     start_date = models.DateField(null=True, blank=True, db_index=True)
     end_date = models.DateField(null=True, blank=True, db_index=True)
     affected_count = models.IntegerField(null=True, db_index=True)
-    staff = models.ForeignKey('Staff', 'events', null=True)
-    event_status = models.ForeignKey('EventStatus', 'events', default=1)
-    legal_status = models.ForeignKey('LegalStatus', 'events', default=1)
+    staff = models.ForeignKey('Staff', models.PROTECT, null=True, related_name='events')
+    event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1)
+    legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
     quality_check = models.BooleanField(default=False)  # TODO: value needs to change when complete field changes
     public = models.BooleanField(default=True)
@@ -327,15 +327,15 @@ class EventLocation(PermissionsHistoryModel):
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.PROTECT, related_name='eventlocations')
     administrative_level_two = models.ForeignKey(
-        'AdministrativeLevelTwo', models.PROTECT, related_name='eventlocations')
+        'AdministrativeLevelTwo', models.PROTECT, null=True, related_name='eventlocations')
     county_multiple = models.BooleanField(default=False)
     county_unknown = models.BooleanField(default=False)
     latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
     longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
     priority = models.IntegerField(null=True)
-    land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, related_name='eventlocations')
+    land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
-    flyway = models.CharField(max_length=128, blank=True, default='')
+    flyways =models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
     comments = GenericRelation('Comment', related_name='eventlocations')
 
@@ -396,7 +396,7 @@ class EventLocation(PermissionsHistoryModel):
 
 class EventLocationContact(HistoryModel):
     """
-    Table to allow many-to-many relationship between Events and Contacts.
+    Table to allow many-to-many relationship between Event Locations and Contacts.
     """
 
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
@@ -490,6 +490,33 @@ class LandOwnership(NameModel):
         db_table = "whispers_landownership"
 
 
+class EventLocationFlyway(HistoryModel):
+    """
+    Table to allow many-to-many relationship between Event Locations and Flyways.
+    """
+
+    event_location = models.ForeignKey('EventLocation', models.PROTECT)
+    flyway = models.ForeignKey('Flyway', models.PROTECT)
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventlocationflyway"
+
+
+class Flyway(NameModel):
+    """
+    Flyway
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_flyway"
+
+
 ######
 #
 #  Species
@@ -522,11 +549,12 @@ class LocationSpecies(PermissionsHistoryModel):
         verbose_name_plural = "locationspecies"
 
 
-class Species(NameModel):
+class Species(HistoryModel):
     """
     Species
     """
 
+    name = models.CharField(max_length=128, blank=True, default='')
     class_name = models.CharField(max_length=128, blank=True, default='')
     order_name = models.CharField(max_length=128, blank=True, default='')
     family_name = models.CharField(max_length=128, blank=True, default='')
@@ -853,10 +881,11 @@ class Organization(NameModel):
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
     postal_code = models.CharField(max_length=128, blank=True, default='')  # models.BigIntegerField(null=True, blank=True)
-    administrative_level_one = models.ForeignKey('AdministrativeLevelOne', models.PROTECT, related_name='organizations')
-    country = models.ForeignKey('Country', models.PROTECT, related_name='organizations')
+    administrative_level_one = models.ForeignKey(
+        'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
+    country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
-    parent_organization = models.ForeignKey('self', models.PROTECT, related_name='child_organizations', null=True)
+    parent_organization = models.ForeignKey('self', models.PROTECT, null=True, related_name='child_organizations')
     do_not_publish = models.BooleanField(default=False)
 
     def __str__(self):

@@ -348,6 +348,16 @@ class LandOwnershipViewSet(HistoryViewSet):
     serializer_class = LandOwnershipSerializer
 
 
+class EventLocationFlywayViewSet(HistoryViewSet):
+    queryset = EventLocationFlyway.objects.all()
+    serializer_class = EventLocationFlywaySerializer
+
+
+class FlywayViewSet(HistoryViewSet):
+    queryset = Flyway.objects.all()
+    serializer_class = FlywaySerializer
+
+
 ######
 #
 #  Species

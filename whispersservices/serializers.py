@@ -577,7 +577,7 @@ class EventLocationPublicSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
                   'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'county_multiple', 'county_unknown', 'flyway',)
+                  'county_multiple', 'county_unknown', 'flyways',)
 
 
 class EventLocationSerializer(serializers.ModelSerializer):
@@ -666,7 +666,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyway', 'contacts', 'comments',
+                  'priority', 'land_ownership', 'flyways', 'contacts', 'comments',
                   'new_location_contacts', 'new_location_species',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -730,6 +730,25 @@ class LandOwnershipSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LandOwnership
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class EventLocationFlywaySerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = EventLocationFlyway
+        fields = ('id', 'event_location', 'flyway',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class FlywaySerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = Flyway
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -825,21 +844,25 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 
 class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
+    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
     class Meta:
         model = EventDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major',)
+        fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'confirmed', 'major',)
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
+    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
     class Meta:
         model = EventDiagnosis
-        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
+                  'confirmed', 'major', 'priority', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
@@ -1228,15 +1251,16 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     def get_flyways(self, obj):
         unique_flyway_ids = []
         unique_flyways = []
-        # TODO: implement this once flyways are figured out
-        # eventlocations = obj.eventlocations.values()
-        # if eventlocations is not None:
-        #     for eventlocation in eventlocations:
-        #         flyway_id = eventlocation.get('flyway_id')
-        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-        #             unique_flyway_ids.append(flyway_id)
-        #             flyway = Flyway.objects.filter(id=flyway_id).first()
-        #             unique_flyways.append(model_to_dict(flyway))
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                flyway_ids = eventlocation.get('flyway_ids')
+                if flyway_ids is not None:
+                    for flyway_id in flyway_ids:
+                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
+                            unique_flyway_ids.append(flyway_id)
+                            flyway = Flyway.objects.filter(id=flyway_id).first()
+                            unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
     def get_permission_source(self, obj):
@@ -1317,15 +1341,16 @@ class EventSummarySerializer(serializers.ModelSerializer):
     def get_flyways(self, obj):
         unique_flyway_ids = []
         unique_flyways = []
-        # TODO: implement this once flyways are figured out
-        # eventlocations = obj.eventlocations.values()
-        # if eventlocations is not None:
-        #     for eventlocation in eventlocations:
-        #         flyway_id = eventlocation.get('flyway_id')
-        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-        #             unique_flyway_ids.append(flyway_id)
-        #             flyway = Flyway.objects.filter(id=flyway_id).first()
-        #             unique_flyways.append(model_to_dict(flyway))
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                flyway_ids = eventlocation.get('flyway_ids')
+                if flyway_ids is not None:
+                    for flyway_id in flyway_ids:
+                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
+                            unique_flyway_ids.append(flyway_id)
+                            flyway = Flyway.objects.filter(id=flyway_id).first()
+                            unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
     def get_permission_source(self, obj):
@@ -1409,15 +1434,16 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     def get_flyways(self, obj):
         unique_flyway_ids = []
         unique_flyways = []
-        # TODO: implement this once flyways are figured out
-        # eventlocations = obj.eventlocations.values()
-        # if eventlocations is not None:
-        #     for eventlocation in eventlocations:
-        #         flyway_id = eventlocation.get('flyway_id')
-        #         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-        #             unique_flyway_ids.append(flyway_id)
-        #             flyway = Flyway.objects.filter(id=flyway_id).first()
-        #             unique_flyways.append(model_to_dict(flyway))
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                flyway_ids = eventlocation.get('flyway_ids')
+                if flyway_ids is not None:
+                    for flyway_id in flyway_ids:
+                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
+                            unique_flyway_ids.append(flyway_id)
+                            flyway = Flyway.objects.filter(id=flyway_id).first()
+                            unique_flyways.append(model_to_dict(flyway))
         return unique_flyways
 
     def get_permission_source(self, obj):
@@ -1508,7 +1534,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
                   'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'county_multiple', 'county_unknown', 'flyway', 'location_species',)
+                  'county_multiple', 'county_unknown', 'flyways', 'location_species',)
 
 
 class EventLocationDetailSerializer(serializers.ModelSerializer):
@@ -1523,7 +1549,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyway', 'location_species', 'comments',)
+                  'priority', 'land_ownership', 'flyways', 'location_species', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):

@@ -26,6 +26,8 @@ router.register(r'administrativelevelones', views.AdministrativeLevelOneViewSet,
 router.register(r'administrativeleveltwos', views.AdministrativeLevelTwoViewSet, 'administrativeleveltwos')
 router.register(r'administrativelevellocalities', views.AdministrativeLevelLocalityViewSet, 'administrativelevellocalities')
 router.register(r'landownerships', views.LandOwnershipViewSet, 'landownerships')
+router.register(r'eventlocationflyways', views.EventLocationFlywayViewSet, 'eventlocationflyways')
+router.register(r'flyways', views.FlywayViewSet, 'flyways')
 router.register(r'locationspecies', views.LocationSpeciesViewSet, 'locationspecies')
 router.register(r'species', views.SpeciesViewSet, 'species')
 router.register(r'agebiases', views.AgeBiasViewSet, 'agebiases')
