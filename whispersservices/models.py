@@ -541,6 +541,39 @@ class LocationSpecies(PermissionsHistoryModel):
     age_bias = models.ForeignKey('AgeBias', models.PROTECT, null=True, related_name='locationspecies')
     sex_bias = models.ForeignKey('SexBias', models.PROTECT, null=True, related_name='locationspecies')
 
+    # override the save method to calculate the parent event's affected_count
+    def save(self, *args, **kwargs):
+        super(LocationSpecies, self).save(*args, **kwargs)
+
+        event = self.event_location.event
+        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            event.affected_count = None
+        else:
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                event.affected_count = sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
+                event.affected_count = sum(species_dx_positive_counts)
+
+        event.save()
+
     def __str__(self):
         return str(self.id)
 
@@ -672,6 +705,38 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses')
 
+    # override the save method to calculate the parent event's affected_count
+    def save(self, *args, **kwargs):
+        super(SpeciesDiagnosis, self).save(*args, **kwargs)
+
+        event = self.location_species.event_location.event
+        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            event.affected_count = None
+        else:
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                event.affected_count = sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
+                event.affected_count = sum(species_dx_positive_counts)
+
+        event.save()
     def __str__(self):
         return str(self.id)
 
