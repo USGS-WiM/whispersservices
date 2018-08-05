@@ -1307,6 +1307,14 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         return queryset
 
 
+class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
+    header = ['event_id', 'event_reference', 'event_type', 'complete', 'start_date', 'end_date', 'affected_count',
+              'location_id', 'location_priority', 'county', 'state', 'nation', 'location_start', 'location_end',
+              'location_species_id', 'species_priority', 'species_name', 'population', 'sick', 'dead', 'estimated_sick',
+              'estimated_dead', 'captive', 'age_bias', 'sex_bias', 'species_diagnosis_id', 'species_diagnosis_priority',
+              'speciesdx', 'causal', 'number_tested', 'number_positive']
+
+
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
     permission_classes = (DRYPermissions,)
     # queryset = Event.objects.all()
@@ -1324,7 +1332,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     def get_renderers(self):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
-            renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+            renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         elif frmt is not None and frmt == 'xlsx':
             renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
