@@ -1012,3 +1012,49 @@ class Search(NameModel):
     class Meta:
         db_table = "whispers_search"
         verbose_name_plural = "searches"
+
+
+class FlatEventDetails(models.Model):
+    event_id = models.IntegerField()
+    created_by = models.IntegerField()
+    event_reference = models.CharField(max_length=128)
+    event_type = models.CharField(max_length=128)
+    complete = models.CharField(max_length=128)
+    # organization = models.CharField()
+    start_date = models.DateField()
+    end_date = models.DateField()
+    affected_count = models.IntegerField()
+    # event_diagnosis = models.CharField()
+    location_id = models.IntegerField()
+    location_priority = models.IntegerField()
+    county = models.CharField(max_length=128)
+    state = models.CharField(max_length=128)
+    nation = models.CharField(max_length=128)
+    location_start = models.DateField()
+    location_end = models.DateField()
+    location_species_id = models.IntegerField()
+    species_priority = models.IntegerField()
+    species_name = models.CharField(max_length=128)
+    population = models.IntegerField()
+    sick = models.IntegerField()
+    dead = models.IntegerField()
+    estimated_sick = models.IntegerField()
+    estimated_dead = models.IntegerField()
+    captive = models.CharField(max_length=128)
+    age_bias = models.CharField(max_length=128)
+    sex_bias = models.CharField(max_length=128)
+    species_diagnosis_id = models.IntegerField()
+    species_diagnosis_priority = models.IntegerField()
+    speciesdx = models.CharField(max_length=128)
+    causal = models.CharField(max_length=128)
+    # confirmed = models.BooleanField(source='confirmed', read_only=True)
+    number_tested = models.IntegerField()
+    number_positive = models.IntegerField()
+    row_num = models.IntegerField(primary_key=True)
+
+    def __str__(self):
+        return str(self.row_num)
+
+    class Meta:
+        db_table = "flat_event_details"
+        managed = False

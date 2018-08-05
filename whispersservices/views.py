@@ -1310,7 +1310,15 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
     permission_classes = (DRYPermissions,)
     # queryset = Event.objects.all()
-    # serializer_class
+
+    @action(detail=True)
+    def flat(self, request, pk):
+        # pk = self.request.parser_context['kwargs'].get('pk', None)
+        queryset = FlatEventDetails.objects.filter(event_id=pk)
+        print(queryset)
+        serializer = FlatEventDetailSerializer(queryset, many=True, context={'request': request})
+        print(serializer)
+        return Response(serializer.data, status=200)
 
     # override the default renderers to use a csv or xslx renderer when requested
     def get_renderers(self):

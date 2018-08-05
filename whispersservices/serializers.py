@@ -1724,3 +1724,43 @@ class FlatSpeciesDiagnosisSerializer(serializers.ModelSerializer):
                   'population', 'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
                   'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed',
                   'number_tested', 'number_positive')
+
+
+class FlatEventDetailSerializer(serializers.Serializer):
+    # a flattened (not nested) version of the essential fields of the FullResultSerializer, to populate CSV files
+    # requested from the EventDetails Search
+
+    event_id = serializers.IntegerField()
+    event_reference = serializers.CharField()
+    event_type = serializers.CharField()
+    complete = serializers.CharField()
+    # organization = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    affected_count = serializers.IntegerField()
+    # event_diagnosis = serializers.CharField()
+    location_id = serializers.IntegerField()
+    location_priority = serializers.IntegerField()
+    county = serializers.CharField()
+    state = serializers.CharField()
+    nation = serializers.CharField()
+    location_start = serializers.DateField()
+    location_end = serializers.DateField()
+    location_species_id = serializers.IntegerField()
+    species_priority = serializers.IntegerField()
+    species_name = serializers.CharField()
+    population = serializers.IntegerField()
+    sick = serializers.IntegerField()
+    dead = serializers.IntegerField()
+    estimated_sick = serializers.IntegerField()
+    estimated_dead = serializers.IntegerField()
+    captive = serializers.CharField()
+    age_bias = serializers.CharField()
+    sex_bias = serializers.CharField()
+    species_diagnosis_id = serializers.IntegerField()
+    species_diagnosis_priority = serializers.IntegerField()
+    speciesdx = serializers.CharField()
+    causal = serializers.CharField()
+    # confirmed = serializers.BooleanField(source='confirmed', read_only=True)
+    number_tested = serializers.IntegerField()
+    number_positive = serializers.IntegerField()
