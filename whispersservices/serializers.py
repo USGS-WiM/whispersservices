@@ -402,7 +402,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
-        if 'request' in self.context and 'user' in self.context['request']:
+        if 'request' in self.context and hasattr(self.context, 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -443,6 +443,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # for event_location in add_event_locations:
         #     EventLocation.objects.create(event=instance, event_location=event_location,
         #                                  created_by=user, modified_by=user)
+
+        return instance
 
     class Meta:
         model = Event
