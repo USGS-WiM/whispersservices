@@ -206,6 +206,19 @@ class EventSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         user = self.context['request'].user
 
+        if instance.complete:
+            # only admins can re-open ('un-complete') a closed ('completed') event
+            if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                new_complete = validated_data.get('complete', None)
+                # but only if the complete field is included and set to False
+                if new_complete is None or new_complete:
+                    message = "Complete events may may only be changed by an administrator"
+                    message += " if the 'complete' field is set to False."
+                    raise serializers.ValidationError(message)
+            else:
+                message = "Complete events may not be changed unless first re-opened by an administrator."
+                raise serializers.ValidationError(message)
+
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
             validated_data.pop('new_organizations')
@@ -343,7 +356,20 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
-        # user = self.context['request'].user
+        user = self.context['request'].user
+
+        if instance.complete:
+            # only admins can re-open ('un-complete') a closed ('completed') event
+            if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                new_complete = validated_data.get('complete', None)
+                # but only if the complete field is included and set to False
+                if new_complete is None or new_complete:
+                    message = "Complete events may may only be changed by an administrator"
+                    message += " if the 'complete' field is set to False."
+                    raise serializers.ValidationError(message)
+            else:
+                message = "Complete events may not be changed unless first re-opened by an administrator."
+                raise serializers.ValidationError(message)
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
@@ -663,6 +689,46 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         return evt_location
 
+    # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
+    def update(self, instance, validated_data):
+
+        if instance.event.complete:
+            message = "Locations from a complete event may not be changed"
+            message += " unless the event is first re-opened by an administrator."
+            raise serializers.ValidationError(message)
+
+        # remove child location_contacts list from the request
+        if 'new_location_contacts' in validated_data:
+            validated_data.pop('new_location_contacts')
+
+        # remove child location_species list from the request
+        if 'new_location_species' in validated_data:
+            validated_data.pop('new_location_species')
+
+        # update the EventLocation object
+        instance.name = validated_data.get('name', instance.name)
+        instance.event = validated_data.get('event', instance.event)
+        instance.start_date = validated_data.get('start_date', instance.start_date)
+        instance.end_date = validated_data.get('end_date', instance.end_date)
+        instance.country = validated_data.get('country', instance.country)
+        instance.administrative_level_one = validated_data.get(
+            'administrative_level_one', instance.administrative_level_one)
+        instance.administrative_level_two = validated_data.get(
+            'administrative_level_two', instance.administrative_level_two)
+        instance.county_multiple = validated_data.get('county_multiple', instance.county_multiple)
+        instance.county_unknown = validated_data.get('county_unknown', instance.county_unknown)
+        instance.latitude = validated_data.get('latitude', instance.latitude)
+        instance.longitude = validated_data.get('longitude', instance.longitude)
+        instance.priority = validated_data.get('priority', instance.priority)
+        instance.land_ownership = validated_data.get('land_ownership', instance.land_ownership)
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        return instance
+
     class Meta:
         model = EventLocation
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
@@ -773,6 +839,33 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def update(self, instance, validated_data):
+
+        if instance.event_location.event.complete:
+            message = "Species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by an administrator."
+            raise serializers.ValidationError(message)
+
+        # update the LocationSpecies object
+        instance.event_location = validated_data.get('event_location', instance.event_location)
+        instance.species = validated_data.get('species', instance.species)
+        instance.population_count = validated_data.get('population_count', instance.population_count)
+        instance.sick_count = validated_data.get('sick_count', instance.sick_count)
+        instance.dead_count = validated_data.get('dead_count', instance.dead_count)
+        instance.sick_count_estimated = validated_data.get('sick_count_estimated', instance.sick_count_estimated)
+        instance.dead_count_estimated = validated_data.get('dead_count_estimated', instance.dead_count_estimated)
+        instance.priority = validated_data.get('priority', instance.priority)
+        instance.captive = validated_data.get('captive', instance.captive)
+        instance.age_bias = validated_data.get('age_bias', instance.age_bias)
+        instance.sex_bias = validated_data.get('sex_bias', instance.sex_bias)
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        return instance
+
     class Meta:
         model = LocationSpecies
         fields = ('id', 'event_location', 'species', 'population_count', 'sick_count', 'dead_count',
@@ -861,6 +954,27 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
+    def update(self, instance, validated_data):
+
+        if instance.event.complete:
+            message = "Diagnosis from a complete event may not be changed"
+            message += " unless the event is first re-opened by an administrator."
+            raise serializers.ValidationError(message)
+
+        # update the EventDiagnosis object
+        instance.event = validated_data.get('event', instance.event)
+        instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
+        instance.confirmed = validated_data.get('confirmed', instance.confirmed)
+        instance.major = validated_data.get('major', instance.major)
+        instance.priority = validated_data.get('priority', instance.priority)
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        return instance
+
     class Meta:
         model = EventDiagnosis
         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
@@ -880,6 +994,33 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+
+    def update(self, instance, validated_data):
+
+        if instance.location_species.event_location.event.complete:
+            message = "Diagnosis from a species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by an administrator."
+            raise serializers.ValidationError(message)
+
+        # update the SpeciesDiagnosis object
+        instance.location_species = validated_data.get('location_species', instance.location_species)
+        instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
+        instance.cause = validated_data.get('cause', instance.cause)
+        instance.basis = validated_data.get('basis', instance.basis)
+        instance.confirmed = validated_data.get('confirmed', instance.confirmed)
+        instance.priority = validated_data.get('priority', instance.priority)
+        instance.tested_count = validated_data.get('tested_count', instance.tested_count)
+        instance.diagnosis_count = validated_data.get('diagnosis_count', instance.diagnosis_count)
+        instance.positive_count = validated_data.get('positive_count', instance.positive_count)
+        instance.suspect_count = validated_data.get('suspect_count', instance.suspect_count)
+        instance.pooled = validated_data.get('pooled', instance.pooled)
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        return instance
 
     class Meta:
         model = SpeciesDiagnosis
