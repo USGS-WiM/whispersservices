@@ -82,6 +82,7 @@ class EventSerializer(serializers.ModelSerializer):
     new_organizations = serializers.ListField(write_only=True)
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
+    new_superevents = serializers.ListField(write_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -113,6 +114,9 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child event_locations list from the request
         new_event_locations = validated_data.pop('new_event_locations', None)
 
+        # pull out child superevents list from the request
+        new_superevents = validated_data.pop('new_superevents', None)
+
         user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
@@ -131,6 +135,14 @@ class EventSerializer(serializers.ModelSerializer):
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                     Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
                                            created_by=user, modified_by=user)
+
+        # create the child superevents for this event
+        if new_superevents is not None:
+            for superevent_id in new_superevents:
+                if superevent_id is not None:
+                    superevent = SuperEvent.objects.filter(pk=superevent_id).first()
+                    if superevent is not None:
+                        EventSuperEvent.objects.create(event=event, superevent=superevent)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -324,7 +336,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'public', 'circle_read', 'circle_write', 'organizations', 'contacts', 'comments',
-                  'new_organizations', 'new_comments', 'new_event_locations',
+                  'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
