@@ -1308,11 +1308,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
 
 class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
-    header = ['event_id', 'event_reference', 'event_type', 'complete', 'start_date', 'end_date', 'affected_count',
-              'location_id', 'location_priority', 'county', 'state', 'nation', 'location_start', 'location_end',
-              'location_species_id', 'species_priority', 'species_name', 'population', 'sick', 'dead', 'estimated_sick',
-              'estimated_dead', 'captive', 'age_bias', 'sex_bias', 'species_diagnosis_id', 'species_diagnosis_priority',
-              'speciesdx', 'causal', 'number_tested', 'number_positive']
+    header = ['event_id', 'event_reference', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
+              'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
+              'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
+              'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
+              'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed', 'number_tested',
+              'number_positive']
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
@@ -1349,7 +1350,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         elif renderer_format == 'xlsx':
             fileextension = '.xlsx'
         if renderer_format in ['csv', 'xlsx']:
-            filename = 'event_summary_'
+            filename = 'event_details_'
             filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
             filename += fileextension
             response['Content-Disposition'] = "attachment; filename=%s" % filename
