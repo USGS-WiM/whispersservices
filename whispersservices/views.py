@@ -1,9 +1,10 @@
 import datetime as dtmod
 from datetime import datetime as dt
+from collections import OrderedDict
 from django.utils import timezone
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.db.models import Q
+from django.db.models import Q, F, Sum
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, generics, permissions, authentication, status
@@ -978,6 +979,14 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data, status=200)
 
+    @action(detail=False)
+    def top_ten(self, request):
+        # return top ten most popular searches
+        queryset = Search.objects.all().values('data').annotate(use_count=Sum('count')).order_by('-use_count')[:10]
+        serializer = SearchPublicSerializer(queryset, many=True, context={'request': request})
+
+        return Response(serializer.data, status=200)
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         query_params = self.request.query_params
@@ -1004,7 +1013,7 @@ class SearchViewSet(viewsets.ModelViewSet):
         owners = query_params.get('owner', None)
         if owners is not None:
             owners_list = owners.split(',')
-            queryset = queryset.filter(owner__in=owners_list)
+            queryset = queryset.filter(created_by__in=owners_list)
         return queryset
 
 
@@ -1131,6 +1140,21 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_events):
         user = self.request.user
+
+        # first get or create the search and increment its count
+        if query_params:
+            ordered_query_params = OrderedDict(sorted(query_params.items()))
+            search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
+            if not search:
+                if not user.is_authenticated:
+                    admin_user = User.objects.get(pk=1)
+                    search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
+                else:
+                    search = Search.objects.create(data=ordered_query_params, created_by=user)
+            search.count = F('count') + 1
+            search.save()
+
+        # then proceed to build the queryset
         queryset = Event.objects.all()
 
         # anonymous users can only see public data

@@ -1241,6 +1241,14 @@ class ContactTypeSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
+class SearchPublicSerializer(serializers.ModelSerializer):
+    use_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Search
+        fields = ('data', 'use_count',)
+
+
 class SearchSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -1260,17 +1268,33 @@ class SearchSerializer(serializers.ModelSerializer):
         return permission_source
 
     # def create(self, validated_data):
-    #     print(validated_data)
     #     user = self.context['request'].user
-    #     validated_data['created_by'] = user
-    #     validated_data['modified_by'] = user
-    #     search = Search.objects.create(**validated_data)
-    #     return search
+    #     existing_search = Search.objects.filter(data=validated_data['data'], created_by=user)
+    #     if not existing_search:
+    #         validated_data['created_by'] = user
+    #         validated_data['modified_by'] = user
+    #         return Search.objects.create(**validated_data)
+    #     else:
+    #         return existing_search
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data['created_by'] = user
+        validated_data['modified_by'] = user
+        search = Search.objects.create(**validated_data)
+        return search
+
+    def update(self, instance, validated_data):
+        instance.name = validated_data.get('name', instance.name)
+        instance.modified_by = self.context['request'].user
+        instance.save()
+        return instance
 
     class Meta:
         model = Search
-        fields = ('id', 'name', 'owner', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',
+        fields = ('id', 'name', 'data', 'created_date', 'created_by', 'modified_date', 'modified_by',
                   'permissions', 'permission_source',)
+        extra_kwargs = {'count': {'read_only': True}}
 
 
 ######

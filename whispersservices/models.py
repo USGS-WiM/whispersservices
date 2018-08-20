@@ -3,6 +3,7 @@ from datetime import date
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.fields import JSONField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
 
@@ -1001,13 +1002,14 @@ class ContactType(HistoryModel):
         db_table = "whispers_contacttype"
 
 
-class Search(NameModel):
+class Search(PermissionsHistoryModel):
     """
     Searches
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT)  # QUESTION: is this field necessary? doesn't 'created_by' fulfill the same need?
-    data = models.TextField(blank=True)
+    name = models.CharField(max_length=128, blank=True, default='')
+    data = JSONField(blank=True)
+    count = models.IntegerField(default=0)
 
     class Meta:
         db_table = "whispers_search"
