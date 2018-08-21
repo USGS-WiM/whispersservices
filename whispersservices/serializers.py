@@ -1706,6 +1706,7 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
 class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
+    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
     country_string = serializers.StringRelatedField(source='country')
     location_species = LocationSpeciesDetailPublicSerializer(many=True, source='locationspecies')
 
@@ -1713,7 +1714,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
                   'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'county_multiple', 'county_unknown', 'flyways', 'location_species',)
+                  'administrative_level_two_points', 'county_multiple', 'county_unknown', 'flyways', 'location_species')
 
 
 class EventLocationDetailSerializer(serializers.ModelSerializer):
