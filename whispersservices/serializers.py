@@ -3,6 +3,8 @@ from rest_framework import serializers
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
+OVERRIDE_ROLE_NAMES = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager']
+
 
 ######
 #
@@ -219,17 +221,27 @@ class EventSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
 
         if instance.complete:
-            # only admins can re-open ('un-complete') a closed ('completed') event
-            if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+            # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
+            if user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser:
                 new_complete = validated_data.get('complete', None)
                 # but only if the complete field is included and set to False
                 if new_complete is None or new_complete:
-                    message = "Complete events may may only be changed by an administrator"
+                    message = "Complete events may only be changed by the event owner or an administrator"
                     message += " if the 'complete' field is set to False."
                     raise serializers.ValidationError(message)
             else:
                 message = "Complete events may not be changed unless first re-opened by an administrator."
                 raise serializers.ValidationError(message)
+
+        new_complete = validated_data.get('complete', None)
+        if new_complete and not instance.complete:
+            # only let the status be changed to 'complete=True' if all child locations have an end date
+            locations = EventLocation.objects.filter(event=instance.id)
+            if locations is not None:
+                for location in locations:
+                    if not location.end_date:
+                        message = "The event may not be marked complete until all of its locations have an end date."
+                        raise serializers.ValidationError(message)
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
@@ -371,12 +383,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
 
         if instance.complete:
-            # only admins can re-open ('un-complete') a closed ('completed') event
-            if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+            # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
+            if user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser:
                 new_complete = validated_data.get('complete', None)
                 # but only if the complete field is included and set to False
                 if new_complete is None or new_complete:
-                    message = "Complete events may may only be changed by an administrator"
+                    message = "Complete events may only be changed by an administrator"
                     message += " if the 'complete' field is set to False."
                     raise serializers.ValidationError(message)
             else:
@@ -706,7 +718,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         if instance.event.complete:
             message = "Locations from a complete event may not be changed"
-            message += " unless the event is first re-opened by an administrator."
+            message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
         # remove child location_contacts list from the request
@@ -855,7 +867,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
 
         if instance.event_location.event.complete:
             message = "Species from a location from a complete event may not be changed"
-            message += " unless the event is first re-opened by an administrator."
+            message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
         # update the LocationSpecies object
@@ -970,7 +982,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         if instance.event.complete:
             message = "Diagnosis from a complete event may not be changed"
-            message += " unless the event is first re-opened by an administrator."
+            message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
         # update the EventDiagnosis object

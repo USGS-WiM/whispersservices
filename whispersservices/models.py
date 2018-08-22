@@ -130,7 +130,7 @@ class Event(PermissionsHistoryModel):
     event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1)
     legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
-    quality_check = models.BooleanField(default=False)  # TODO: value needs to change when complete field changes
+    quality_check = models.BooleanField(default=False)
     public = models.BooleanField(default=True)
     circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
     circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
@@ -138,6 +138,14 @@ class Event(PermissionsHistoryModel):
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
+
+    # override the save method to toggle quality check field when complete field changes
+    def save(self, *args, **kwargs):
+        # Disable Quality check field until field "complete" =1.
+        # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
+        if not self.complete:
+            self.quality_check = None
+        super(Event, self).save(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)

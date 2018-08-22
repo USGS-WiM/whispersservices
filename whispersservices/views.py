@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, generics, permissions, authentication, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
 from drf_renderer_xlsx import renderers as xlsx_renderers
@@ -183,6 +183,24 @@ class EventSuperEventViewSet(HistoryViewSet):
     queryset = EventSuperEvent.objects.all()
     serializer_class = EventSuperEventSerializer
 
+    def update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to superevents can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventSuperEventViewSet, self).update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to superevents can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventSuperEventViewSet, self).partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to superevents can be deleted
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventSuperEventViewSet, self).destroy(request, *args, **kwargs)
+
 
 class SuperEventViewSet(HistoryViewSet):
     queryset = SuperEvent.objects.all()
@@ -233,6 +251,24 @@ class EventLabsiteViewSet(HistoryViewSet):
 class EventOrganizationViewSet(HistoryViewSet):
     queryset = EventOrganization.objects.all()
 
+    def update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to organizations can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventOrganizationViewSet, self).update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to organizations can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventOrganizationViewSet, self).partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to organizations can be deleted
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
+
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
@@ -264,6 +300,24 @@ class EventOrganizationViewSet(HistoryViewSet):
 class EventContactViewSet(HistoryViewSet):
     queryset = EventContact.objects.all()
     serializer_class = EventContactSerializer
+
+    def update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to contacts can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventContactViewSet, self).update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to contacts can be updated
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventContactViewSet, self).partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to contacts can be deleted
+        if self.get_object().complete:
+            raise APIException("Relationships of a complete event may not be changed.")
+        return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
 
 
 ######
