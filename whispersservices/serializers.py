@@ -219,22 +219,23 @@ class EventSerializer(serializers.ModelSerializer):
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
         user = self.context['request'].user
+        new_complete = validated_data.get('complete', None)
 
         if instance.complete:
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
-            if user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser:
-                new_complete = validated_data.get('complete', None)
-                # but only if the complete field is included and set to False
-                if new_complete is None or new_complete:
-                    message = "Complete events may only be changed by the event owner or an administrator"
-                    message += " if the 'complete' field is set to False."
-                    raise serializers.ValidationError(message)
+            # but if the complete field is not included or set to True, the event cannot be changed
+            if new_complete is None or new_complete and (
+                    user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
+                message = "Complete events may only be changed by the event owner or an administrator"
+                message += " if the 'complete' field is set to False."
+                raise serializers.ValidationError(message)
             else:
-                message = "Complete events may not be changed unless first re-opened by an administrator."
+                message = "Complete events may not be changed"
+                message += " unless first re-opened by the event owner or an administrator."
                 raise serializers.ValidationError(message)
 
-        new_complete = validated_data.get('complete', None)
-        if new_complete and not instance.complete:
+        if new_complete and not instance.complete and (
+                user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
             # only let the status be changed to 'complete=True' if all child locations have an end date
             locations = EventLocation.objects.filter(event=instance.id)
             if locations is not None:
@@ -294,7 +295,6 @@ class EventSerializer(serializers.ModelSerializer):
         instance.affected_count = validated_data.get('affected_count', instance.affected_count)
         instance.staff = instance.staff
         instance.event_status = instance.event_status
-        instance.quality_check = instance.quality_check
         instance.legal_status = instance.legal_status
         instance.legal_number = instance.legal_number
         instance.public = validated_data.get('public', instance.public)
@@ -380,20 +380,31 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
-        user = self.context['request'].user
 
-        if instance.complete:
-            # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
-            if user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser:
-                new_complete = validated_data.get('complete', None)
-                # but only if the complete field is included and set to False
-                if new_complete is None or new_complete:
-                    message = "Complete events may only be changed by an administrator"
-                    message += " if the 'complete' field is set to False."
-                    raise serializers.ValidationError(message)
-            else:
-                message = "Complete events may not be changed unless first re-opened by an administrator."
-                raise serializers.ValidationError(message)
+        new_complete = validated_data.get('complete', None)
+        quality_check = validated_data.get('quality_check', None)
+        # if the quality_check field is included and set to True, update it and return the instance
+        # (ignoring any other submitted changes, because the event is 'locked' by virtue of being complete
+        if quality_check:
+            instance.quality_check = quality_check
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+            instance.save()
+            return instance
+        # if the complete field is not included or set to True, the event cannot be changed
+        if new_complete is None or new_complete:
+            message = "Complete events may only be changed by the event owner or an administrator"
+            message += " if the 'complete' field is set to False."
+            raise serializers.ValidationError(message)
+
+        new_complete = validated_data.get('complete', None)
+        if new_complete and not instance.complete:
+            # only let the status be changed to 'complete=True' if all child locations have an end date
+            locations = EventLocation.objects.filter(event=instance.id)
+            if locations is not None:
+                for location in locations:
+                    if not location.end_date:
+                        message = "The event may not be marked complete until all of its locations have an end date."
+                        raise serializers.ValidationError(message)
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
