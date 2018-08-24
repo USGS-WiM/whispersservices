@@ -989,6 +989,31 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
+    def create(self, validated_data):
+        pending = Diagnosis.objects.filter(name='Pending').first().id
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+
+        # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+        # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+        if 'diagnosis' in validated_data and not validated_data['diagnosis']:
+            event = Event.objects.filter(id=validated_data['event']).first()
+            if not event.complete:
+                validated_data['diagnosis'] = pending
+            else:
+                validated_data['diagnosis'] = undetermined
+                # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+                other_event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
+            validated_data['confirmed'] = True
+
+        event_diagnosis = EventDiagnosis.objects.create(**validated_data)
+
+        return event_diagnosis
+
     def update(self, instance, validated_data):
 
         if instance.event.complete:
