@@ -1,3 +1,4 @@
+from datetime import date
 from django.forms.models import model_to_dict
 from rest_framework import serializers
 from whispersservices.models import *
@@ -100,6 +101,44 @@ class EventSerializer(serializers.ModelSerializer):
         else:
             permission_source = ''
         return permission_source
+
+    def validate(self, data):
+        if 'request' in self.context and self.context['request'].method == 'POST':
+            if 'new_event_locations' not in data:
+                raise serializers.ValidationError("new_event_locations is a required field")
+            # Not every location needs a start date at initiation, but at least one location must.
+            if 'new_event_locations' in data:
+                is_valid = False
+                for item in data['new_event_locations']:
+                    if 'start_date' in item and type(item['start_date']) is date:
+                        is_valid = True
+                if not is_valid:
+                    raise serializers.ValidationError("start_date is required for at least one new event_location")
+            # End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+            if 'complete' in data and data['complete'] is True:
+                message = "The event may not be marked complete until all of its locations have an end date "
+                message += " and each location's end date is after that location's start date."
+                if 'new_event_locations' not in data:
+                    raise serializers.ValidationError(message)
+                else:
+                    is_valid = True
+                    for item in data['new_event_locations']:
+                        if 'start_date' in item and item['start_date'] is not None:
+                            start_date = item['start_date']
+                        else:
+                            start_date = None
+                            is_valid = False
+                        if 'end_date' in item and item['end_date'] is not None:
+                            end_date = item['end_date']
+                        else:
+                            end_date = None
+                            is_valid = False
+                        if not ('start_date' in item and type(start_date) is date and 'end_date' in item
+                                and type(end_date) is date and start_date > end_date):
+                            is_valid = False
+                    if not is_valid:
+                        raise serializers.ValidationError(message)
+        return data
 
     def create(self, validated_data):
 
@@ -237,11 +276,13 @@ class EventSerializer(serializers.ModelSerializer):
         if new_complete and not instance.complete and (
                 user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
             # only let the status be changed to 'complete=True' if all child locations have an end date
+            # and each location's end date is later than its start date
             locations = EventLocation.objects.filter(event=instance.id)
             if locations is not None:
                 for location in locations:
-                    if not location.end_date:
-                        message = "The event may not be marked complete until all of its locations have an end date."
+                    if not location.end_date or not location.start_date or not location.end_date > location.start_date:
+                        message = "The event may not be marked complete until all of its locations have an end date "
+                        message += " and each location's end date is after that location's start date."
                         raise serializers.ValidationError(message)
 
         # remove child organizations list from the request
@@ -402,8 +443,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
             locations = EventLocation.objects.filter(event=instance.id)
             if locations is not None:
                 for location in locations:
-                    if not location.end_date:
-                        message = "The event may not be marked complete until all of its locations have an end date."
+                    if not location.end_date or not location.start_date or not location.end_date > location.start_date:
+                        message = "The event may not be marked complete until all of its locations have an end date "
+                        message += " and each location's end date is after that location's start date."
                         raise serializers.ValidationError(message)
 
         # remove child organizations list from the request
@@ -1031,6 +1073,19 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        pending = Diagnosis.objects.filter(name='Pending').first().id
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        if instance.diagnosis in [pending, undetermined]:
+            instance.confirmed = True
+
+            if instance.diagnosis == undetermined:
+                # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+                other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
+                [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+
         instance.save()
 
         return instance
