@@ -107,13 +107,42 @@ class EventSerializer(serializers.ModelSerializer):
             if 'new_event_locations' not in data:
                 raise serializers.ValidationError("new_event_locations is a required field")
             # Not every location needs a start date at initiation, but at least one location must.
+            # Not every location needs a species at initiation, but at least one location must.
+            # location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
             if 'new_event_locations' in data:
-                is_valid = False
+                min_start_date = False
+                min_species = False
+                pop_is_valid = []
+                details = []
                 for item in data['new_event_locations']:
                     if 'start_date' in item and type(item['start_date']) is date:
-                        is_valid = True
-                if not is_valid:
-                    raise serializers.ValidationError("start_date is required for at least one new event_location")
+                        min_start_date = True
+                    if 'location_species' in item:
+                        spec = item['location_species']
+                        if 'species' in spec and spec['species'] is not None:
+                            min_species = True
+                        if 'population_count' in spec and spec['population_count'] is not None:
+                            dead_count = 0
+                            sick_count = 0
+                            if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                                dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                            if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                                sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                            if spec['population_count'] >= dead_count + sick_count:
+                                pop_is_valid.append(True)
+                            else:
+                                pop_is_valid.append(False)
+                if not min_start_date:
+                    details.append("start_date is required for at least one new event_location")
+                if not min_species:
+                    details.append("species is required for at least one new location_species")
+                if False in pop_is_valid:
+                    message = "location_species population_count cannot be less than the sum of dead_count"
+                    message += " and sick_count (where those counts are the maximum of the estimated or known count)"
+                    details.append(message)
+                if details:
+                    raise serializers.ValidationError(details)
+
             # End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
             if 'complete' in data and data['complete'] is True:
                 message = "The event may not be marked complete until all of its locations have an end date "
@@ -168,6 +197,8 @@ class EventSerializer(serializers.ModelSerializer):
                     org = Organization.objects.filter(pk=org_id).first()
                     if org is not None:
                         EventOrganization.objects.create(event=event, organization=org)
+        else:
+            EventOrganization.objects.create(event=event, organization=user.organization)
 
         # create the child comments for this event
         if new_comments is not None:
@@ -939,6 +970,19 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        if instance.population_count is not None:
+            dead_count = 0
+            sick_count = 0
+            if instance.dead_count_estimated or instance.dead_count:
+                dead_count = max(instance.dead_count_estimated or 0, instance.dead_count or 0)
+            if instance.sick_count_estimated or instance.sick_count:
+                sick_count = max(instance.sick_count_estimated or 0, instance.sick_count or 0)
+            if instance.population_count < dead_count + sick_count:
+                message = "location_species population_count cannot be less than the sum of dead_count"
+                message += " and sick_count (where those counts are the maximum of the estimated or known count)"
+                raise serializers.ValidationError(message)
+
         instance.save()
 
         return instance
