@@ -404,7 +404,7 @@ class EventSerializer(serializers.ModelSerializer):
                     message = "Estimated sick or dead counts must always be more than known sick or dead counts."
                     details.append(message)
                 if details:
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(details)
             else:
                 raise serializers.ValidationError(location_message)
 
