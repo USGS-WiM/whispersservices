@@ -106,21 +106,27 @@ class EventSerializer(serializers.ModelSerializer):
         if 'request' in self.context and self.context['request'].method == 'POST':
             if 'new_event_locations' not in data:
                 raise serializers.ValidationError("new_event_locations is a required field")
-            # Not every location needs a start date at initiation, but at least one location must.
-            # Not every location needs a species at initiation, but at least one location must.
-            # location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+            # 1. Not every location needs a start date at initiation, but at least one location must.
+            # 2. Not every location needs a species at initiation, but at least one location must.
+            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #   and estimated_dead for at least one species in the event at the time of event initiation.
+            #   (sick + dead + estimated_sick + estimated_dead >= 1)
             if 'new_event_locations' in data:
                 min_start_date = False
-                min_species = False
+                min_location_species = False
+                min_species_count = False
+                est_count_gt_known_count = True
                 pop_is_valid = []
                 details = []
+                mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for item in data['new_event_locations']:
                     if 'start_date' in item and type(item['start_date']) is date:
                         min_start_date = True
                     if 'location_species' in item:
                         spec = item['location_species']
                         if 'species' in spec and spec['species'] is not None:
-                            min_species = True
+                            min_location_species = True
                         if 'population_count' in spec and spec['population_count'] is not None:
                             dead_count = 0
                             sick_count = 0
@@ -132,41 +138,92 @@ class EventSerializer(serializers.ModelSerializer):
                                 pop_is_valid.append(True)
                             else:
                                 pop_is_valid.append(False)
+                    if data['event_status'] == mortality_morbidity:
+                        spec = item['location_species']
+                        if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                            min_species_count = True
+                            if ('dead_count' in spec and spec['dead_count'] > 0
+                                    and not spec['dead_count_estimated'] > spec['dead_count']):
+                                est_count_gt_known_count = False
+                        elif 'dead_count' in spec and spec['dead_count'] > 0:
+                            min_species_count = True
+                        elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                            min_species_count = True
+                            if ('sick_count' in spec and spec['sick_count'] > 0
+                                    and not spec['sick_count_estimated'] > spec['sick_count']):
+                                est_count_gt_known_count = False
+                        elif 'sick_count' in spec and spec['sick_count'] > 0:
+                            min_species_count = True
                 if not min_start_date:
-                    details.append("start_date is required for at least one new event_location")
-                if not min_species:
-                    details.append("species is required for at least one new location_species")
+                    details.append("start_date is required for at least one new event_location.")
+                if not min_location_species:
+                    details.append("Each new event_location requires at least one new location_species.")
                 if False in pop_is_valid:
                     message = "location_species population_count cannot be less than the sum of dead_count"
-                    message += " and sick_count (where those counts are the maximum of the estimated or known count)"
+                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                     details.append(message)
+                if not min_species_count:
+                    message = "At least one new location_species requires at least one species count in any of the"
+                    message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_count_gt_known_count:
+                    details.append("Estimated sick or dead counts must always be more than known sick or dead counts.")
                 if details:
                     raise serializers.ValidationError(details)
 
-            # End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #   and estimated_dead per species at the time of event completion.
+            #   (sick + dead + estimated_sick + estimated_dead >= 1)
             if 'complete' in data and data['complete'] is True:
-                message = "The event may not be marked complete until all of its locations have an end date "
-                message += " and each location's end date is after that location's start date."
+                location_message = "The event may not be marked complete until all of its locations have an end date"
+                location_message += " and each location's end date is after that location's start date."
                 if 'new_event_locations' not in data:
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(location_message)
                 else:
-                    is_valid = True
+                    end_date_is_valid = True
+                    species_count_is_valid = []
+                    est_count_gt_known_count = True
+                    details = []
+                    mortality_morbidity = EventStatus.objects.filter(id=1).first()
                     for item in data['new_event_locations']:
-                        if 'start_date' in item and item['start_date'] is not None:
+                        if ('start_date' in item and item['start_date'] is not None
+                                and 'end_date' in item and item['end_date'] is not None):
                             start_date = item['start_date']
-                        else:
-                            start_date = None
-                            is_valid = False
-                        if 'end_date' in item and item['end_date'] is not None:
                             end_date = item['end_date']
+                            if not (type(start_date) is date and type(end_date) is date and start_date > end_date):
+                                end_date_is_valid = False
                         else:
-                            end_date = None
-                            is_valid = False
-                        if not ('start_date' in item and type(start_date) is date and 'end_date' in item
-                                and type(end_date) is date and start_date > end_date):
-                            is_valid = False
-                    if not is_valid:
-                        raise serializers.ValidationError(message)
+                            end_date_is_valid = False
+                        if data['event_status'] == mortality_morbidity:
+                            spec = item['location_species']
+                            if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                species_count_is_valid.append(True)
+                                if ('dead_count' in spec and spec['dead_count'] > 0
+                                        and not spec['dead_count_estimated'] > spec['dead_count']):
+                                    est_count_gt_known_count = False
+                            elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                species_count_is_valid.append(True)
+                            elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                species_count_is_valid.append(True)
+                                if ('sick_count' in spec and spec['sick_count'] > 0
+                                        and not spec['sick_count_estimated'] > spec['sick_count']):
+                                    est_count_gt_known_count = False
+                            elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                species_count_is_valid.append(True)
+                            else:
+                                species_count_is_valid.append(False)
+                    if not end_date_is_valid:
+                        details.append(location_message)
+                    if False in species_count_is_valid:
+                        message = "Each location_species requires at least one species count in any of the following"
+                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                        details.append(message)
+                    if not est_count_gt_known_count:
+                        message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                        details.append(message)
+                    if details:
+                        raise serializers.ValidationError(details)
         return data
 
     def create(self, validated_data):
@@ -306,15 +363,50 @@ class EventSerializer(serializers.ModelSerializer):
 
         if new_complete and not instance.complete and (
                 user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
-            # only let the status be changed to 'complete=True' if all child locations have an end date
-            # and each location's end date is later than its start date
+            # only let the status be changed to 'complete=True' if
+            # 1. All child locations have an end date and each location's end date is later than its start date
+            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #   and estimated_dead per species at the time of event completion.
+            #   (sick + dead + estimated_sick + estimated_dead >= 1)
             locations = EventLocation.objects.filter(event=instance.id)
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is after that location's start date."
             if locations is not None:
+                species_count_is_valid = []
+                est_count_gt_known_count = True
+                details = []
+                mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date > location.start_date:
-                        message = "The event may not be marked complete until all of its locations have an end date "
-                        message += " and each location's end date is after that location's start date."
-                        raise serializers.ValidationError(message)
+                        raise serializers.ValidationError(location_message)
+                    if instance.event_status == mortality_morbidity:
+                        location_species = LocationSpecies.objects.filter(event_location=location.id)
+                        for spec in location_species:
+                            if spec.dead_count_estimated > 0:
+                                species_count_is_valid.append(True)
+                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                    est_count_gt_known_count = False
+                            elif spec.dead_count > 0:
+                                species_count_is_valid.append(True)
+                            elif spec.sick_count_estimated > 0:
+                                species_count_is_valid.append(True)
+                                if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
+                                    est_count_gt_known_count = False
+                            elif spec.sick_count > 0:
+                                species_count_is_valid.append(True)
+                            else:
+                                species_count_is_valid.append(False)
+                if False in species_count_is_valid:
+                    message = "Each location_species requires at least one species count in any of the following"
+                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_count_gt_known_count:
+                    message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                    details.append(message)
+                if details:
+                    raise serializers.ValidationError(message)
+            else:
+                raise serializers.ValidationError(location_message)
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
@@ -470,14 +562,50 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         new_complete = validated_data.get('complete', None)
         if new_complete and not instance.complete:
-            # only let the status be changed to 'complete=True' if all child locations have an end date
+            # only let the status be changed to 'complete=True' if
+            # 1. All child locations have an end date and each location's end date is later than its start date
+            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #   and estimated_dead per species at the time of event completion.
+            #   (sick + dead + estimated_sick + estimated_dead >= 1)
             locations = EventLocation.objects.filter(event=instance.id)
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is after that location's start date."
             if locations is not None:
+                species_count_is_valid = []
+                est_count_gt_known_count = True
+                details = []
+                mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date > location.start_date:
-                        message = "The event may not be marked complete until all of its locations have an end date "
-                        message += " and each location's end date is after that location's start date."
-                        raise serializers.ValidationError(message)
+                        raise serializers.ValidationError(location_message)
+                    if instance.event_status == mortality_morbidity:
+                        location_species = LocationSpecies.objects.filter(event_location=location.id)
+                        for spec in location_species:
+                            if spec.dead_count_estimated > 0:
+                                species_count_is_valid.append(True)
+                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                    est_count_gt_known_count = False
+                            elif spec.dead_count > 0:
+                                species_count_is_valid.append(True)
+                            elif spec.sick_count_estimated > 0:
+                                species_count_is_valid.append(True)
+                                if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
+                                    est_count_gt_known_count = False
+                            elif spec.sick_count > 0:
+                                species_count_is_valid.append(True)
+                            else:
+                                species_count_is_valid.append(False)
+                if False in species_count_is_valid:
+                    message = "Each location_species requires at least one species count in any of the following"
+                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_count_gt_known_count:
+                    message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                    details.append(message)
+                if details:
+                    raise serializers.ValidationError(message)
+            else:
+                raise serializers.ValidationError(location_message)
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
