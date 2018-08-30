@@ -1080,6 +1080,9 @@ class SearchViewSet(viewsets.ModelViewSet):
 
 class CSVEventSummaryPublicRenderer(csv_renderers.CSVRenderer):
     header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'event_diagnoses']
+    labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Start Date',
+              'end_date': 'End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
+              'species': 'Species', 'event_diagnoses': 'Event Diagnosis'}
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
@@ -1396,6 +1399,19 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
               'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed', 'number_tested',
               'number_positive']
+    labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
+              'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Start Date',
+              'end_date': 'End Date', 'affected_count': 'Number Affected', 'event_diagnosis': 'Event Diagnosis',
+              'location_id': 'Location ID', 'location_priority': 'Location Priority',
+              'county': 'County (or equivalent)', 'state': 'State (or equivalent)', 'nation': 'Nation',
+              'location_start': 'Location Start Date', 'location_end': 'Location End Date',
+              'location_species_id': 'Location Species ID', 'species_priority': 'Species Priority',
+              'species_name': 'Species', 'population': 'Population', 'sick': 'Known Sick', 'dead': 'Known Dead',
+              'estimated_sick': 'Estimated Sick', 'estimated_dead': 'Estimated Dead', 'captive': 'Captive',
+              'age_bias': 'Age Bias', 'sex_bias': 'Sex Bias', 'species_diagnosis_id': 'Species Diagnosis ID',
+              'species_diagnosis_priority': 'Priority', 'speciesdx': 'Diagnosis',
+              'causal': 'Significance of Diagnosis for Species', 'confirmed': 'Suspect',
+              'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed'}
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):

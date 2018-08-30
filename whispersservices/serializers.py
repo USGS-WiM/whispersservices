@@ -1068,6 +1068,12 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+        if not data['organization'].laboratory:
+            raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
+
+        return data
+
     class Meta:
         model = SpeciesDiagnosisOrganization
         fields = ('id', 'species_diagnosis', 'organization',
@@ -1214,7 +1220,7 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
-                  'country', 'phone', 'parent_organization',)
+                  'country', 'phone', 'parent_organization', 'laboratory')
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -1224,7 +1230,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish', 'laboratory',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

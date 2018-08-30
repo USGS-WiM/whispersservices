@@ -38,7 +38,7 @@ class HistoryModel(models.Model):
         default_permissions = ('add', 'change', 'delete', 'view')
 
 
-class NameModel(HistoryModel):
+class HistoryNameModel(HistoryModel):
     """
     An abstract base class model for the common name field.
     """
@@ -83,7 +83,7 @@ class PermissionsHistoryModel(HistoryModel):
             return False
         else:
             return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
+                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     def has_object_destroy_permission(self, request):
         # Only the creator or a manager/admin member of the creator's organization or a superuser can delete an event
@@ -91,18 +91,7 @@ class PermissionsHistoryModel(HistoryModel):
             return False
         else:
             return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
-
-    class Meta:
-        abstract = True
-
-
-class PermissionsNameModel(PermissionsHistoryModel):
-    """
-    An abstract base class model for the common name field and the common permissions.
-    """
-
-    name = models.CharField(max_length=128, unique=True)
+                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     class Meta:
         abstract = True
@@ -185,7 +174,7 @@ class SuperEvent(HistoryModel):
         db_table = "whispers_superevent"
 
 
-class EventType(NameModel):
+class EventType(HistoryNameModel):
     """
     Event Type
     """
@@ -214,7 +203,7 @@ class Staff(HistoryModel):
         db_table = "whispers_staff"
 
 
-class LegalStatus(NameModel):
+class LegalStatus(HistoryNameModel):
     """
     Legal Status
     """
@@ -226,7 +215,7 @@ class LegalStatus(NameModel):
         db_table = "whispers_legalstatus"
 
 
-class EventStatus(NameModel):
+class EventStatus(HistoryNameModel):
     """
     Event Status
     """
@@ -344,7 +333,7 @@ class EventLocation(PermissionsHistoryModel):
     priority = models.IntegerField(null=True)
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
-    flyways =models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
+    flyways = models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
     # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
     comments = GenericRelation('Comment', related_name='eventlocations')
 
@@ -411,7 +400,7 @@ class EventLocationContact(HistoryModel):
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
     contact = models.ForeignKey('Contact', models.PROTECT)
     contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts')
-    
+
     def __str__(self):
         return str(self.id)
 
@@ -419,7 +408,7 @@ class EventLocationContact(HistoryModel):
         db_table = "whispers_eventlocationcontact"
 
 
-class Country(NameModel):
+class Country(HistoryNameModel):
     """
     Country
     """
@@ -435,7 +424,7 @@ class Country(NameModel):
         verbose_name_plural = "countries"
 
 
-class AdministrativeLevelOne(NameModel):
+class AdministrativeLevelOne(HistoryNameModel):
     """
     Administrative Level One (ex. in US it is State)
     """
@@ -471,7 +460,7 @@ class AdministrativeLevelTwo(HistoryModel):
         unique_together = ('name', 'administrative_level_one')
 
 
-class AdministrativeLevelLocality(NameModel):
+class AdministrativeLevelLocality(HistoryNameModel):
     """
     Table for looking up local names for adminstrative levels based on country
     """
@@ -487,7 +476,7 @@ class AdministrativeLevelLocality(NameModel):
         db_table = "whispers_adminstrativelevellocality"
 
 
-class LandOwnership(NameModel):
+class LandOwnership(HistoryNameModel):
     """
     Land Ownership
     """
@@ -514,7 +503,7 @@ class EventLocationFlyway(HistoryModel):
         db_table = "whispers_eventlocationflyway"
 
 
-class Flyway(NameModel):
+class Flyway(HistoryNameModel):
     """
     Flyway
     """
@@ -614,7 +603,7 @@ class Species(HistoryModel):
         verbose_name_plural = "species"
 
 
-class AgeBias(NameModel):
+class AgeBias(HistoryNameModel):
     """
     Age Bias
     """
@@ -627,7 +616,7 @@ class AgeBias(NameModel):
         verbose_name_plural = "agebiases"
 
 
-class SexBias(NameModel):
+class SexBias(HistoryNameModel):
     """
     Sex Bias
     """
@@ -647,7 +636,7 @@ class SexBias(NameModel):
 ######
 
 
-class Diagnosis(NameModel):
+class Diagnosis(HistoryNameModel):
     """
     Diagnosis
     """
@@ -662,7 +651,7 @@ class Diagnosis(NameModel):
         verbose_name_plural = "diagnoses"
 
 
-class DiagnosisType(NameModel):
+class DiagnosisType(HistoryNameModel):
     """
     Diagnosis Type
     """
@@ -746,6 +735,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 event.affected_count = sum(species_dx_positive_counts)
 
         event.save()
+
     def __str__(self):
         return str(self.id)
 
@@ -769,7 +759,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
         db_table = "whispers_speciesdiagnosisorganization"
 
 
-class DiagnosisBasis(NameModel):
+class DiagnosisBasis(HistoryNameModel):
     """
     Diagnosis Basis
     """
@@ -782,7 +772,7 @@ class DiagnosisBasis(NameModel):
         verbose_name_plural = "diagnosisbases"
 
 
-class DiagnosisCause(NameModel):
+class DiagnosisCause(HistoryNameModel):
     """
     Diagnosis Cause
     """
@@ -821,7 +811,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
         db_table = "whispers_comment"
 
 
-class CommentType(NameModel):
+class CommentType(HistoryNameModel):
     """
     Comment Type
     """
@@ -875,7 +865,7 @@ class User(AbstractUser):
         db_table = "whispers_user"
 
 
-class Role(NameModel):
+class Role(HistoryNameModel):
     """
     User Role
     """
@@ -915,7 +905,7 @@ class Role(NameModel):
         db_table = "whispers_role"
 
 
-class Circle(NameModel):
+class Circle(HistoryNameModel):
     """
     Circle of Trust
     """
@@ -945,7 +935,7 @@ class CircleUser(HistoryModel):
 
 
 # TODO: apply permissions to this model such that only admins and up can write (create/update/delete)
-class Organization(NameModel):
+class Organization(HistoryNameModel):
     """
     Organization
     """
@@ -954,13 +944,15 @@ class Organization(NameModel):
     address_one = models.CharField(max_length=128, blank=True, default='')
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
-    postal_code = models.CharField(max_length=128, blank=True, default='')  # models.BigIntegerField(null=True, blank=True)
+    postal_code = models.CharField(max_length=128, blank=True,
+                                   default='')  # models.BigIntegerField(null=True, blank=True)
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
     parent_organization = models.ForeignKey('self', models.PROTECT, null=True, related_name='child_organizations')
     do_not_publish = models.BooleanField(default=False)
+    laboratory = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
