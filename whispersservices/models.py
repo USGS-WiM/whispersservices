@@ -708,6 +708,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
         event = self.location_species.event_location.event
+        diagnosis = self.diagnosis
         locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
 
         # affected_count
@@ -735,6 +736,38 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 event.affected_count = sum(species_dx_positive_counts)
 
         event.save()
+
+        # if any speciesdiagnosis is confirmed, then the eventdiagnosis with the same diagnosis is also confirmed
+        if self.confirmed:
+            same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
+            same_eventdiagnosis_diagnosis.confirmed = True if same_eventdiagnosis_diagnosis else False
+
+        # conversely, if all speciesdiagnoses with the same diagnosis is un-confirmed (set to False),
+        # then the eventdiagnosis with the same diagnosis is also un-confirmed
+        # (i.e, eventdiagnosis cannot be confirmed if no speciesdiagnoses with the same diagnosis are confirmed)
+        if not self.confirmed:
+            no_confirmed_speciesdiagnoses = True
+            same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+                diagnosis=diagnosis.id, location_species__event_location__event=event.id)
+            for same_speciesdiagnosis_diagnosis in same_speciesdiagnoses_diagnosis:
+                if same_speciesdiagnosis_diagnosis.confirmed:
+                    no_confirmed_speciesdiagnoses = False
+            if no_confirmed_speciesdiagnoses:
+                same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
+                same_eventdiagnosis_diagnosis.confirmed = False
+                same_eventdiagnosis_diagnosis.save()
+
+    # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
+    # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
+    def delete(self, *args, **kwargs):
+        event = self.location_species.event_location.event
+        diagnosis = self.diagnosis
+        super(SpeciesDiagnosis, self).delete(*args, **kwargs)
+
+        same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+            diagnosis=diagnosis.id, location_species__event_location__event=event.id)
+        if not same_speciesdiagnoses_diagnosis:
+            EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).delete()
 
     def __str__(self):
         return str(self.id)

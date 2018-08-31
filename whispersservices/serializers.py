@@ -1030,6 +1030,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
+    def validate(self, data):
+        event_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+            location_species__event_location__event=data['event'])
+        if not event_speciesdiagnoses_diagnosis:
+            message = "A diagnosis of an Event Diagnosis must match a diagnosis of a Species Diagnosis for this event."
+            raise serializers.ValidationError(message)
+
+        return data
+
     def update(self, instance, validated_data):
 
         if instance.location_species.event_location.event.complete:
