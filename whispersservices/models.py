@@ -1052,6 +1052,7 @@ class FlatEventDetails(models.Model):
     confirmed = models.BooleanField()
     number_tested = models.IntegerField()
     number_positive = models.IntegerField()
+    lab = models.CharField(max_length=512)
     row_num = models.IntegerField(primary_key=True)
 
     def __str__(self):

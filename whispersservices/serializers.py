@@ -1359,7 +1359,10 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
                 if al2_id is not None and al2_id not in unique_l2_ids:
                     unique_l2_ids.append(al2_id)
                     al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    unique_l2s += '; ' + al2.name if unique_l2s else al2.name
+                    if unique_l2s:
+                        unique_l2s += '; ' + al2.name + ', ' + al2.administrative_level_one.abbreviation
+                    else:
+                        unique_l2s += al2.name + ', ' + al2.administrative_level_one.abbreviation
         return unique_l2s
 
     def get_species(self, obj):
@@ -1973,3 +1976,4 @@ class FlatEventDetailSerializer(serializers.Serializer):
     confirmed = serializers.BooleanField()
     number_tested = serializers.IntegerField()
     number_positive = serializers.IntegerField()
+    lab = serializers.CharField()
