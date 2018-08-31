@@ -1398,7 +1398,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
               'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed', 'number_tested',
-              'number_positive']
+              'number_positive', 'lab']
     labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
               'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'affected_count': 'Number Affected', 'event_diagnosis': 'Event Diagnosis',
@@ -1411,7 +1411,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'age_bias': 'Age Bias', 'sex_bias': 'Sex Bias', 'species_diagnosis_id': 'Species Diagnosis ID',
               'species_diagnosis_priority': 'Species Diagnosis Priority', 'speciesdx': 'Species Diagnosis',
               'causal': 'Significance of Diagnosis for Species', 'confirmed': 'Species Diagnosis Suspect',
-              'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed'}
+              'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed', 'lab': 'Lab'}
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
