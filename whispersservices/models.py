@@ -334,7 +334,8 @@ class EventLocation(PermissionsHistoryModel):
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
     flyways = models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
-    # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
+    gnis_name = models.CharField(max_length=256, blank=True, default='')
+    gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
     comments = GenericRelation('Comment', related_name='eventlocations')
 
     # override the save method to calculate the parent event's start_date and end_date and affected_count

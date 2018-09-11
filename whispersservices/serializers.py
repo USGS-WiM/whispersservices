@@ -756,6 +756,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
         instance.longitude = validated_data.get('longitude', instance.longitude)
         instance.priority = validated_data.get('priority', instance.priority)
         instance.land_ownership = validated_data.get('land_ownership', instance.land_ownership)
+        instance.gnis_name = validated_data.get('gnis_name', instance.gnis_name)
+        instance.gnis_id = validated_data.get('gnis_id', instance.gnis_id)
         if 'request' in self.context and hasattr(self.context, 'user'):
             instance.modified_by = self.context['request'].user
         else:
@@ -769,7 +771,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyways', 'contacts', 'comments',
+                  'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
                   'new_location_contacts', 'new_location_species',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -1775,7 +1777,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyways', 'location_species', 'comments',)
+                  'priority', 'land_ownership', 'gnis_name', 'gnis_id', 'flyways', 'location_species', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):

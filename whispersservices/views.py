@@ -1351,6 +1351,15 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
             else:
                 queryset = queryset.filter(eventlocations__country__exact=country).distinct()
+        # filter by gnis_id, exact list
+        gnis_id = query_params.get('gnis_id', None)
+        if gnis_id is not None:
+            queryset = queryset.prefetch_related('eventlocations__gnis_id')
+            if LIST_DELIMETER in gnis_id:
+                gnis_id_list = country.split(',')
+                queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
+            else:
+                queryset = queryset.filter(eventlocations__gnis_id__exact=gnis_id).distinct()
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
