@@ -742,7 +742,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
             same_eventdiagnosis_diagnosis.confirmed = True if same_eventdiagnosis_diagnosis else False
 
-        # conversely, if all speciesdiagnoses with the same diagnosis is un-confirmed (set to False),
+        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (set to False),
         # then the eventdiagnosis with the same diagnosis is also un-confirmed
         # (i.e, eventdiagnosis cannot be confirmed if no speciesdiagnoses with the same diagnosis are confirmed)
         if not self.confirmed:
@@ -753,9 +753,10 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 if same_speciesdiagnosis_diagnosis.confirmed:
                     no_confirmed_speciesdiagnoses = False
             if no_confirmed_speciesdiagnoses:
-                same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
-                same_eventdiagnosis_diagnosis.confirmed = False
-                same_eventdiagnosis_diagnosis.save()
+                same_eventdiagnosis_diag = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
+                if same_eventdiagnosis_diag is not None:
+                    same_eventdiagnosis_diag.confirmed = False
+                    same_eventdiagnosis_diag.save()
 
     # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well

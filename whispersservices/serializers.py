@@ -1031,10 +1031,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
     def validate(self, data):
-        event_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
-            location_species__event_location__event=data['event'])
-        if not event_speciesdiagnoses_diagnosis:
-            message = "A diagnosis of an Event Diagnosis must match a diagnosis of a Species Diagnosis for this event."
+        location_species = LocationSpecies.objects.filter(id=data['location_species'].id).first()
+        if location_species is not None:
+            event_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+                location_species__event_location__event=location_species.event_location.event.id)
+            if not event_speciesdiagnoses_diagnosis:
+                message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
+                raise serializers.ValidationError(message)
+        else:
+            message = "A Location Species with ID of (" + data['location_species'] + ") was not found."
             raise serializers.ValidationError(message)
 
         return data
