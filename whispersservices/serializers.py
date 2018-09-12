@@ -650,8 +650,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
     comments = CommentSerializer(many=True, read_only=True)
-    new_location_contacts = serializers.ListField(write_only=True)
-    new_location_species = serializers.ListField(write_only=True)
+    new_location_contacts = serializers.ListField(write_only=True, required=False)
+    new_location_species = serializers.ListField(write_only=True, required=False)
 
     def create(self, validated_data):
         user = self.context['request'].user

@@ -317,7 +317,7 @@ class EventLocation(PermissionsHistoryModel):
     Event Location
     """
 
-    name = models.CharField(max_length=128)
+    name = models.CharField(max_length=128, blank=True, default='')
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventlocations')
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
