@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.db.models import Q, F, Sum
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
-from rest_framework import views, viewsets, generics, permissions, authentication, status
+from rest_framework import views, viewsets, generics, permissions, authentication, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
@@ -17,6 +17,7 @@ from drf_renderer_xlsx import renderers as xlsx_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
+from whispersservices.pagination import *
 from dry_rest_permissions.generics import DRYPermissions
 User = get_user_model()
 
@@ -69,6 +70,9 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
     """
 
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.OrderingFilter,)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, modified_by=self.request.user)
 
@@ -80,6 +84,9 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
     This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
     """
+
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.OrderingFilter,)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, modified_by=self.request.user)
@@ -787,15 +794,15 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
                     location_species__event_location__event__affected_count__exact=affected_count)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
-        startdate = query_params.get('startdate', None)
-        enddate = query_params.get('enddate', None)
-        if startdate is not None and enddate is not None:
-            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate,
-                                       location_species__event_location__event__end_date__lt=enddate)
-        elif startdate is not None:
-            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate)
-        elif enddate is not None:
-            queryset = queryset.filter(location_species__event_location__event__end_date__lt=enddate)
+        start_date = query_params.get('start_date', None)
+        end_date = query_params.get('end_date', None)
+        if start_date is not None and end_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=start_date,
+                                       location_species__event_location__event__end_date__lt=end_date)
+        elif start_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=start_date)
+        elif end_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__end_date__lt=end_date)
 
         return queryset
 
@@ -1370,14 +1377,14 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(affected_count__exact=affected_count)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
-        startdate = query_params.get('startdate', None)
-        enddate = query_params.get('enddate', None)
-        if startdate is not None and enddate is not None:
-            queryset = queryset.filter(start_date__gt=startdate, end_date__lt=enddate)
-        elif startdate is not None:
-            queryset = queryset.filter(start_date__gt=startdate)
-        elif enddate is not None:
-            queryset = queryset.filter(end_date__lt=enddate)
+        start_date = query_params.get('start_date', None)
+        end_date = query_params.get('end_date', None)
+        if start_date is not None and end_date is not None:
+            queryset = queryset.filter(start_date__gt=start_date, end_date__lt=end_date)
+        elif start_date is not None:
+            queryset = queryset.filter(start_date__gt=start_date)
+        elif end_date is not None:
+            queryset = queryset.filter(end_date__lt=end_date)
         # TODO: determine the intended use of the following three query params
         # because only admins or fellow org or circle members should even be able to filter on these values
         # perhaps these should instead be used implicitly based on the requester
