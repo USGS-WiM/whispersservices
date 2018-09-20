@@ -175,6 +175,12 @@ class EventSerializer(serializers.ModelSerializer):
                     # create the event_location and return object for use in event_location_contacts object
                     event_location['created_by'] = user
                     event_location['modified_by'] = user
+
+                    # if the event_location has no name value but does have a gnis_name value,
+                    # then copy the value of gnis_name to name
+                    # this need only happen on creation since the two fields should maintain no durable relationship
+                    if event_location['name'] == '' and event_location['gnis_name'] != '':
+                        event_location['name'] = event_location['gnis_name']
                     evt_location = EventLocation.objects.create(**event_location)
 
                     for key, value in comment_types.items():
@@ -762,6 +768,11 @@ class EventLocationSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        # if an event_location has no name value but does have a gnis_name value, copy the value of gnis_name to name
+        # this need only happen on creation since the two fields should maintain no durable relationship
+        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+            validated_data['name'] = validated_data['gnis_name']
         instance.save()
 
         return instance
