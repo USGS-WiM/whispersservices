@@ -1203,6 +1203,14 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
+    def validate(self, data):
+        event_specdiags = SpeciesDiagnosis.objects.filter(
+            location_species__event_location__event=data['event'])
+        if not event_specdiags or data['diagnosis'] not in [specdiag.diagnosis for specdiag in event_specdiags]:
+            message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
+            raise serializers.ValidationError(message)
+        return data
+
     def create(self, validated_data):
         pending = Diagnosis.objects.filter(name='Pending').first().id
         undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
@@ -1289,6 +1297,18 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             message += " unless the event is first re-opened by an administrator."
             raise serializers.ValidationError(message)
 
+        # a diagnosis can only be used once for a location-species-labID combination
+        loc_specdiags = SpeciesDiagnosis.objects.filter(
+            location_species=validated_data['location_species']).values('id', 'diagnosis').exclude(id=instance.id)
+        if validated_data['diagnosis'].id in [specdiag['diagnosis'] for specdiag in loc_specdiags]:
+            loc_specdiags_ids = [specdiag['id'] for specdiag in loc_specdiags]
+            loc_specdiags_labs_ids = set(SpeciesDiagnosisOrganization.objects.filter(
+                species_diagnosis__in=loc_specdiags_ids).values_list('id', flat=True))
+            my_labs_ids = [org.id for org in instance.organizations.all()]
+            if len([lab_id for lab_id in my_labs_ids if lab_id in loc_specdiags_labs_ids]) > 0:
+                message = "A diagnosis can only be used once for a location-species-laboratory combination."
+                raise serializers.ValidationError(message)
+
         # update the SpeciesDiagnosis object
         instance.location_species = validated_data.get('location_species', instance.location_species)
         instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
@@ -1319,6 +1339,23 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+
+    def validate(self, data):
+        if not data['organization'].laboratory:
+            raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
+
+        # a diagnosis can only be used once for a location-species-labID combination
+        specdiag = SpeciesDiagnosis.objects.filter(id=data['species_diagnosis'])
+        other_specdiag_same_locspec_diag_ids = SpeciesDiagnosis.objects.filter(
+            location_species=specdiag.location_species, diagnosis=specdiag.diagnosis).values_list('id', flat=True)
+        # TODO: find orgs for other_specdiag_same_locspec_diag then check if this new object would be a duplicate combo
+        org_combos = SpeciesDiagnosisOrganization.objects.filter(
+            species_diagnosis__in=other_specdiag_same_locspec_diag_ids).values_list('id', flat=True)
+        if data['organization'] in org_combos:
+            message = "A diagnosis can only be used once for a location-species-lab combination."
+            raise serializers.ValidationError(message)
+
+        return data
 
     class Meta:
         model = SpeciesDiagnosisOrganization
