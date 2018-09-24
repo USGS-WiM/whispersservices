@@ -686,6 +686,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     'clinical_signs': validated_data.pop('clinical_signs', None),
                     'general': validated_data.pop('comment', None)}
 
+        # if the event_location has no name value but does have a gnis_name value,
+        # then copy the value of gnis_name to name
+        # this need only happen on creation since the two fields should maintain no durable relationship
+        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+            validated_data['name'] = validated_data['gnis_name']
+
         # create the event_location and return object for use in event_location_contacts object
         # validated_data['created_by'] = user
         # validated_data['modified_by'] = user
