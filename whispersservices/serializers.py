@@ -1364,13 +1364,13 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # a diagnosis can only be used once for a location-species-labID combination
-        specdiag = SpeciesDiagnosis.objects.filter(id=data['species_diagnosis'])
+        # TODO: QUESTION: this would work better as a model unique_together but need to confirm with customer that our assumptions about species diagnosis are right
+        specdiag = SpeciesDiagnosis.objects.filter(id=data['species_diagnosis'].id).first()
         other_specdiag_same_locspec_diag_ids = SpeciesDiagnosis.objects.filter(
             location_species=specdiag.location_species, diagnosis=specdiag.diagnosis).values_list('id', flat=True)
-        # TODO: find orgs for other_specdiag_same_locspec_diag then check if this new object would be a duplicate combo
         org_combos = SpeciesDiagnosisOrganization.objects.filter(
-            species_diagnosis__in=other_specdiag_same_locspec_diag_ids).values_list('id', flat=True)
-        if data['organization'] in org_combos:
+            species_diagnosis__in=other_specdiag_same_locspec_diag_ids).values_list('organization_id', flat=True)
+        if data['organization'].id in org_combos:
             message = "A diagnosis can only be used once for a location-species-lab combination."
             raise serializers.ValidationError(message)
 
