@@ -38,7 +38,7 @@ class HistoryModel(models.Model):
         default_permissions = ('add', 'change', 'delete', 'view')
 
 
-class NameModel(HistoryModel):
+class HistoryNameModel(HistoryModel):
     """
     An abstract base class model for the common name field.
     """
@@ -83,7 +83,7 @@ class PermissionsHistoryModel(HistoryModel):
             return False
         else:
             return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
+                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     def has_object_destroy_permission(self, request):
         # Only the creator or a manager/admin member of the creator's organization or a superuser can delete an event
@@ -91,18 +91,7 @@ class PermissionsHistoryModel(HistoryModel):
             return False
         else:
             return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
-
-    class Meta:
-        abstract = True
-
-
-class PermissionsNameModel(PermissionsHistoryModel):
-    """
-    An abstract base class model for the common name field and the common permissions.
-    """
-
-    name = models.CharField(max_length=128, unique=True)
+                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
 
     class Meta:
         abstract = True
@@ -185,7 +174,7 @@ class SuperEvent(HistoryModel):
         db_table = "whispers_superevent"
 
 
-class EventType(NameModel):
+class EventType(HistoryNameModel):
     """
     Event Type
     """
@@ -214,7 +203,7 @@ class Staff(HistoryModel):
         db_table = "whispers_staff"
 
 
-class LegalStatus(NameModel):
+class LegalStatus(HistoryNameModel):
     """
     Legal Status
     """
@@ -226,7 +215,7 @@ class LegalStatus(NameModel):
         db_table = "whispers_legalstatus"
 
 
-class EventStatus(NameModel):
+class EventStatus(HistoryNameModel):
     """
     Event Status
     """
@@ -328,7 +317,7 @@ class EventLocation(PermissionsHistoryModel):
     Event Location
     """
 
-    name = models.CharField(max_length=128)
+    name = models.CharField(max_length=128, blank=True, default='')
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventlocations')
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
@@ -344,8 +333,9 @@ class EventLocation(PermissionsHistoryModel):
     priority = models.IntegerField(null=True)
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
-    flyways =models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
-    # gnis_name = models.ForeignKey('GNISName', models.PROTECT, related_name='eventlocations')  # COMMENT: this related table is not shown in the ERD
+    flyways = models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
+    gnis_name = models.CharField(max_length=256, blank=True, default='')
+    gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
     comments = GenericRelation('Comment', related_name='eventlocations')
 
     # override the save method to calculate the parent event's start_date and end_date and affected_count
@@ -411,7 +401,7 @@ class EventLocationContact(HistoryModel):
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
     contact = models.ForeignKey('Contact', models.PROTECT)
     contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts')
-    
+
     def __str__(self):
         return str(self.id)
 
@@ -419,7 +409,7 @@ class EventLocationContact(HistoryModel):
         db_table = "whispers_eventlocationcontact"
 
 
-class Country(NameModel):
+class Country(HistoryNameModel):
     """
     Country
     """
@@ -435,7 +425,7 @@ class Country(NameModel):
         verbose_name_plural = "countries"
 
 
-class AdministrativeLevelOne(NameModel):
+class AdministrativeLevelOne(HistoryNameModel):
     """
     Administrative Level One (ex. in US it is State)
     """
@@ -471,7 +461,7 @@ class AdministrativeLevelTwo(HistoryModel):
         unique_together = ('name', 'administrative_level_one')
 
 
-class AdministrativeLevelLocality(NameModel):
+class AdministrativeLevelLocality(HistoryNameModel):
     """
     Table for looking up local names for adminstrative levels based on country
     """
@@ -487,7 +477,7 @@ class AdministrativeLevelLocality(NameModel):
         db_table = "whispers_adminstrativelevellocality"
 
 
-class LandOwnership(NameModel):
+class LandOwnership(HistoryNameModel):
     """
     Land Ownership
     """
@@ -514,7 +504,7 @@ class EventLocationFlyway(HistoryModel):
         db_table = "whispers_eventlocationflyway"
 
 
-class Flyway(NameModel):
+class Flyway(HistoryNameModel):
     """
     Flyway
     """
@@ -614,7 +604,7 @@ class Species(HistoryModel):
         verbose_name_plural = "species"
 
 
-class AgeBias(NameModel):
+class AgeBias(HistoryNameModel):
     """
     Age Bias
     """
@@ -627,7 +617,7 @@ class AgeBias(NameModel):
         verbose_name_plural = "agebiases"
 
 
-class SexBias(NameModel):
+class SexBias(HistoryNameModel):
     """
     Sex Bias
     """
@@ -647,7 +637,7 @@ class SexBias(NameModel):
 ######
 
 
-class Diagnosis(NameModel):
+class Diagnosis(HistoryNameModel):
     """
     Diagnosis
     """
@@ -662,7 +652,7 @@ class Diagnosis(NameModel):
         verbose_name_plural = "diagnoses"
 
 
-class DiagnosisType(NameModel):
+class DiagnosisType(HistoryNameModel):
     """
     Diagnosis Type
     """
@@ -719,6 +709,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
         event = self.location_species.event_location.event
+        diagnosis = self.diagnosis
         locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
 
         # affected_count
@@ -746,6 +737,40 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 event.affected_count = sum(species_dx_positive_counts)
 
         event.save()
+
+        # if any speciesdiagnosis is confirmed, then the eventdiagnosis with the same diagnosis is also confirmed
+        if self.confirmed:
+            same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
+            same_eventdiagnosis_diagnosis.confirmed = True if same_eventdiagnosis_diagnosis else False
+
+        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (set to False),
+        # then the eventdiagnosis with the same diagnosis is also un-confirmed
+        # (i.e, eventdiagnosis cannot be confirmed if no speciesdiagnoses with the same diagnosis are confirmed)
+        if not self.confirmed:
+            no_confirmed_speciesdiagnoses = True
+            same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+                diagnosis=diagnosis.id, location_species__event_location__event=event.id)
+            for same_speciesdiagnosis_diagnosis in same_speciesdiagnoses_diagnosis:
+                if same_speciesdiagnosis_diagnosis.confirmed:
+                    no_confirmed_speciesdiagnoses = False
+            if no_confirmed_speciesdiagnoses:
+                same_eventdiagnosis_diag = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
+                if same_eventdiagnosis_diag is not None:
+                    same_eventdiagnosis_diag.confirmed = False
+                    same_eventdiagnosis_diag.save()
+
+    # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
+    # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
+    def delete(self, *args, **kwargs):
+        event = self.location_species.event_location.event
+        diagnosis = self.diagnosis
+        super(SpeciesDiagnosis, self).delete(*args, **kwargs)
+
+        same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+            diagnosis=diagnosis.id, location_species__event_location__event=event.id)
+        if not same_speciesdiagnoses_diagnosis:
+            EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).delete()
+
     def __str__(self):
         return str(self.id)
 
@@ -769,7 +794,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
         db_table = "whispers_speciesdiagnosisorganization"
 
 
-class DiagnosisBasis(NameModel):
+class DiagnosisBasis(HistoryNameModel):
     """
     Diagnosis Basis
     """
@@ -782,7 +807,7 @@ class DiagnosisBasis(NameModel):
         verbose_name_plural = "diagnosisbases"
 
 
-class DiagnosisCause(NameModel):
+class DiagnosisCause(HistoryNameModel):
     """
     Diagnosis Cause
     """
@@ -821,7 +846,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
         db_table = "whispers_comment"
 
 
-class CommentType(NameModel):
+class CommentType(HistoryNameModel):
     """
     Comment Type
     """
@@ -875,7 +900,7 @@ class User(AbstractUser):
         db_table = "whispers_user"
 
 
-class Role(NameModel):
+class Role(HistoryNameModel):
     """
     User Role
     """
@@ -915,7 +940,7 @@ class Role(NameModel):
         db_table = "whispers_role"
 
 
-class Circle(NameModel):
+class Circle(HistoryNameModel):
     """
     Circle of Trust
     """
@@ -945,7 +970,7 @@ class CircleUser(HistoryModel):
 
 
 # TODO: apply permissions to this model such that only admins and up can write (create/update/delete)
-class Organization(NameModel):
+class Organization(HistoryNameModel):
     """
     Organization
     """
@@ -954,13 +979,15 @@ class Organization(NameModel):
     address_one = models.CharField(max_length=128, blank=True, default='')
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
-    postal_code = models.CharField(max_length=128, blank=True, default='')  # models.BigIntegerField(null=True, blank=True)
+    postal_code = models.CharField(max_length=128, blank=True,
+                                   default='')  # models.BigIntegerField(null=True, blank=True)
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
     parent_organization = models.ForeignKey('self', models.PROTECT, null=True, related_name='child_organizations')
     do_not_publish = models.BooleanField(default=False)
+    laboratory = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -1060,6 +1087,7 @@ class FlatEventDetails(models.Model):
     confirmed = models.BooleanField()
     number_tested = models.IntegerField()
     number_positive = models.IntegerField()
+    lab = models.CharField(max_length=512)
     row_num = models.IntegerField(primary_key=True)
 
     def __str__(self):

@@ -787,15 +787,15 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
                     location_species__event_location__event__affected_count__exact=affected_count)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
-        startdate = query_params.get('startdate', None)
-        enddate = query_params.get('enddate', None)
-        if startdate is not None and enddate is not None:
-            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate,
-                                       location_species__event_location__event__end_date__lt=enddate)
-        elif startdate is not None:
-            queryset = queryset.filter(location_species__event_location__event__start_date__gt=startdate)
-        elif enddate is not None:
-            queryset = queryset.filter(location_species__event_location__event__end_date__lt=enddate)
+        start_date = query_params.get('start_date', None)
+        end_date = query_params.get('end_date', None)
+        if start_date is not None and end_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=start_date,
+                                       location_species__event_location__event__end_date__lt=end_date)
+        elif start_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__start_date__gt=start_date)
+        elif end_date is not None:
+            queryset = queryset.filter(location_species__event_location__event__end_date__lt=end_date)
 
         return queryset
 
@@ -1080,6 +1080,9 @@ class SearchViewSet(viewsets.ModelViewSet):
 
 class CSVEventSummaryPublicRenderer(csv_renderers.CSVRenderer):
     header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'event_diagnoses']
+    labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
+              'end_date': 'Event End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
+              'species': 'Species', 'event_diagnoses': 'Event Diagnosis'}
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
@@ -1348,6 +1351,15 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
             else:
                 queryset = queryset.filter(eventlocations__country__exact=country).distinct()
+        # filter by gnis_id, exact list
+        gnis_id = query_params.get('gnis_id', None)
+        if gnis_id is not None:
+            queryset = queryset.prefetch_related('eventlocations__gnis_id')
+            if LIST_DELIMETER in gnis_id:
+                gnis_id_list = country.split(',')
+                queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
+            else:
+                queryset = queryset.filter(eventlocations__gnis_id__exact=gnis_id).distinct()
         # filter by affected, exact list
         affected_count = query_params.get('affected_count', None)
         if affected_count is not None:
@@ -1358,14 +1370,14 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(affected_count__exact=affected_count)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
-        startdate = query_params.get('startdate', None)
-        enddate = query_params.get('enddate', None)
-        if startdate is not None and enddate is not None:
-            queryset = queryset.filter(start_date__gt=startdate, end_date__lt=enddate)
-        elif startdate is not None:
-            queryset = queryset.filter(start_date__gt=startdate)
-        elif enddate is not None:
-            queryset = queryset.filter(end_date__lt=enddate)
+        start_date = query_params.get('start_date', None)
+        end_date = query_params.get('end_date', None)
+        if start_date is not None and end_date is not None:
+            queryset = queryset.filter(start_date__gt=start_date, end_date__lt=end_date)
+        elif start_date is not None:
+            queryset = queryset.filter(start_date__gt=start_date)
+        elif end_date is not None:
+            queryset = queryset.filter(end_date__lt=end_date)
         # TODO: determine the intended use of the following three query params
         # because only admins or fellow org or circle members should even be able to filter on these values
         # perhaps these should instead be used implicitly based on the requester
@@ -1395,7 +1407,20 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
               'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed', 'number_tested',
-              'number_positive']
+              'number_positive', 'lab']
+    labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
+              'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Event Start Date',
+              'end_date': 'Event End Date', 'affected_count': 'Number Affected', 'event_diagnosis': 'Event Diagnosis',
+              'location_id': 'Location ID', 'location_priority': 'Location Priority',
+              'county': 'County (or equivalent)', 'state': 'State (or equivalent)', 'nation': 'Nation',
+              'location_start': 'Location Start Date', 'location_end': 'Location End Date',
+              'location_species_id': 'Location Species ID', 'species_priority': 'Species Priority',
+              'species_name': 'Species', 'population': 'Population', 'sick': 'Known Sick', 'dead': 'Known Dead',
+              'estimated_sick': 'Estimated Sick', 'estimated_dead': 'Estimated Dead', 'captive': 'Captive',
+              'age_bias': 'Age Bias', 'sex_bias': 'Sex Bias', 'species_diagnosis_id': 'Species Diagnosis ID',
+              'species_diagnosis_priority': 'Species Diagnosis Priority', 'speciesdx': 'Species Diagnosis',
+              'causal': 'Significance of Diagnosis for Species', 'confirmed': 'Species Diagnosis Suspect',
+              'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed', 'lab': 'Lab'}
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):

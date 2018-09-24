@@ -302,6 +302,12 @@ class EventSerializer(serializers.ModelSerializer):
                     # create the event_location and return object for use in event_location_contacts object
                     event_location['created_by'] = user
                     event_location['modified_by'] = user
+
+                    # if the event_location has no name value but does have a gnis_name value,
+                    # then copy the value of gnis_name to name
+                    # this need only happen on creation since the two fields should maintain no durable relationship
+                    if event_location['name'] == '' and event_location['gnis_name'] != '':
+                        event_location['name'] = event_location['gnis_name']
                     evt_location = EventLocation.objects.create(**event_location)
 
                     for key, value in comment_types.items():
@@ -851,8 +857,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
     comments = CommentSerializer(many=True, read_only=True)
-    new_location_contacts = serializers.ListField(write_only=True)
-    new_location_species = serializers.ListField(write_only=True)
+    new_location_contacts = serializers.ListField(write_only=True, required=False)
+    new_location_species = serializers.ListField(write_only=True, required=False)
 
     def create(self, validated_data):
         user = self.context['request'].user
@@ -880,6 +886,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     'environmental_factors': validated_data.pop('environmental_factors', None),
                     'clinical_signs': validated_data.pop('clinical_signs', None),
                     'general': validated_data.pop('comment', None)}
+
+        # if the event_location has no name value but does have a gnis_name value,
+        # then copy the value of gnis_name to name
+        # this need only happen on creation since the two fields should maintain no durable relationship
+        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+            validated_data['name'] = validated_data['gnis_name']
 
         # create the event_location and return object for use in event_location_contacts object
         # validated_data['created_by'] = user
@@ -957,10 +969,17 @@ class EventLocationSerializer(serializers.ModelSerializer):
         instance.longitude = validated_data.get('longitude', instance.longitude)
         instance.priority = validated_data.get('priority', instance.priority)
         instance.land_ownership = validated_data.get('land_ownership', instance.land_ownership)
+        instance.gnis_name = validated_data.get('gnis_name', instance.gnis_name)
+        instance.gnis_id = validated_data.get('gnis_id', instance.gnis_id)
         if 'request' in self.context and hasattr(self.context, 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        # if an event_location has no name value but does have a gnis_name value, copy the value of gnis_name to name
+        # this need only happen on creation since the two fields should maintain no durable relationship
+        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+            validated_data['name'] = validated_data['gnis_name']
         instance.save()
 
         return instance
@@ -970,7 +989,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyways', 'contacts', 'comments',
+                  'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
                   'new_location_contacts', 'new_location_species',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -1503,7 +1522,7 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
-                  'country', 'phone', 'parent_organization',)
+                  'country', 'phone', 'parent_organization', 'laboratory')
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -1513,7 +1532,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish', 'laboratory',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -1642,7 +1661,10 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
                 if al2_id is not None and al2_id not in unique_l2_ids:
                     unique_l2_ids.append(al2_id)
                     al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    unique_l2s += '; ' + al2.name if unique_l2s else al2.name
+                    if unique_l2s:
+                        unique_l2s += '; ' + al2.name + ', ' + al2.administrative_level_one.abbreviation
+                    else:
+                        unique_l2s += al2.name + ', ' + al2.administrative_level_one.abbreviation
         return unique_l2s
 
     def get_species(self, obj):
@@ -2032,6 +2054,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
 class EventLocationDetailSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
+    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
     country_string = serializers.StringRelatedField(source='country')
     location_species = LocationSpeciesDetailSerializer(many=True, source='locationspecies')
     comments = CommentSerializer(many=True)
@@ -2040,8 +2063,9 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
-                  'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyways', 'location_species', 'comments',)
+                  'administrative_level_two_string', 'administrative_level_two_points', 'county_multiple',
+                  'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'gnis_name', 'gnis_id',
+                  'flyways', 'location_species', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
