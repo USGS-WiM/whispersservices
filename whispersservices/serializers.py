@@ -1309,11 +1309,35 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
     diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
+    def validate(self, data):
+
+        # Within each species diagnosis, number_with_diagnosis =< number_tested.
+        if not (data['diagnosis_count'] <= data['tested_count']):
+            raise serializers.ValidationError("The diagnosed count cannot be more than the diagnosed count.")
+
+        # Within each species diagnosis, number_positive+number_suspect =< number_tested
+        if not (data['positive_count'] + data['suspect_count'] <= data['tested_count']):
+            message = "The positive count and suspect count together cannot be more than the diagnosed count."
+            raise serializers.ValidationError(message)
+
+        # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
+        # else diagnosis is suspect (suspect=True) and so number_positive must be zero
+        # TODO: change model fields from 'confirmed' to 'suspect' before this validation can be uncommented
+        # if not data['suspect'] and data['positive_count'] == 0:
+        #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
+
+        return data
+
     def update(self, instance, validated_data):
 
         if instance.location_species.event_location.event.complete:
             message = "Diagnosis from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by an administrator."
+            raise serializers.ValidationError(message)
+
+        # for positive_count, only allowed to enter >0 if provide laboratory name.
+        if validated_data['positive_count'] > 0 and len(instance.organizations) == 0:
+            message = "The positive count cannot be greater than zero if there is no laboratory for this diagnosis."
             raise serializers.ValidationError(message)
 
         # a diagnosis can only be used once for a location-species-labID combination
