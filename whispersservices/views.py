@@ -13,7 +13,6 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
-from drf_renderer_xlsx import renderers as xlsx_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
@@ -564,8 +563,6 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -1132,8 +1129,6 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -1441,8 +1436,6 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
