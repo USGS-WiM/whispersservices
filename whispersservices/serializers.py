@@ -380,6 +380,8 @@ class EventSerializer(serializers.ModelSerializer):
             if locations is not None:
                 species_count_is_valid = []
                 est_count_gt_known_count = True
+                species_diagnosis_basis_is_valid = []
+                species_diagnosis_cause_is_valid = []
                 details = []
                 mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for location in locations:
@@ -402,12 +404,30 @@ class EventSerializer(serializers.ModelSerializer):
                                 species_count_is_valid.append(True)
                             else:
                                 species_count_is_valid.append(False)
+                            species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
+                            for specdiag in species_diagnoses:
+                                if specdiag.basis:
+                                    species_diagnosis_basis_is_valid.append(True)
+                                else:
+                                    species_diagnosis_basis_is_valid.append(False)
+                                if specdiag.cause:
+                                    species_diagnosis_cause_is_valid.append(True)
+                                else:
+                                    species_diagnosis_cause_is_valid.append(False)
                 if False in species_count_is_valid:
                     message = "Each location_species requires at least one species count in any of the following"
                     message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
                 if not est_count_gt_known_count:
                     message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                    details.append(message)
+                if False in species_diagnosis_basis_is_valid:
+                    message = "The event may not be marked complete until all of its location species diagnoses"
+                    message += " have a basis of diagnosis."
+                    details.append(message)
+                if False in species_diagnosis_cause_is_valid:
+                    message = "The event may not be marked complete until all of its location species diagnoses"
+                    message += " have a cause."
                     details.append(message)
                 if details:
                     raise serializers.ValidationError(details)
@@ -579,6 +599,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
             if locations is not None:
                 species_count_is_valid = []
                 est_count_gt_known_count = True
+                species_diagnosis_basis_is_valid = []
+                species_diagnosis_cause_is_valid = []
                 details = []
                 mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for location in locations:
@@ -601,6 +623,16 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 species_count_is_valid.append(True)
                             else:
                                 species_count_is_valid.append(False)
+                            species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
+                            for specdiag in species_diagnoses:
+                                if specdiag.basis:
+                                    species_diagnosis_basis_is_valid.append(True)
+                                else:
+                                    species_diagnosis_basis_is_valid.append(False)
+                                if specdiag.cause:
+                                    species_diagnosis_cause_is_valid.append(True)
+                                else:
+                                    species_diagnosis_cause_is_valid.append(False)
                 if False in species_count_is_valid:
                     message = "Each location_species requires at least one species count in any of the following"
                     message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
@@ -608,8 +640,16 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 if not est_count_gt_known_count:
                     message = "Estimated sick or dead counts must always be more than known sick or dead counts."
                     details.append(message)
+                if False in species_diagnosis_basis_is_valid:
+                    message = "The event may not be marked complete until all of its location species diagnoses"
+                    message += " have a basis of diagnosis."
+                    details.append(message)
+                if False in species_diagnosis_cause_is_valid:
+                    message = "The event may not be marked complete until all of its location species diagnoses"
+                    message += " have a cause."
+                    details.append(message)
                 if details:
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(details)
             else:
                 raise serializers.ValidationError(location_message)
 
@@ -1311,6 +1351,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
+        # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
+        # TODO: QUESTION: following rule would only work on update due to M:N relate to orgs:
+        # If 3 is selected user must provide a lab.
+        if not data['suspect']:
+            if data['basis'] != 3:
+                message = "The basis of diagnosis can only be 'Necropsy and/or ancillary tests performed"
+                message += " at a diagnostic laboratory' when the diagnosis is non-suspect."
+                raise serializers.ValidationError(message)
+
         # Within each species diagnosis, number_with_diagnosis =< number_tested.
         if not (data['diagnosis_count'] <= data['tested_count']):
             raise serializers.ValidationError("The diagnosed count cannot be more than the diagnosed count.")
@@ -1325,6 +1374,9 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # TODO: change model fields from 'confirmed' to 'suspect' before this validation can be uncommented
         # if not data['suspect'] and data['positive_count'] == 0:
         #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
+
+        if data['pooled'] and data['tested_count'] < 2:
+            raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
 
         return data
 

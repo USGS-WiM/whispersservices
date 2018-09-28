@@ -706,6 +706,17 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     # override the save method to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
+
+        # If diagnosis is confirmed and pooled is selected,
+        # then automatically list 1 for number_positive if number_positive was zero or null.
+        # If diagnosis is suspect and pooled is selected,
+        # then automatically list 1 for number_suspect if number_suspect was zero or null.
+        if self.confirmed and self.pooled:
+            if self.positive_count is None or self.positive_count == 0:
+                self.positive_count = 1
+            if self.suspect_count is None or self.suspect_count == 0:
+                self.suspect_count = 1
+
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
         event = self.location_species.event_location.event
