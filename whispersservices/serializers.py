@@ -1252,7 +1252,7 @@ class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'confirmed', 'major',)
+        fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'suspect', 'major',)
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
@@ -1289,7 +1289,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
         if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-            validated_data['confirmed'] = True
+            validated_data['suspect'] = False
 
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
 
@@ -1305,7 +1305,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # update the EventDiagnosis object
         instance.event = validated_data.get('event', instance.event)
         instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
-        instance.confirmed = validated_data.get('confirmed', instance.confirmed)
+        instance.suspect = validated_data.get('suspect', instance.suspect)
         instance.major = validated_data.get('major', instance.major)
         instance.priority = validated_data.get('priority', instance.priority)
         if 'request' in self.context and hasattr(self.context, 'user'):
@@ -1318,7 +1318,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         pending = Diagnosis.objects.filter(name='Pending').first().id
         undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
         if instance.diagnosis in [pending, undetermined]:
-            instance.confirmed = True
+            instance.suspect = False
 
             if instance.diagnosis == undetermined:
                 # If have "Undetermined" at the event level, should have no other diagnoses at event level.
@@ -1332,7 +1332,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventDiagnosis
         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
-                  'confirmed', 'major', 'priority', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'suspect', 'major', 'priority', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
@@ -1340,7 +1340,7 @@ class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'tested_count', 'diagnosis_count', 'positive_count',
+        fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
                   'suspect_count', 'pooled',)
 
 
@@ -1352,7 +1352,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     def validate(self, data):
 
         # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
-        # TODO: QUESTION: following rule would only work on update due to M:N relate to orgs:
+        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # If 3 is selected user must provide a lab.
         if not data['suspect']:
             if data['basis'] != 3:
@@ -1371,14 +1371,30 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
         # else diagnosis is suspect (suspect=True) and so number_positive must be zero
-        # TODO: change model fields from 'confirmed' to 'suspect' before this validation can be uncommented
-        # if not data['suspect'] and data['positive_count'] == 0:
-        #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
+        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
+        # Only allowed to enter >0 if provide laboratory name.
+        if not data['suspect'] and data['positive_count'] == 0:
+            raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
 
         if data['pooled'] and data['tested_count'] < 2:
             raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
 
         return data
+
+    def create(self, validated_data):
+        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
+        # For new data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
+        # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
+        # (TODO: NOTE following rule is valid and enforceable right now:)
+        # never see "Pending suspect" or "Undetermined suspect" on front end.
+        pending = Diagnosis.objects.filter(name='Pending').first().id
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
+            validated_data['suspect'] = False
+
+        species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
+
+        return species_diagnosis
 
     def update(self, instance, validated_data):
 
@@ -1404,12 +1420,19 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 message = "A diagnosis can only be used once for a location-species-laboratory combination."
                 raise serializers.ValidationError(message)
 
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        pending = Diagnosis.objects.filter(name='Pending').first().id
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        if instance.diagnosis in [pending, undetermined]:
+            instance.suspect = False
+
         # update the SpeciesDiagnosis object
         instance.location_species = validated_data.get('location_species', instance.location_species)
         instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
         instance.cause = validated_data.get('cause', instance.cause)
         instance.basis = validated_data.get('basis', instance.basis)
-        instance.confirmed = validated_data.get('confirmed', instance.confirmed)
+        instance.suspect = validated_data.get('suspect', instance.suspect)
         instance.priority = validated_data.get('priority', instance.priority)
         instance.tested_count = validated_data.get('tested_count', instance.tested_count)
         instance.diagnosis_count = validated_data.get('diagnosis_count', instance.diagnosis_count)
@@ -1426,7 +1449,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'suspect', 'priority',
                   'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
@@ -1440,15 +1463,15 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # a diagnosis can only be used once for a location-species-labID combination
-        # TODO: QUESTION: this would work better as a model unique_together but need to confirm with customer that our assumptions about species diagnosis are right
-        specdiag = SpeciesDiagnosis.objects.filter(id=data['species_diagnosis'].id).first()
-        other_specdiag_same_locspec_diag_ids = SpeciesDiagnosis.objects.filter(
-            location_species=specdiag.location_species, diagnosis=specdiag.diagnosis).values_list('id', flat=True)
-        org_combos = SpeciesDiagnosisOrganization.objects.filter(
-            species_diagnosis__in=other_specdiag_same_locspec_diag_ids).values_list('organization_id', flat=True)
-        if data['organization'].id in org_combos:
-            message = "A diagnosis can only be used once for a location-species-lab combination."
-            raise serializers.ValidationError(message)
+        # NOTE: this works better as a model unique_together constraint, confirmed with cooperator
+        # specdiag = SpeciesDiagnosis.objects.filter(id=data['species_diagnosis'].id).first()
+        # other_specdiag_same_locspec_diag_ids = SpeciesDiagnosis.objects.filter(
+        #     location_species=specdiag.location_species, diagnosis=specdiag.diagnosis).values_list('id', flat=True)
+        # org_combos = SpeciesDiagnosisOrganization.objects.filter(
+        #     species_diagnosis__in=other_specdiag_same_locspec_diag_ids).values_list('organization_id', flat=True)
+        # if data['organization'].id in org_combos:
+        #     message = "A diagnosis can only be used once for a location-species-lab combination."
+        #     raise serializers.ValidationError(message)
 
         return data
 
@@ -2077,7 +2100,7 @@ class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'tested_count', 'diagnosis_count', 'positive_count',
+        fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
                   'suspect_count', 'pooled',)
 
 
@@ -2087,7 +2110,7 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'confirmed', 'priority',
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'suspect', 'priority',
                   'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
                   'organizations_string',)
 
@@ -2149,7 +2172,7 @@ class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'confirmed', 'major',)
+        fields = ('diagnosis', 'diagnosis_string', 'suspect', 'major',)
 
 
 class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
@@ -2157,7 +2180,7 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EventDiagnosis
-        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'confirmed', 'major', 'priority',)
+        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'suspect', 'major', 'priority',)
 
 
 class EventDetailPublicSerializer(serializers.ModelSerializer):
@@ -2304,7 +2327,7 @@ class FlatSpeciesDiagnosisSerializer(serializers.ModelSerializer):
     species_diagnosis_priority = serializers.IntegerField(source='priority', read_only=True)
     speciesdx = serializers.StringRelatedField(source='diagnosis')
     causal = serializers.StringRelatedField(source='cause')
-    # confirmed = serializers.BooleanField(source='confirmed', read_only=True)
+    # suspect = serializers.BooleanField(source='suspect', read_only=True)
     number_tested = serializers.IntegerField(source='tested_count', read_only=True)
     number_positive = serializers.IntegerField(source='positive_count', read_only=True)
 
@@ -2314,7 +2337,7 @@ class FlatSpeciesDiagnosisSerializer(serializers.ModelSerializer):
                   'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
                   'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name',
                   'population', 'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
-                  'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed',
+                  'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'suspect',
                   'number_tested', 'number_positive')
 
 
@@ -2353,6 +2376,6 @@ class FlatEventDetailSerializer(serializers.Serializer):
     species_diagnosis_priority = serializers.IntegerField()
     speciesdx = serializers.CharField()
     causal = serializers.CharField()
-    confirmed = serializers.BooleanField()
+    suspect = serializers.BooleanField()
     number_tested = serializers.IntegerField()
     number_positive = serializers.IntegerField()

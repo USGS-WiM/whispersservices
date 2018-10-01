@@ -250,7 +250,7 @@ class EventCase(HistoryModel):
     """
 
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventcases')
-    case = models.IntegerField(null=True)
+    case = models.CharField(max_length=6, blank=True, default='')
 
     def __str__(self):
         return str(self.id)
@@ -673,7 +673,7 @@ class EventDiagnosis(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='eventdiagnoses')
-    confirmed = models.BooleanField(default=False)
+    suspect = models.BooleanField(default=True)
     major = models.BooleanField(default=False)
     priority = models.IntegerField(null=True)
 
@@ -694,7 +694,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='speciesdiagnoses')
     cause = models.ForeignKey('DiagnosisCause', models.PROTECT, null=True, related_name='speciesdiagnoses')
     basis = models.ForeignKey('DiagnosisBasis', models.PROTECT, null=True, related_name='speciesdiagnoses')
-    confirmed = models.BooleanField(default=False)
+    suspect = models.BooleanField(default=True)
     priority = models.IntegerField(null=True)
     tested_count = models.IntegerField(null=True)
     diagnosis_count = models.IntegerField(null=True)
@@ -711,7 +711,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # then automatically list 1 for number_positive if number_positive was zero or null.
         # If diagnosis is suspect and pooled is selected,
         # then automatically list 1 for number_suspect if number_suspect was zero or null.
-        if self.confirmed and self.pooled:
+        if not self.suspect and self.pooled:
             if self.positive_count is None or self.positive_count == 0:
                 self.positive_count = 1
             if self.suspect_count is None or self.suspect_count == 0:
@@ -750,24 +750,24 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         event.save()
 
         # if any speciesdiagnosis is confirmed, then the eventdiagnosis with the same diagnosis is also confirmed
-        if self.confirmed:
+        if not self.suspect:
             same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
-            same_eventdiagnosis_diagnosis.confirmed = True if same_eventdiagnosis_diagnosis else False
+            same_eventdiagnosis_diagnosis.suspect = False if same_eventdiagnosis_diagnosis else True
 
-        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (set to False),
+        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (set to True),
         # then the eventdiagnosis with the same diagnosis is also un-confirmed
         # (i.e, eventdiagnosis cannot be confirmed if no speciesdiagnoses with the same diagnosis are confirmed)
-        if not self.confirmed:
+        if self.suspect:
             no_confirmed_speciesdiagnoses = True
             same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
                 diagnosis=diagnosis.id, location_species__event_location__event=event.id)
             for same_speciesdiagnosis_diagnosis in same_speciesdiagnoses_diagnosis:
-                if same_speciesdiagnosis_diagnosis.confirmed:
+                if not same_speciesdiagnosis_diagnosis.suspect:
                     no_confirmed_speciesdiagnoses = False
             if no_confirmed_speciesdiagnoses:
                 same_eventdiagnosis_diag = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
                 if same_eventdiagnosis_diag is not None:
-                    same_eventdiagnosis_diag.confirmed = False
+                    same_eventdiagnosis_diag.suspect = True
                     same_eventdiagnosis_diag.save()
 
     # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
@@ -788,6 +788,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_speciesdiagnosis"
         verbose_name_plural = "speciesdiagnoses"
+        unique_together = ("location_species", "diagnosis")
 
 
 class SpeciesDiagnosisOrganization(HistoryModel):
@@ -803,6 +804,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
 
     class Meta:
         db_table = "whispers_speciesdiagnosisorganization"
+        unique_together = ("species_diagnosis", "organization")
 
 
 class DiagnosisBasis(HistoryNameModel):
@@ -1095,7 +1097,7 @@ class FlatEventDetails(models.Model):
     species_diagnosis_priority = models.IntegerField()
     speciesdx = models.CharField(max_length=128)
     causal = models.CharField(max_length=128)
-    confirmed = models.BooleanField()
+    suspect = models.BooleanField()
     number_tested = models.IntegerField()
     number_positive = models.IntegerField()
     lab = models.CharField(max_length=512)

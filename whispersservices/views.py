@@ -13,7 +13,6 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
-from drf_renderer_xlsx import renderers as xlsx_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
@@ -564,22 +563,17 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
 
-    # override the default finalize_response to assign a filename to CSV and XLSX files
+    # override the default finalize_response to assign a filename to CSV files
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
         renderer_format = self.request.accepted_renderer.format
         if renderer_format == 'csv':
             fileextension = '.csv'
-        elif renderer_format == 'xlsx':
-            fileextension = '.xlsx'
-        if renderer_format in ['csv', 'xlsx']:
             filename = 'event_summary_'
             filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
             filename += fileextension
@@ -596,7 +590,7 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
     #     #     'location_species__species', 'location_species__population_count', 'location_species__sick_count',
     #     #     'location_species__dead_count', 'location_species__sick_count_estimated',
     #     #     'location_species__dead_count_estimated', 'location_species__captive', 'location_species__age_bias',
-    #     #     'location_species__sex_bias', 'id', 'priority', 'diagnosis', 'cause', 'confirmed', 'tested_count',
+    #     #     'location_species__sex_bias', 'id', 'priority', 'diagnosis', 'cause', 'suspect', 'tested_count',
     #     #     'positive_count'
     #     # )
     #
@@ -1127,27 +1121,22 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         return Response(serializer.data, status=200)
 
-    # override the default renderers to use a csv or xslx renderer when requested
+    # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
 
-    # override the default finalize_response to assign a filename to CSV and XLSX files
+    # override the default finalize_response to assign a filename to CSV files
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
         renderer_format = self.request.accepted_renderer.format
         if renderer_format == 'csv':
             fileextension = '.csv'
-        elif renderer_format == 'xlsx':
-            fileextension = '.xlsx'
-        if renderer_format in ['csv', 'xlsx']:
             filename = 'event_summary_'
             filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
             filename += fileextension
@@ -1160,7 +1149,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         user = self.request.user
 
-        if frmt is not None and frmt in ['csv', 'xlsx']:
+        if frmt is not None and frmt == 'csv':
             return FlatEventSummaryPublicSerializer
         elif not user.is_authenticated:
             return EventSummaryPublicSerializer
@@ -1406,7 +1395,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
               'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
-              'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'confirmed', 'number_tested',
+              'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'suspect', 'number_tested',
               'number_positive', 'lab']
     labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
               'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Event Start Date',
@@ -1419,7 +1408,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'estimated_sick': 'Estimated Sick', 'estimated_dead': 'Estimated Dead', 'captive': 'Captive',
               'age_bias': 'Age Bias', 'sex_bias': 'Sex Bias', 'species_diagnosis_id': 'Species Diagnosis ID',
               'species_diagnosis_priority': 'Species Diagnosis Priority', 'speciesdx': 'Species Diagnosis',
-              'causal': 'Significance of Diagnosis for Species', 'confirmed': 'Species Diagnosis Suspect',
+              'causal': 'Significance of Diagnosis for Species', 'suspect': 'Species Diagnosis Suspect',
               'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed', 'lab': 'Lab'}
 
 
@@ -1436,27 +1425,22 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         print(serializer)
         return Response(serializer.data, status=200)
 
-    # override the default renderers to use a csv or xslx renderer when requested
+    # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
 
-    # override the default finalize_response to assign a filename to CSV and XLSX files
+    # override the default finalize_response to assign a filename to CSV files
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
         renderer_format = self.request.accepted_renderer.format
         if renderer_format == 'csv':
             fileextension = '.csv'
-        elif renderer_format == 'xlsx':
-            fileextension = '.xlsx'
-        if renderer_format in ['csv', 'xlsx']:
             filename = 'event_details_'
             filename += dt.now().strftime("%Y") + '-' + dt.now().strftime("%m") + '-' + dt.now().strftime("%d")
             filename += fileextension
