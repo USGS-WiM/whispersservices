@@ -110,14 +110,17 @@ class EventSerializer(serializers.ModelSerializer):
             # 2. Not every location needs a species at initiation, but at least one location must.
             # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
             # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead for at least one species in the event at the time of event initiation.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
+            #    and estimated_dead for at least one species in the event at the time of event initiation.
+            #    (sick + dead + estimated_sick + estimated_dead >= 1)
+            # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
+            # 6. estimated dead must be higher than known dead (estimated_dead > dead).
             if 'new_event_locations' in data:
                 min_start_date = False
                 min_location_species = False
                 min_species_count = False
-                est_count_gt_known_count = True
                 pop_is_valid = []
+                est_sick_is_valid = True
+                est_dead_is_valid = True
                 details = []
                 mortality_morbidity = EventStatus.objects.filter(id=1).first()
                 for item in data['new_event_locations']:
@@ -138,22 +141,23 @@ class EventSerializer(serializers.ModelSerializer):
                                 pop_is_valid.append(True)
                             else:
                                 pop_is_valid.append(False)
-                    if data['event_status'] == mortality_morbidity:
-                        spec = item['location_species']
-                        if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
-                            min_species_count = True
-                            if ('dead_count' in spec and spec['dead_count'] > 0
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_count_gt_known_count = False
-                        elif 'dead_count' in spec and spec['dead_count'] > 0:
-                            min_species_count = True
-                        elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
-                            min_species_count = True
-                            if ('sick_count' in spec and spec['sick_count'] > 0
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_count_gt_known_count = False
-                        elif 'sick_count' in spec and spec['sick_count'] > 0:
-                            min_species_count = True
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
+                        if data['event_status'] == mortality_morbidity:
+                            if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                min_species_count = True
+                            elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                min_species_count = True
+                            elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                min_species_count = True
+                            elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                min_species_count = True
                 if not min_start_date:
                     details.append("start_date is required for at least one new event_location.")
                 if not min_location_species:
@@ -166,8 +170,10 @@ class EventSerializer(serializers.ModelSerializer):
                     message = "At least one new location_species requires at least one species count in any of the"
                     message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
-                if not est_count_gt_known_count:
-                    details.append("Estimated sick or dead counts must always be more than known sick or dead counts.")
+                if not est_sick_is_valid:
+                    details.append("Estimated sick count must always be more than known sick count.")
+                if not est_dead_is_valid:
+                    details.append("Estimated dead count must always be more than known dead count.")
                 if details:
                     raise serializers.ValidationError(details)
 
@@ -183,10 +189,12 @@ class EventSerializer(serializers.ModelSerializer):
                 else:
                     end_date_is_valid = True
                     species_count_is_valid = []
-                    est_count_gt_known_count = True
+                    est_sick_is_valid = True
+                    est_dead_is_valid = True
                     details = []
                     mortality_morbidity = EventStatus.objects.filter(id=1).first()
                     for item in data['new_event_locations']:
+                        spec = item['location_species']
                         if ('start_date' in item and item['start_date'] is not None
                                 and 'end_date' in item and item['end_date'] is not None):
                             start_date = item['start_date']
@@ -195,20 +203,21 @@ class EventSerializer(serializers.ModelSerializer):
                                 end_date_is_valid = False
                         else:
                             end_date_is_valid = False
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
                         if data['event_status'] == mortality_morbidity:
-                            spec = item['location_species']
                             if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
                                 species_count_is_valid.append(True)
-                                if ('dead_count' in spec and spec['dead_count'] > 0
-                                        and not spec['dead_count_estimated'] > spec['dead_count']):
-                                    est_count_gt_known_count = False
                             elif 'dead_count' in spec and spec['dead_count'] > 0:
                                 species_count_is_valid.append(True)
                             elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
                                 species_count_is_valid.append(True)
-                                if ('sick_count' in spec and spec['sick_count'] > 0
-                                        and not spec['sick_count_estimated'] > spec['sick_count']):
-                                    est_count_gt_known_count = False
                             elif 'sick_count' in spec and spec['sick_count'] > 0:
                                 species_count_is_valid.append(True)
                             else:
@@ -219,9 +228,10 @@ class EventSerializer(serializers.ModelSerializer):
                         message = "Each location_species requires at least one species count in any of the following"
                         message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                         details.append(message)
-                    if not est_count_gt_known_count:
-                        message = "Estimated sick or dead counts must always be more than known sick or dead counts."
-                        details.append(message)
+                    if not est_sick_is_valid:
+                        details.append("Estimated sick count must always be more than known sick count.")
+                    if not est_dead_is_valid:
+                        details.append("Estimated dead count must always be more than known dead count.")
                     if details:
                         raise serializers.ValidationError(details)
         return data
@@ -1246,7 +1256,14 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 
 
 class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    diagnosis_string = serializers.SerializerMethodField()
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
@@ -1256,9 +1273,16 @@ class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.SerializerMethodField()
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
@@ -1336,7 +1360,14 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    diagnosis_string = serializers.SerializerMethodField()
 
     class Meta:
         model = SpeciesDiagnosis
@@ -1345,9 +1376,24 @@ class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    def get_cause_string(self, obj):
+        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name
+        suspect = obj.suspect
+        if suspect:
+            cause = cause + " suspect"
+        return cause
+
+    diagnosis_string = serializers.SerializerMethodField()
+    cause_string = serializers.SerializerMethodField()
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
 
     def validate(self, data):
 
@@ -1449,9 +1495,9 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'suspect', 'priority',
-                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
-                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
+                  'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled',
+                  'organizations', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
@@ -2096,7 +2142,14 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    diagnosis_string = serializers.SerializerMethodField()
 
     class Meta:
         model = SpeciesDiagnosis
@@ -2105,14 +2158,29 @@ class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    def get_cause_string(self, obj):
+        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name
+        suspect = obj.suspect
+        if suspect:
+            cause = cause + " suspect"
+        return cause
+
+    diagnosis_string = serializers.SerializerMethodField()
+    cause_string = serializers.SerializerMethodField()
     organizations_string = serializers.StringRelatedField(many=True, source='organizations')
 
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'basis', 'suspect', 'priority',
-                  'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled', 'organizations',
-                  'organizations_string',)
+        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
+                  'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled',
+                  'organizations', 'organizations_string',)
 
 
 class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
@@ -2168,7 +2236,14 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    diagnosis_string = serializers.SerializerMethodField()
 
     class Meta:
         model = EventDiagnosis
@@ -2176,7 +2251,14 @@ class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 
 class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    def get_diagnosis_string(self, obj):
+        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+        suspect = obj.suspect
+        if suspect:
+            diag = diag + " suspect"
+        return diag
+
+    diagnosis_string = serializers.SerializerMethodField()
 
     class Meta:
         model = EventDiagnosis
