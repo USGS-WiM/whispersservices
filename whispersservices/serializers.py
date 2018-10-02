@@ -985,6 +985,67 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_spec['modified_by'] = user
                 LocationSpecies.objects.create(**location_spec)
 
+        # calculate the event_location priorty value:
+        # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
+        # or number_positive (for surveillance). Order locations within counties similarly.
+        # TODO: figure out the following rule:
+        # If no numbers provided then order by country, state, and county (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_locations for the parent event except self, and sort by county name asc and affected count desc
+        evtlocs = EventLocation.objects.filter(
+            event=evt_location.event.id
+        ).exclude(
+            id=evt_location.id
+        ).annotate(
+            sick_ct=Sum('locationspecies__sick_count', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            sick_ct_est=Sum('locationspecies__sick_count_estimated', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            dead_ct=Sum('locationspecies__dead_count', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            dead_ct_est=Sum('locationspecies__dead_count_estimated', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            positive_ct=Sum('locationspecies__speciesdiagnoses__positive_count',
+                            filter=Q(event__event_type__exact=2))
+        ).annotate(
+           affected_count=(F('sick_ct') + F('sick_ct_est') + F('dead_ct') + F('dead_ct_est') + F('positive_ct'))
+        ).order_by('administrative_level_two__name', '-affected_count')
+        if not evtlocs:
+            evt_location.priority = priority
+        else:
+            location_species = LocationSpecies.objects.filter(event_location=evt_location.id)
+            sick_dead_counts = [max(spec.dead_count_estimated or 0, spec.dead_count or 0)
+                                + max(spec.sick_count_estimated or 0, spec.sick_count or 0)
+                                for spec in location_species]
+            self_sick_dead_count = sum(sick_dead_counts)
+            loc_species_ids = [spec.id for spec in location_species]
+            species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+            self_positive_count = sum(species_dx_positive_counts)
+            for evtloc in evtlocs:
+                # if self has not been updated,
+                # and self county name is less than or equal to this evtloc county name,
+                # and self affected count is greater than or equal to this evtloc affected count
+                # first update self priority then update this evtloc priority
+                if (not self_priority_updated
+                        and evt_location.administrative_level_two.name <= evtloc.administrative_level_two.name):
+                    if evt_location.event.event_type.id == 1:
+                        if self_sick_dead_count >= (evtloc.affected_count or 0):
+                            evt_location.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                    elif evt_location.event.event_type.id == 2:
+                        if self_positive_count >= (evtloc.affected_count or 0):
+                            evt_location.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                evtloc.priority = priority
+                evtloc.save()
+                priority += 1
+
+        evt_location.priority = evt_location.priority if self_priority_updated else priority
+        evt_location.save()
         return evt_location
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
@@ -1030,6 +1091,67 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # this need only happen on creation since the two fields should maintain no durable relationship
         if validated_data['name'] == '' and validated_data['gnis_name'] != '':
             validated_data['name'] = validated_data['gnis_name']
+
+        # calculate the priorty value:
+        # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
+        # or number_positive (for surveillance). Order locations within counties similarly.
+        # TODO: figure out the following rule:
+        # If no numbers provided then order by country, state, and county (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_locations for the parent event except self, and sort by county name asc and affected count desc
+        evtlocs = EventLocation.objects.filter(
+            event=validated_data['event'].id
+        ).exclude(
+            id=instance.id
+        ).annotate(
+            sick_ct=Sum('locationspecies__sick_count', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            sick_ct_est=Sum('locationspecies__sick_count_estimated', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            dead_ct=Sum('locationspecies__dead_count', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            dead_ct_est=Sum('locationspecies__dead_count_estimated', filter=Q(event__event_type__exact=1))
+        ).annotate(
+            positive_ct=Sum('locationspecies__speciesdiagnoses__positive_count',
+                            filter=Q(event__event_type__exact=2))
+        ).annotate(
+           affected_count=(F('sick_ct') + F('sick_ct_est') + F('dead_ct') + F('dead_ct_est') + F('positive_ct'))
+        ).order_by('administrative_level_two__name', '-affected_count')
+        if not evtlocs:
+            instance.priority = priority
+        else:
+            location_species = LocationSpecies.objects.filter(event_location=instance.id)
+            sick_dead_counts = [max(spec.dead_count_estimated or 0, spec.dead_count or 0)
+                                + max(spec.sick_count_estimated or 0, spec.sick_count or 0)
+                                for spec in location_species]
+            self_sick_dead_count = sum(sick_dead_counts)
+            loc_species_ids = [spec.id for spec in location_species]
+            species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+            self_positive_count = sum(species_dx_positive_counts)
+            for evtloc in evtlocs:
+                # if self has not been updated,
+                # and self county name is less than or equal to this evtloc county name,
+                # and self affected count is greater than or equal to this evtloc affected count
+                # first update self priority then update this evtloc priority
+                if (not self_priority_updated
+                        and instance.administrative_level_two.name <= evtloc.administrative_level_two.name):
+                    if instance.event.event_type.id == 1:
+                        if self_sick_dead_count >= (evtloc.affected_count or 0):
+                            instance.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                    elif instance.event.event_type.id == 2:
+                        if self_positive_count >= (evtloc.affected_count or 0):
+                            instance.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                evtloc.priority = priority
+                evtloc.save()
+                priority += 1
+
+        instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
         return instance
@@ -1440,6 +1562,29 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
 
+        # override the save method to calculate the priorty value:
+        # TODO: following rule cannot be applied because cause field does not exist on this model
+        # Order event diagnoses by causal (cause of death first, then cause of sickness,
+        # then incidental findings, then unknown) and within each causal category...
+        # (TODO: NOTE following rule is valid and enforceable right now:)
+        # ...by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
+        evtdiags = EventDiagnosis.objects.filter(
+            event=species_diagnosis.event).exclude(id=species_diagnosis.id).order_by('diagnosis__name')
+        for evtdiag in evtdiags:
+            # if self has not been updated and self diagnosis less than or equal to this evtdiag diagnosis name,
+            # first update self priority then update this evtdiag priority
+            if not self_priority_updated and species_diagnosis.diagnosis.name <= evtdiag.diagnosis.name:
+                species_diagnosis.priority = priority
+                priority += 1
+                self_priority_updated = True
+            evtdiag.priority = priority
+            evtdiag.save()
+            priority += 1
+        species_diagnosis.save()
+
         return species_diagnosis
 
     def update(self, instance, validated_data):
@@ -1489,6 +1634,29 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        # override the save method to calculate the priorty value:
+        # TODO: following rule cannot be applied because cause field does not exist on this model
+        # Order event diagnoses by causal (cause of death first, then cause of sickness,
+        # then incidental findings, then unknown) and within each causal category...
+        # (TODO: NOTE following rule is valid and enforceable right now:)
+        # ...by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
+        evtdiags = EventDiagnosis.objects.filter(
+            event=instance.event).exclude(id=instance.id).order_by('diagnosis__name')
+        for evtdiag in evtdiags:
+            # if self has not been updated and self diagnosis name is less than or equal to this evtdiag diagnosis name,
+            # first update self priority then update this evtdiag priority
+            if not self_priority_updated and instance.diagnosis.name <= evtdiag.diagnosis.name:
+                instance.priority = priority
+                priority += 1
+                self_priority_updated = True
+            evtdiag.priority = priority
+            evtdiag.save()
+            priority += 1
+
         instance.save()
 
         return instance
