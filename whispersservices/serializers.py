@@ -1,4 +1,5 @@
 from datetime import date
+from django.db.models import F, Q, Count, Case, When, Sum
 from django.forms.models import model_to_dict
 from rest_framework import serializers
 from whispersservices.models import *
@@ -1439,6 +1440,29 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
 
+        # override the save method to calculate the priorty value:
+        # TODO: following rule cannot be applied because cause field does not exist on this model
+        # Order event diagnoses by causal (cause of death first, then cause of sickness,
+        # then incidental findings, then unknown) and within each causal category...
+        # (TODO: NOTE following rule is valid and enforceable right now:)
+        # ...by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
+        evtdiags = EventDiagnosis.objects.filter(
+            event=event_diagnosis.event).exclude(id=event_diagnosis.id).order_by('diagnosis__name')
+        for evtdiag in evtdiags:
+            # if self has not been updated and self diagnosis less than or equal to this evtdiag diagnosis name,
+            # first update self priority then update this evtdiag priority
+            if not self_priority_updated and event_diagnosis.diagnosis.name <= evtdiag.diagnosis.name:
+                event_diagnosis.priority = priority
+                priority += 1
+                self_priority_updated = True
+            evtdiag.priority = priority
+            evtdiag.save()
+            priority += 1
+        event_diagnosis.save()
+
         return event_diagnosis
 
     def update(self, instance, validated_data):
@@ -1470,6 +1494,28 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 # If have "Undetermined" at the event level, should have no other diagnoses at event level.
                 other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
                 [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+
+        # override the save method to calculate the priorty value:
+        # TODO: following rule cannot be applied because cause field does not exist on this model
+        # Order event diagnoses by causal (cause of death first, then cause of sickness,
+        # then incidental findings, then unknown) and within each causal category...
+        # (TODO: NOTE following rule is valid and enforceable right now:)
+        # ...by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
+        evtdiags = EventDiagnosis.objects.filter(
+            event=instance.event).exclude(id=instance.id).order_by('diagnosis__name')
+        for evtdiag in evtdiags:
+            # if self has not been updated and self diagnosis name is less than or equal to this evtdiag diagnosis name,
+            # first update self priority then update this evtdiag priority
+            if not self_priority_updated and instance.diagnosis.name <= evtdiag.diagnosis.name:
+                instance.priority = priority
+                priority += 1
+                self_priority_updated = True
+            evtdiag.priority = priority
+            evtdiag.save()
+            priority += 1
 
         instance.save()
 
@@ -1562,29 +1608,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
 
-        # override the save method to calculate the priorty value:
-        # TODO: following rule cannot be applied because cause field does not exist on this model
-        # Order event diagnoses by causal (cause of death first, then cause of sickness,
-        # then incidental findings, then unknown) and within each causal category...
-        # (TODO: NOTE following rule is valid and enforceable right now:)
-        # ...by diagnosis name (alphabetical).
-        priority = 1
-        self_priority_updated = False
-        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
-        evtdiags = EventDiagnosis.objects.filter(
-            event=species_diagnosis.event).exclude(id=species_diagnosis.id).order_by('diagnosis__name')
-        for evtdiag in evtdiags:
-            # if self has not been updated and self diagnosis less than or equal to this evtdiag diagnosis name,
-            # first update self priority then update this evtdiag priority
-            if not self_priority_updated and species_diagnosis.diagnosis.name <= evtdiag.diagnosis.name:
-                species_diagnosis.priority = priority
-                priority += 1
-                self_priority_updated = True
-            evtdiag.priority = priority
-            evtdiag.save()
-            priority += 1
-        species_diagnosis.save()
-
         return species_diagnosis
 
     def update(self, instance, validated_data):
@@ -1634,28 +1657,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
-
-        # override the save method to calculate the priorty value:
-        # TODO: following rule cannot be applied because cause field does not exist on this model
-        # Order event diagnoses by causal (cause of death first, then cause of sickness,
-        # then incidental findings, then unknown) and within each causal category...
-        # (TODO: NOTE following rule is valid and enforceable right now:)
-        # ...by diagnosis name (alphabetical).
-        priority = 1
-        self_priority_updated = False
-        # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
-        evtdiags = EventDiagnosis.objects.filter(
-            event=instance.event).exclude(id=instance.id).order_by('diagnosis__name')
-        for evtdiag in evtdiags:
-            # if self has not been updated and self diagnosis name is less than or equal to this evtdiag diagnosis name,
-            # first update self priority then update this evtdiag priority
-            if not self_priority_updated and instance.diagnosis.name <= evtdiag.diagnosis.name:
-                instance.priority = priority
-                priority += 1
-                self_priority_updated = True
-            evtdiag.priority = priority
-            evtdiag.save()
-            priority += 1
 
         instance.save()
 
