@@ -97,6 +97,15 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 class EventViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
 
+    # TODO: would this be true?
+    def destroy(self, request, *args, **kwargs):
+        # if the event is complete, it cannot be deleted
+        if self.get_object().event.complete:
+            message = "A complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventViewSet, self).destroy(request, *args, **kwargs)
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         user = self.request.user
@@ -182,22 +191,12 @@ class EventSuperEventViewSet(HistoryViewSet):
     queryset = EventSuperEvent.objects.all()
     serializer_class = EventSuperEventSerializer
 
-    def update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to superevents can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
-        return super(EventSuperEventViewSet, self).update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to superevents can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
-        return super(EventSuperEventViewSet, self).partial_update(request, *args, **kwargs)
-
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to superevents can be deleted
         if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
+            message = "SuperEvent for a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
         return super(EventSuperEventViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -229,6 +228,14 @@ class EventStatusViewSet(HistoryViewSet):
 class EventAbstractViewSet(HistoryViewSet):
     serializer_class = EventAbstractSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to abstracts can be deleted
+        if self.get_object().event.complete:
+            message = "Abstracts from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventAbstractViewSet, self).destroy(request, *args, **kwargs)
+
     def get_queryset(self):
         queryset = EventAbstract.objects.all()
         contains = self.request.query_params.get('contains', None)
@@ -241,37 +248,37 @@ class EventCaseViewSet(HistoryViewSet):
     queryset = EventCase.objects.all()
     serializer_class = EventCaseSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to cases can be deleted
+        if self.get_object().event.complete:
+            message = "Cases from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventCaseViewSet, self).destroy(request, *args, **kwargs)
+
 
 class EventLabsiteViewSet(HistoryViewSet):
     queryset = EventLabsite.objects.all()
     serializer_class = EventLabsiteSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to labsites can be deleted
+        if self.get_object().event.complete:
+            message = "Labsites from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventLabsiteViewSet, self).destroy(request, *args, **kwargs)
+
 
 class EventOrganizationViewSet(HistoryViewSet):
     queryset = EventOrganization.objects.all()
 
-    message_complete = "Organizations from a complete event may not be changed"
-    message_complete += " unless the event is first re-opened by the event owner or an administrator."
-
-    def update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to organizations can be updated
-        if self.get_object().event.complete:
-            # raise APIException("Relationships of a complete event may not be changed.")
-            raise APIException(self.message_complete)
-        return super(EventOrganizationViewSet, self).update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to organizations can be updated
-        if self.get_object().event.complete:
-            # raise APIException("Relationships of a complete event may not be changed.")
-            raise APIException(self.message_complete)
-        return super(EventOrganizationViewSet, self).partial_update(request, *args, **kwargs)
-
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to organizations can be deleted
         if self.get_object().event.complete:
-            # raise APIException("Relationships of a complete event may not be changed.")
-            raise APIException(self.message_complete)
+            message = "Organizations from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -306,22 +313,12 @@ class EventContactViewSet(HistoryViewSet):
     queryset = EventContact.objects.all()
     serializer_class = EventContactSerializer
 
-    def update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to contacts can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
-        return super(EventContactViewSet, self).update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to contacts can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
-        return super(EventContactViewSet, self).partial_update(request, *args, **kwargs)
-
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to contacts can be deleted
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
+        if self.get_object().event.complete:
+            message = "Contacts from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
         return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -335,6 +332,14 @@ class EventContactViewSet(HistoryViewSet):
 class EventLocationViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = EventLocation.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to locations can be deleted
+        if self.get_object().event.complete:
+            message = "Locations from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventLocationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -367,6 +372,14 @@ class EventLocationViewSet(HistoryViewSet):
 class EventLocationContactViewSet(HistoryViewSet):
     queryset = EventLocationContact.objects.all()
     serializer_class = EventLocationContactSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to location contacts can be deleted
+        if self.get_object().event_location.event.complete:
+            message = "Contacts from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventLocationContactViewSet, self).destroy(request, *args, **kwargs)
 
 
 class CountryViewSet(HistoryViewSet):
@@ -412,6 +425,14 @@ class EventLocationFlywayViewSet(HistoryViewSet):
     queryset = EventLocationFlyway.objects.all()
     serializer_class = EventLocationFlywaySerializer
 
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to location flyways can be deleted
+        if self.get_object().event_location.event.complete:
+            message = "Flyways from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventLocationFlywayViewSet, self).destroy(request, *args, **kwargs)
+
 
 class FlywayViewSet(HistoryViewSet):
     queryset = Flyway.objects.all()
@@ -427,6 +448,14 @@ class FlywayViewSet(HistoryViewSet):
 
 class LocationSpeciesViewSet(HistoryViewSet):
     queryset = LocationSpecies.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to location species can be deleted
+        if self.get_object().event_location.event.complete:
+            message = "Species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(LocationSpeciesViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -500,6 +529,14 @@ class EventDiagnosisViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = EventDiagnosis.objects.all()
 
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to diagnoses can be deleted
+        if self.get_object().event.complete:
+            message = "Diagnoses from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
+
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
@@ -531,6 +568,14 @@ class EventDiagnosisViewSet(HistoryViewSet):
 class SpeciesDiagnosisViewSet(HistoryViewSet):
     permission_classes = (DRYPermissions,)
     queryset = SpeciesDiagnosis.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to location species diagnoses can be deleted
+        if self.get_object().location_species.event_location.event.complete:
+            message = "Diagnoses from a species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(SpeciesDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -803,6 +848,14 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
     queryset = SpeciesDiagnosisOrganization.objects.all()
     serializer_class = SpeciesDiagnosisOrganizationSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        # if the related event is complete, no relates to location species diagnosis organizations can be deleted
+        if self.get_object().species_diagnosis.location_species.event_location.event.complete:
+            message = "Diagnoses from a species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise APIException(message)
+        return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
 class DiagnosisBasisViewSet(HistoryViewSet):

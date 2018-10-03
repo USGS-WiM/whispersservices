@@ -1,5 +1,6 @@
 from datetime import date
 from django.db.models import F, Q, Count, Case, When, Sum
+from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers
 from whispersservices.models import *
@@ -7,6 +8,7 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 OVERRIDE_ROLE_NAMES = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager']
 
+# TODO: implement required field validations for nested objects
 
 ######
 #
@@ -778,6 +780,15 @@ class EventSuperEventSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "SuperEvent for a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
+
     class Meta:
         model = EventSuperEvent
         fields = ('id', 'event', 'superevent', 'created_date', 'created_by', 'modified_date', 'modified_by',)
@@ -833,6 +844,15 @@ class EventAbstractSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Abstracts from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
+
     class Meta:
         model = EventAbstract
         fields = ('id', 'event', 'text', 'lab_id', 'created_date', 'created_by', 'modified_date', 'modified_by',)
@@ -842,6 +862,15 @@ class EventCaseSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Cases from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
+
     class Meta:
         model = EventCase
         fields = ('id', 'event', 'case', 'created_date', 'created_by', 'modified_date', 'modified_by',)
@@ -850,6 +879,15 @@ class EventCaseSerializer(serializers.ModelSerializer):
 class EventLabsiteSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Labsites from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
 
     class Meta:
         model = EventLabsite
@@ -866,6 +904,15 @@ class EventOrganizationPublicSerializer(serializers.ModelSerializer):
 class EventOrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Organizations from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
 
     def create(self, validated_data):
 
@@ -888,11 +935,6 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
         return event_organization
 
     def update(self, instance, validated_data):
-
-        if instance.event.complete:
-            message = "Organizations from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
 
         instance.event = validated_data.get('event', instance.event)
         instance.organization = validated_data.get('organization', instance.organization)
@@ -927,6 +969,15 @@ class EventContactSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Contacts from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
+
     class Meta:
         model = EventContact
         fields = ('id', 'event', 'contact', 'created_date', 'created_by', 'modified_date', 'modified_by',)
@@ -960,6 +1011,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     new_location_contacts = serializers.ListField(write_only=True, required=False)
     new_location_species = serializers.ListField(write_only=True, required=False)
+
+    def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Locations from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
 
     def create(self, validated_data):
         user = self.context['request'].user
@@ -1036,7 +1096,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_spec['modified_by'] = user
                 LocationSpecies.objects.create(**location_spec)
 
-        # calculate the event_location priorty value:
+        # calculate the priorty value:
         # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
         # or number_positive (for surveillance). Order locations within counties similarly.
         # TODO: figure out the following rule:
@@ -1060,7 +1120,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
             positive_ct=Sum('locationspecies__speciesdiagnoses__positive_count',
                             filter=Q(event__event_type__exact=2))
         ).annotate(
-           affected_count=(F('sick_ct') + F('sick_ct_est') + F('dead_ct') + F('dead_ct_est') + F('positive_ct'))
+            affected_count=(Coalesce(F('sick_ct'), 0) + Coalesce(F('sick_ct_est'), 0) + Coalesce(F('dead_ct'), 0)
+                            + Coalesce(F('dead_ct_est'), 0) + Coalesce(F('positive_ct'), 0))
         ).order_by('administrative_level_two__name', '-affected_count')
         if not evtlocs:
             evt_location.priority = priority
@@ -1072,7 +1133,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
             self_sick_dead_count = sum(sick_dead_counts)
             loc_species_ids = [spec.id for spec in location_species]
             species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                location_species_id__in=loc_species_ids).values_list(
+                'positive_count', flat=True).exclude(positive_count__isnull=True)
             self_positive_count = sum(species_dx_positive_counts)
             for evtloc in evtlocs:
                 # if self has not been updated,
@@ -1101,11 +1163,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
     def update(self, instance, validated_data):
-
-        if instance.event.complete:
-            message = "Locations from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
 
         # remove child location_contacts list from the request
         if 'new_location_contacts' in validated_data:
@@ -1167,7 +1224,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
             positive_ct=Sum('locationspecies__speciesdiagnoses__positive_count',
                             filter=Q(event__event_type__exact=2))
         ).annotate(
-           affected_count=(F('sick_ct') + F('sick_ct_est') + F('dead_ct') + F('dead_ct_est') + F('positive_ct'))
+           affected_count=(Coalesce(F('sick_ct'), 0) + Coalesce(F('sick_ct_est'), 0) + Coalesce(F('dead_ct'), 0)
+                           + Coalesce(F('dead_ct_est'), 0) + Coalesce(F('positive_ct'), 0))
         ).order_by('administrative_level_two__name', '-affected_count')
         if not evtlocs:
             instance.priority = priority
@@ -1179,7 +1237,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
             self_sick_dead_count = sum(sick_dead_counts)
             loc_species_ids = [spec.id for spec in location_species]
             species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                location_species_id__in=loc_species_ids).values_list(
+                'positive_count', flat=True).exclude(positive_count__isnull=True)
             self_positive_count = sum(species_dx_positive_counts)
             for evtloc in evtlocs:
                 # if self has not been updated,
@@ -1220,6 +1279,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
 class EventLocationContactSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+
+    def validate(self, data):
+
+        if 'event_location' in data and data['event_location'].event.complete:
+            message = "Contacts from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
 
     class Meta:
         model = EventLocationContact
@@ -1283,6 +1351,13 @@ class EventLocationFlywaySerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def validate(self, data):
+
+        if 'event_location' in data and data['event_location'].event.complete:
+            message = "Flyways from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
     class Meta:
         model = EventLocationFlyway
         fields = ('id', 'event_location', 'flyway',
@@ -1317,12 +1392,72 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
-    def update(self, instance, validated_data):
+    def validate(self, data):
 
-        if instance.event_location.event.complete:
+        if 'event_location' in data and data['event_location'].event.complete:
             message = "Species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+
+        return data
+
+    def create(self, validated_data):
+
+        location_species = LocationSpecies.objects.create(**validated_data)
+
+        # calculate the priorty value:
+        # Order species by decreasing number of sick plus dead (for morbidity/mortality events)
+        # or number_positive (for surveillance).
+        # If no numbers were provided then order by SpeciesName (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all location_species for the parent event_location except self, and sort by affected count desc
+        locspecs = LocationSpecies.objects.filter(
+            event_location=validated_data['event_location'].id
+        ).exclude(
+            id=location_species.id
+        ).annotate(
+            sick_dead_ct=(Coalesce(F('sick_count'), 0) + Coalesce(F('sick_count_estimated'), 0)
+                          + Coalesce(F('dead_count'), 0) + Coalesce(F('dead_count_estimated'), 0))
+        ).annotate(
+            positive_ct=Sum('speciesdiagnoses__positive_count', filter=Q(event_location__event__event_type__exact=2))
+        ).annotate(
+            affected_count=Coalesce(F('sick_dead_ct'), 0) + Coalesce(F('positive_ct'), 0)
+        ).order_by('-affected_count', 'species__name')
+        if not locspecs:
+            location_species.priority = priority
+        else:
+            self_sick_dead_count = (max(location_species.dead_count_estimated or 0, location_species.dead_count or 0)
+                                    + max(location_species.sick_count_estimated or 0, location_species.sick_count or 0))
+            species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                location_species_id__exact=location_species.id).values_list(
+                'positive_count', flat=True).exclude(positive_count__isnull=True)
+            self_positive_count = sum(species_dx_positive_counts)
+            for locspec in locspecs:
+                # if self has not been updated,
+                # and self affected count is greater than or equal to this locspec affected count,
+                # first update self priority then update this locspec priority
+                if not self_priority_updated:
+                    if location_species.event_location.event.event_type.id == 1:
+                        if self_sick_dead_count >= (locspec.affected_count or 0):
+                            location_species.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                    elif location_species.event_location.event.event_type.id == 2:
+                        if self_positive_count >= (locspec.affected_count or 0):
+                            location_species.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                locspec.priority = priority
+                locspec.save()
+                priority += 1
+
+        location_species.priority = location_species.priority if self_priority_updated else priority
+        location_species.save()
+
+        return location_species
+
+    def update(self, instance, validated_data):
 
         # update the LocationSpecies object
         instance.event_location = validated_data.get('event_location', instance.event_location)
@@ -1353,6 +1488,54 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 message += " and sick_count (where those counts are the maximum of the estimated or known count)"
                 raise serializers.ValidationError(message)
 
+        # calculate the priorty value:
+        # Order species by decreasing number of sick plus dead (for morbidity/mortality events)
+        # or number_positive (for surveillance).
+        # If no numbers were provided then order by SpeciesName (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all location_species for the parent event_location except self, and sort by affected count desc
+        locspecs = LocationSpecies.objects.filter(
+            event_location=validated_data['event_location'].id
+        ).exclude(
+            id=instance.id
+        ).annotate(
+            sick_dead_ct=(Coalesce(F('sick_count'), 0) + Coalesce(F('sick_count_estimated'), 0)
+                          + Coalesce(F('dead_count'), 0) + Coalesce(F('dead_count_estimated'), 0))
+        ).annotate(
+            positive_ct=Sum('speciesdiagnoses__positive_count', filter=Q(event_location__event__event_type__exact=2))
+        ).annotate(
+            affected_count=Coalesce(F('sick_dead_ct'), 0) + Coalesce(F('positive_ct'), 0)
+        ).order_by('-affected_count', 'species__name')
+        if not locspecs:
+            instance.priority = priority
+        else:
+            self_sick_dead_count = (max(instance.dead_count_estimated or 0, instance.dead_count or 0)
+                                    + max(instance.sick_count_estimated or 0, instance.sick_count or 0))
+            species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                location_species_id__exact=instance.id).values_list(
+                'positive_count', flat=True).exclude(positive_count__isnull=True)
+            self_positive_count = sum(species_dx_positive_counts)
+            for locspec in locspecs:
+                # if self has not been updated,
+                # and self affected count is greater than or equal to this locspec affected count,
+                # first update self priority then update this locspec priority
+                if not self_priority_updated:
+                    if instance.event_location.event.event_type.id == 1:
+                        if self_sick_dead_count >= (locspec.affected_count or 0):
+                            instance.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                    elif instance.event_location.event.event_type.id == 2:
+                        if self_positive_count >= (locspec.affected_count or 0):
+                            instance.priority = priority
+                            priority += 1
+                            self_priority_updated = True
+                locspec.priority = priority
+                locspec.save()
+                priority += 1
+
+        instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
         return instance
@@ -1460,11 +1643,18 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
     def validate(self, data):
+
+        if 'event' in data and data['event'].complete:
+            message = "Diagnosis from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
         event_specdiags = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=data['event'])
         if not event_specdiags or data['diagnosis'] not in [specdiag.diagnosis for specdiag in event_specdiags]:
             message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
             raise serializers.ValidationError(message)
+
         return data
 
     def create(self, validated_data):
@@ -1516,11 +1706,6 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         return event_diagnosis
 
     def update(self, instance, validated_data):
-
-        if instance.event.complete:
-            message = "Diagnosis from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
 
         # update the EventDiagnosis object
         instance.event = validated_data.get('event', instance.event)
@@ -1615,6 +1800,11 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
+        if 'location_species' in data and data['location_species'].event_location.event.complete:
+            message = "Diagnoses from a species from a location from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
         # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # If 3 is selected user must provide a lab.
@@ -1661,11 +1851,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         return species_diagnosis
 
     def update(self, instance, validated_data):
-
-        if instance.location_species.event_location.event.complete:
-            message = "Diagnosis from a species from a location from a complete event may not be changed"
-            message += " unless the event is first re-opened by an administrator."
-            raise serializers.ValidationError(message)
 
         # for positive_count, only allowed to enter >0 if provide laboratory name.
         if validated_data['positive_count'] > 0 and len(instance.organizations) == 0:
@@ -1724,6 +1909,12 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
     modified_by = serializers.StringRelatedField()
 
     def validate(self, data):
+
+        if 'species_diagnosis' in data and data['species_diagnosis'].location_species.event_location.event.complete:
+            message = "Organizations from a diagnosis from a species from a location from a complete event"
+            message += " may not be changed unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
         if not data['organization'].laboratory:
             raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
