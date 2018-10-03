@@ -250,22 +250,28 @@ class EventLabsiteViewSet(HistoryViewSet):
 class EventOrganizationViewSet(HistoryViewSet):
     queryset = EventOrganization.objects.all()
 
+    message_complete = "Organizations from a complete event may not be changed"
+    message_complete += " unless the event is first re-opened by the event owner or an administrator."
+
     def update(self, request, *args, **kwargs):
         # if the related event is complete, no relates to organizations can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
+        if self.get_object().event.complete:
+            # raise APIException("Relationships of a complete event may not be changed.")
+            raise APIException(self.message_complete)
         return super(EventOrganizationViewSet, self).update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
         # if the related event is complete, no relates to organizations can be updated
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
+        if self.get_object().event.complete:
+            # raise APIException("Relationships of a complete event may not be changed.")
+            raise APIException(self.message_complete)
         return super(EventOrganizationViewSet, self).partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to organizations can be deleted
-        if self.get_object().complete:
-            raise APIException("Relationships of a complete event may not be changed.")
+        if self.get_object().event.complete:
+            # raise APIException("Relationships of a complete event may not be changed.")
+            raise APIException(self.message_complete)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data

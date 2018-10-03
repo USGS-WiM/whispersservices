@@ -867,6 +867,56 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
+    def create(self, validated_data):
+
+        event_organization = EventOrganization.objects.create(**validated_data)
+
+        # calculate the priorty value:
+        # Sort by owner organization first, then by order of entry.
+        priority = 1
+        evt_orgs = EventOrganization.objects.filter(organization=event_organization.organization).order_by('id')
+        for evt_org in evt_orgs:
+            if evt_org.id == event_organization.id:
+                event_organization.priority = priority
+            else:
+                evt_org.priority = priority
+                evt_org.save()
+            priority += 1
+
+        event_organization.save()
+
+        return event_organization
+
+    def update(self, instance, validated_data):
+
+        if instance.event.complete:
+            message = "Organizations from a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        instance.event = validated_data.get('event', instance.event)
+        instance.organization = validated_data.get('organization', instance.organization)
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            instance.modified_by = self.context['request'].user
+        else:
+            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+
+        # calculate the priorty value:
+        # Sort by owner organization first, then by order of entry.
+        priority = 1
+        evt_orgs = EventOrganization.objects.filter(organization=instance.organization).order_by('id')
+        for evt_org in evt_orgs:
+            if evt_org.id == instance.id:
+                instance.priority = priority
+            else:
+                evt_org.priority = priority
+                evt_org.save()
+            priority += 1
+
+        instance.save()
+
+        return instance
+
     class Meta:
         model = EventOrganization
         fields = ('id', 'event', 'organization', 'priority',
@@ -1440,7 +1490,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
 
-        # override the save method to calculate the priorty value:
+        # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
         # Order event diagnoses by causal (cause of death first, then cause of sickness,
         # then incidental findings, then unknown) and within each causal category...
@@ -1495,7 +1545,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
                 [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
 
-        # override the save method to calculate the priorty value:
+        # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
         # Order event diagnoses by causal (cause of death first, then cause of sickness,
         # then incidental findings, then unknown) and within each causal category...
