@@ -941,6 +941,9 @@ class OrganizationViewSet(HistoryViewSet):
         if contacts is not None:
             contacts_list = contacts.split(',')
             queryset = queryset.filter(contacts__in=contacts_list)
+        laboratory = self.request.query_params.get('laboratory', None)
+        if laboratory is not None:
+            queryset = queryset.filter(contacts__exact=laboratory)
 
         # all requests from anonymous users must only return published data
         if not user.is_authenticated:
