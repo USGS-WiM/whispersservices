@@ -632,6 +632,9 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
                 | Q(location_species__event_location__event__created_by__organization__exact=user.organization)
             ).distinct()
             # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(location_species__event_location__event__public=True)
@@ -1227,6 +1230,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
                 #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(public=True)
