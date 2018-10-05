@@ -13,7 +13,6 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
-from drf_renderer_xlsx import renderers as xlsx_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
@@ -79,6 +78,12 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
 
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
+
 
 class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
@@ -93,6 +98,12 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
+
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
 
 
 ######
@@ -1047,6 +1058,12 @@ class SearchViewSet(viewsets.ModelViewSet):
         serializer = SearchPublicSerializer(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
+
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
