@@ -1159,6 +1159,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         evt_location.priority = evt_location.priority if self_priority_updated else priority
         evt_location.save()
+
         return evt_location
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
@@ -1658,25 +1659,25 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        pending = Diagnosis.objects.filter(name='Pending').first().id
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-
-        # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-        # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
-        if 'diagnosis' in validated_data and not validated_data['diagnosis']:
-            event = Event.objects.filter(id=validated_data['event']).first()
-            if not event.complete:
-                validated_data['diagnosis'] = pending
-            else:
-                validated_data['diagnosis'] = undetermined
-                # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-                other_event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
-
-        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-            validated_data['suspect'] = False
+        # pending = Diagnosis.objects.filter(name='Pending').first().id
+        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        #
+        # # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+        # # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+        # if 'diagnosis' in validated_data and not validated_data['diagnosis']:
+        #     event = Event.objects.filter(id=validated_data['event']).first()
+        #     if not event.complete:
+        #         validated_data['diagnosis'] = pending
+        #     else:
+        #         validated_data['diagnosis'] = undetermined
+        #         # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+        #         other_event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+        #         [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+        #
+        # # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        # if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
+        #     validated_data['suspect'] = False
 
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
 
@@ -1701,6 +1702,8 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             evtdiag.priority = priority
             evtdiag.save()
             priority += 1
+
+        event_diagnosis.priority = event_diagnosis.priority if self_priority_updated else priority
         event_diagnosis.save()
 
         return event_diagnosis
@@ -1720,15 +1723,15 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        pending = Diagnosis.objects.filter(name='Pending').first().id
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        if instance.diagnosis in [pending, undetermined]:
-            instance.suspect = False
-
-            if instance.diagnosis == undetermined:
-                # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-                other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
-                [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+        # pending = Diagnosis.objects.filter(name='Pending').first().id
+        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        # if instance.diagnosis in [pending, undetermined]:
+        #     instance.suspect = False
+        #
+        #     if instance.diagnosis == undetermined:
+        #         # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+        #         other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
+        #         [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
 
         # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
@@ -1752,6 +1755,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             evtdiag.save()
             priority += 1
 
+        instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
         return instance
@@ -1805,32 +1809,47 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
+        suspect = data['suspect'] if 'suspect' in data and data['suspect'] else None
+        tested_count = data['tested_count'] if 'tested_count' in data and data['tested_count'] is not None else None
+        suspect_count = data['suspect_count'] if 'suspect_count' in data and data['suspect_count'] is not None else None
+        pos_count = data['positive_count'] if 'positive_count' in data and data['positive_count'] is not None else None
+
         # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # If 3 is selected user must provide a lab.
-        if not data['suspect']:
-            if data['basis'] != 3:
-                message = "The basis of diagnosis can only be 'Necropsy and/or ancillary tests performed"
-                message += " at a diagnostic laboratory' when the diagnosis is non-suspect."
-                raise serializers.ValidationError(message)
-
-        # Within each species diagnosis, number_with_diagnosis =< number_tested.
-        if not (data['diagnosis_count'] <= data['tested_count']):
-            raise serializers.ValidationError("The diagnosed count cannot be more than the diagnosed count.")
-
-        # Within each species diagnosis, number_positive+number_suspect =< number_tested
-        if not (data['positive_count'] + data['suspect_count'] <= data['tested_count']):
-            message = "The positive count and suspect count together cannot be more than the diagnosed count."
+        if suspect and 'basis' in data and data['basis'] in [1, 2, 4]:
+            message = "The basis of diagnosis can only be 'Necropsy and/or ancillary tests performed"
+            message += " at a diagnostic laboratory' when the diagnosis is non-suspect."
             raise serializers.ValidationError(message)
+
+        if tested_count is not None:
+            # Within each species diagnosis, number_with_diagnosis =< number_tested.
+            if ('diagnosis_count' in data and data['diagnosis_count'] is not None
+                    and not data['diagnosis_count'] <= tested_count):
+                raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
+            # Within each species diagnosis, number_positive+number_suspect =< number_tested
+            if pos_count and suspect_count and not (pos_count + suspect_count <= tested_count):
+                message = "The positive count and suspect count together cannot be more than the diagnosed count."
+                raise serializers.ValidationError(message)
+            elif pos_count and not (pos_count <= tested_count):
+                message = "The positive count cannot be more than the diagnosed count."
+                raise serializers.ValidationError(message)
+            elif suspect_count and not (suspect_count <= tested_count):
+                message = "The suspect count together cannot be more than the diagnosed count."
+                raise serializers.ValidationError(message)
+        # Within each species diagnosis, number_with_diagnosis =< number_tested.
+        # here, tested_count was not submitted, so if diagnosis_count was submitted and is not null, raise an error
+        elif 'diagnosis_count' in data and data['diagnosis_count'] is not None:
+            raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
 
         # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
         # else diagnosis is suspect (suspect=True) and so number_positive must be zero
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # Only allowed to enter >0 if provide laboratory name.
-        if not data['suspect'] and data['positive_count'] == 0:
+        if not suspect and (not pos_count or pos_count > 0):
             raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
 
-        if data['pooled'] and data['tested_count'] < 2:
+        if 'pooled' in data and data['pooled'] and tested_count <= 1:
             raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
 
         return data
@@ -1841,19 +1860,64 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
         # (TODO: NOTE following rule is valid and enforceable right now:)
         # never see "Pending suspect" or "Undetermined suspect" on front end.
-        pending = Diagnosis.objects.filter(name='Pending').first().id
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-            validated_data['suspect'] = False
+        # pending = Diagnosis.objects.filter(name='Pending').first().id
+        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        # if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
+        #     validated_data['suspect'] = False
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
+
+        # calculate the priorty value:
+        # TODO: the following...
+        # Order species diagnoses by causal
+        # (cause of death first, then cause of sickness, then incidental findings, then unknown)
+        # and within each causal category by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all species_diagnoses for the parent location_species except self, and sort by diagnosis cause then name
+        specdiags = SpeciesDiagnosis.objects.filter(
+            location_species=species_diagnosis.location_species).exclude(
+            id=species_diagnosis.id).order_by('cause__id', 'diagnosis__name')
+        for specdiag in specdiags:
+            # if self has not been updated and self diagnosis cause equal to or less than this specdiag diagnosis cause,
+            # and self diagnosis name equal to or less than this specdiag diagnosis name
+            # first update self priority then update this specdiag priority
+            if not self_priority_updated:
+                # first check if self diagnosis cause is equal to this specdiag diagnosis cause
+                if species_diagnosis.cause.id == specdiag.cause.id:
+                    if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif species_diagnosis.diagnosis.name < specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                # else check if self diagnosis cause is less than this specdiag diagnosis cause
+                elif species_diagnosis.cause.id < specdiag.cause.id:
+                    if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif species_diagnosis.diagnosis.name < specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+            specdiag.priority = priority
+            specdiag.save()
+            priority += 1
+
+        species_diagnosis.priority = species_diagnosis.priority if self_priority_updated else priority
+        species_diagnosis.save()
 
         return species_diagnosis
 
     def update(self, instance, validated_data):
 
+        orgs = SpeciesDiagnosisOrganization.objects.filter(species_diagnosis=instance.id)
+
         # for positive_count, only allowed to enter >0 if provide laboratory name.
-        if validated_data['positive_count'] > 0 and len(instance.organizations) == 0:
+        if validated_data['positive_count'] > 0 and len(orgs) == 0:
             message = "The positive count cannot be greater than zero if there is no laboratory for this diagnosis."
             raise serializers.ValidationError(message)
 
@@ -1871,10 +1935,10 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        pending = Diagnosis.objects.filter(name='Pending').first().id
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        if instance.diagnosis in [pending, undetermined]:
-            instance.suspect = False
+        # pending = Diagnosis.objects.filter(name='Pending').first().id
+        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
+        # if instance.diagnosis in [pending, undetermined]:
+        #     instance.suspect = False
 
         # update the SpeciesDiagnosis object
         instance.location_species = validated_data.get('location_species', instance.location_species)
@@ -1893,6 +1957,46 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
 
+        # calculate the priorty value:
+        # Order species diagnoses by causal
+        # (cause of death first, then cause of sickness, then incidental findings, then unknown)
+        # and within each causal category by diagnosis name (alphabetical).
+        priority = 1
+        self_priority_updated = False
+        # get all species_diagnoses for the parent location_species except self, and sort by diagnosis cause then name
+        specdiags = SpeciesDiagnosis.objects.filter(
+            location_species=instance.location_species).exclude(
+            id=instance.id).order_by('cause__id', 'diagnosis__name')
+        for specdiag in specdiags:
+            # if self has not been updated and self diagnosis cause equal to or less than this specdiag diagnosis cause,
+            # and self diagnosis name equal to or less than this specdiag diagnosis name
+            # first update self priority then update this specdiag priority
+            if not self_priority_updated:
+                # first check if self diagnosis cause is equal to this specdiag diagnosis cause
+                if instance.cause.id == specdiag.cause.id:
+                    if instance.diagnosis.name == specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif instance.diagnosis.name < specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                # else check if self diagnosis cause is less than this specdiag diagnosis cause
+                elif instance.cause.id < specdiag.cause.id:
+                    if instance.diagnosis.name == specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif instance.diagnosis.name < specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+            specdiag.priority = priority
+            specdiag.save()
+            priority += 1
+
+        instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
         return instance
