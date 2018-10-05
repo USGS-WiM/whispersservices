@@ -582,8 +582,6 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (csv_renderers.CSVRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -653,6 +651,9 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
                 | Q(location_species__event_location__event__created_by__organization__exact=user.organization)
             ).distinct()
             # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(location_species__event_location__event__public=True)
@@ -962,6 +963,9 @@ class OrganizationViewSet(HistoryViewSet):
         if contacts is not None:
             contacts_list = contacts.split(',')
             queryset = queryset.filter(contacts__in=contacts_list)
+        laboratory = self.request.query_params.get('laboratory', None)
+        if laboratory is not None:
+            queryset = queryset.filter(contacts__exact=laboratory)
 
         # all requests from anonymous users must only return published data
         if not user.is_authenticated:
@@ -1156,8 +1160,6 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -1253,6 +1255,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
                 #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(public=True)
@@ -1465,8 +1470,6 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None)
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-        elif frmt is not None and frmt == 'xlsx':
-            renderer_classes = (xlsx_renderers.XLSXRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
