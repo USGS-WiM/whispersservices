@@ -403,17 +403,17 @@ class EventSerializer(serializers.ModelSerializer):
                     if instance.event_status == mortality_morbidity:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
-                            if spec.dead_count_estimated > 0:
+                            if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
                                 if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
                                     est_count_gt_known_count = False
-                            elif spec.dead_count > 0:
+                            elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
-                            elif spec.sick_count_estimated > 0:
+                            elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
                                 species_count_is_valid.append(True)
                                 if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
                                     est_count_gt_known_count = False
-                            elif spec.sick_count > 0:
+                            elif spec.sick_count is not None and spec.sick_count > 0:
                                 species_count_is_valid.append(True)
                             else:
                                 species_count_is_valid.append(False)
@@ -622,17 +622,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     if instance.event_status == mortality_morbidity:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
-                            if spec.dead_count_estimated > 0:
+                            if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
                                 if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
                                     est_count_gt_known_count = False
-                            elif spec.dead_count > 0:
+                            elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
-                            elif spec.sick_count_estimated > 0:
+                            elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
                                 species_count_is_valid.append(True)
                                 if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
                                     est_count_gt_known_count = False
-                            elif spec.sick_count > 0:
+                            elif spec.sick_count is not None and spec.sick_count > 0:
                                 species_count_is_valid.append(True)
                             else:
                                 species_count_is_valid.append(False)
