@@ -7,7 +7,7 @@ from django.http import JsonResponse
 from django.db.models import Q, F, Sum
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import get_user_model
-from rest_framework import views, viewsets, generics, permissions, authentication, status
+from rest_framework import views, viewsets, generics, permissions, authentication, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
@@ -16,6 +16,7 @@ from rest_framework_csv import renderers as csv_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
+from whispersservices.pagination import *
 from dry_rest_permissions.generics import DRYPermissions
 User = get_user_model()
 
@@ -68,11 +69,20 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
     """
 
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.OrderingFilter,)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, modified_by=self.request.user)
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
+
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
 
 
 class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
@@ -80,11 +90,20 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
     """
 
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.OrderingFilter,)
+
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, modified_by=self.request.user)
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
+
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
 
 
 ######
@@ -680,6 +699,9 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
                 | Q(location_species__event_location__event__created_by__organization__exact=user.organization)
             ).distinct()
             # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(location_species__event_location__event__public=True)
@@ -1097,6 +1119,12 @@ class SearchViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data, status=200)
 
+    # override the default pagination to allow disabling of pagination
+    def paginate_queryset(self, *args, **kwargs):
+        if 'no_page' in self.request.query_params:
+            return None
+        return super().paginate_queryset(*args, **kwargs)
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         query_params = self.request.query_params
@@ -1135,10 +1163,10 @@ class SearchViewSet(viewsets.ModelViewSet):
 
 
 class CSVEventSummaryPublicRenderer(csv_renderers.CSVRenderer):
-    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'event_diagnoses']
+    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'eventdiagnoses']
     labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
-              'species': 'Species', 'event_diagnoses': 'Event Diagnosis'}
+              'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
@@ -1280,6 +1308,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
                 #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = queryset
         # non-user-specific event requests can only return public data
         else:
             queryset = queryset.filter(public=True)

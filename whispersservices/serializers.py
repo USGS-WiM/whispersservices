@@ -2746,7 +2746,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'administrative_level_two_points', 'county_multiple',
                   'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'gnis_name', 'gnis_id',
-                  'flyways', 'location_species', 'comments',)
+                  'flyways', 'contacts', 'location_species', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
