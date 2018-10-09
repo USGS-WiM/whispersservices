@@ -2378,6 +2378,15 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
 # TODO: Make these three EventSummary serializers adhere to DRY Principle
 class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            return ["Undetermined"] if obj.complete else ["Pending"]
+        else:
+            return event_diagnoses
+
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
         unique_l1s = []
@@ -2450,7 +2459,8 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisSerializer(many=True)
+    eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
     flyways = serializers.SerializerMethodField()
@@ -2467,6 +2477,15 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
+
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            return ["Undetermined"] if obj.complete else ["Pending"]
+        else:
+            return event_diagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2560,6 +2579,15 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
 
 class EventSummaryAdminSerializer(serializers.ModelSerializer):
+
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            return ["Undetermined"] if obj.complete else ["Pending"]
+        else:
+            return event_diagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2829,6 +2857,15 @@ class EventDetailSerializer(serializers.ModelSerializer):
     event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
     event_organizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
+
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            return ["Undetermined"] if obj.complete else ["Pending"]
+        else:
+            return event_diagnoses
 
     def get_permission_source(self, obj):
         user = self.context['request'].user

@@ -35,6 +35,7 @@ SECRET_KEY = CONFIG.get('security', 'SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = CONFIG.get('general', 'DEBUG')
 DEBUG = True
+ADMIN_ENABLED = False
 
 #ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
 ALLOWED_HOSTS: ['127.0.0.1', 'localhost']
