@@ -1107,10 +1107,10 @@ class SearchViewSet(viewsets.ModelViewSet):
 
 
 class CSVEventSummaryPublicRenderer(csv_renderers.CSVRenderer):
-    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'event_diagnoses']
+    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'eventdiagnoses']
     labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
-              'species': 'Species', 'event_diagnoses': 'Event Diagnosis'}
+              'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
