@@ -1,4 +1,5 @@
 from datetime import date
+import json
 from django.db.models import F, Q, Count, Case, When, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
@@ -2342,37 +2343,56 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
                                 unique_species += '; ' + species.name if unique_species else species.name
         return unique_species
 
-    def get_event_diagnoses(self, obj):
-        unique_eventdiagnoses_ids = []
-        unique_eventdiagnoses = ''
-        eventdiagnoses = obj.eventdiagnoses.values()
-        if eventdiagnoses is not None:
-            for eventdiagnosis in eventdiagnoses:
-                locationspecies = LocationSpecies.objects.filter(event_location=eventdiagnosis['id'])
-                if locationspecies is not None:
-                    for alocationspecies in locationspecies:
-                        species = Species.objects.filter(id=alocationspecies.species_id).first()
-                        if species is not None:
-                            if species.id not in unique_eventdiagnoses_ids:
-                                unique_eventdiagnoses_ids.append(species.id)
-                                unique_eventdiagnoses += '; ' + species.name if unique_eventdiagnoses else species.name
-        return unique_eventdiagnoses
+    # def get_eventdiagnoses(self, obj):
+    #     unique_eventdiagnoses_ids = []
+    #     unique_eventdiagnoses = ''
+    #     eventdiagnoses = obj.eventdiagnoses.values()
+    #     if eventdiagnoses is not None:
+    #         for eventdiagnosis in eventdiagnoses:
+    #             locationspecies = LocationSpecies.objects.filter(event_location=eventdiagnosis['id'])
+    #             if locationspecies is not None:
+    #                 for alocationspecies in locationspecies:
+    #                     species = Species.objects.filter(id=alocationspecies.species_id).first()
+    #                     if species is not None:
+    #                         if species.id not in unique_eventdiagnoses_ids:
+    #                             unique_eventdiagnoses_ids.append(species.id)
+    #                             unique_eventdiagnoses += '; ' + species.name if unique_eventdiagnoses else species.name
+    #     return unique_eventdiagnoses
+
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
+        else:
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     type = serializers.StringRelatedField(source='event_type')
     affected = serializers.IntegerField(source='affected_count', read_only=True)
     states = serializers.SerializerMethodField()
     counties = serializers.SerializerMethodField()
     species = serializers.SerializerMethodField()
-    event_diagnoses = serializers.SerializerMethodField()
+    eventdiagnoses = serializers.SerializerMethodField()
     # states = serializers.StringRelatedField(source='administrativelevelones', many=True)
     # counties = serializers.StringRelatedField(source='administrativeleveltwos', many=True)
     # species = serializers.StringRelatedField(many=True)
-    # event_diagnoses = serializers.StringRelatedField(source='eventdiagnoses', many=True)
+    # eventdiagnoses = serializers.StringRelatedField(source='eventdiagnoses', many=True)
 
     class Meta:
         model = Event
         fields = ('id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species',
-                  'event_diagnoses',)
+                  'eventdiagnoses',)
 
 
 # TODO: Make these three EventSummary serializers adhere to DRY Principle
@@ -2383,9 +2403,19 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
-            return ["Undetermined"] if obj.complete else ["Pending"]
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
         else:
-            return event_diagnoses
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2483,9 +2513,19 @@ class EventSummarySerializer(serializers.ModelSerializer):
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
-            return ["Undetermined"] if obj.complete else ["Pending"]
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
         else:
-            return event_diagnoses
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2561,7 +2601,8 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
-    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisSerializer(many=True)
+    eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
     flyways = serializers.SerializerMethodField()
@@ -2585,9 +2626,19 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
-            return ["Undetermined"] if obj.complete else ["Pending"]
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
         else:
-            return event_diagnoses
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2661,7 +2712,8 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    eventdiagnoses = EventDiagnosisSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisSerializer(many=True)
+    eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
     flyways = serializers.SerializerMethodField()
@@ -2727,23 +2779,23 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
     species_string = serializers.StringRelatedField(source='species')
-    species_diagnosis = SpeciesDiagnosisDetailPublicSerializer(many=True, source='speciesdiagnoses')
+    speciesdiagnoses = SpeciesDiagnosisDetailPublicSerializer(many=True)
 
     class Meta:
         model = LocationSpecies
         fields = ('species', 'species_string', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
-                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias', 'species_diagnosis',)
+                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias', 'speciesdiagnoses',)
 
 
 class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
     species_string = serializers.StringRelatedField(source='species')
-    species_diagnosis = SpeciesDiagnosisDetailSerializer(many=True, source='speciesdiagnoses')
+    speciesdiagnoses = SpeciesDiagnosisDetailSerializer(many=True)
 
     class Meta:
         model = LocationSpecies
         fields = ('id', 'event_location', 'species', 'species_string', 'population_count', 'sick_count', 'dead_count',
                   'sick_count_estimated', 'dead_count_estimated', 'priority', 'captive', 'age_bias', 'sex_bias',
-                  'species_diagnosis',)
+                  'speciesdiagnoses',)
 
 
 class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
@@ -2751,7 +2803,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
     country_string = serializers.StringRelatedField(source='country')
-    location_species = LocationSpeciesDetailPublicSerializer(many=True, source='locationspecies')
+    locationspecies = LocationSpeciesDetailPublicSerializer(many=True)
 
     class Meta:
         model = EventLocation
@@ -2765,7 +2817,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
     country_string = serializers.StringRelatedField(source='country')
-    location_species = LocationSpeciesDetailSerializer(many=True, source='locationspecies')
+    locationspecies = LocationSpeciesDetailSerializer(many=True)
     comments = CommentSerializer(many=True)
 
     class Meta:
@@ -2811,11 +2863,11 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_locations = EventLocationDetailPublicSerializer(many=True, source='eventlocations')
-    event_diagnoses = EventDiagnosisDetailPublicSerializer(many=True, source='eventdiagnoses')
-    event_organizations = serializers.SerializerMethodField()  #OrganizationPublicSerializer(many=True, source='organizations')
+    eventlocations = EventLocationDetailPublicSerializer(many=True)
+    eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
+    eventorganizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
 
-    def get_event_organizations(self, obj):
+    def get_eventorganizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -2846,16 +2898,17 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_diagnoses', 'event_locations', 'event_organizations', 'permissions', 'permission_source',)
+                  'eventdiagnoses', 'eventlocations', 'eventorganizations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
-    event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
-    event_organizations = OrganizationSerializer(many=True, source='organizations')
+    eventlocations = EventLocationDetailSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
+    eventdiagnoses = serializers.SerializerMethodField()
+    eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
 
     # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
@@ -2863,9 +2916,19 @@ class EventDetailSerializer(serializers.ModelSerializer):
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
-            return ["Undetermined"] if obj.complete else ["Pending"]
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
         else:
-            return event_diagnoses
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -2885,7 +2948,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'public', 'event_diagnoses', 'event_locations', 'event_organizations', 'comments',
+                  'affected_count', 'public', 'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments',
                   'permissions', 'permission_source',)
 
 
@@ -2896,10 +2959,30 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
-    event_locations = EventLocationDetailSerializer(many=True, source='eventlocations')
-    event_diagnoses = EventDiagnosisDetailSerializer(many=True, source='eventdiagnoses')
-    event_organizations = OrganizationSerializer(many=True, source='organizations')
+    eventlocations = EventLocationDetailSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
+    eventdiagnoses = serializers.SerializerMethodField()
+    eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
+
+    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        if not event_diagnoses:
+            diag = "Undetermined" if obj.complete else "Pending"
+            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
+                     "suspect": None, "major": None, "priority": None}]
+        else:
+            eventdiagnoses = []
+            for event_diagnosis in event_diagnoses:
+                diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
+                suspect = obj.suspect
+                if suspect:
+                    diag = diag + " suspect"
+                event_diagnosis['diagnosis_string'] = diag
+                eventdiagnoses.append(event_diagnosis)
+            return eventdiagnoses
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -2921,7 +3004,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'superevents', 'event_diagnoses', 'event_locations', 'event_organizations', 'comments',
+                  'superevents', 'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
