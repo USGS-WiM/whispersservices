@@ -2447,7 +2447,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
                 diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
                                            "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
                                            "major": event_diagnosis.major, "priority": event_diagnosis.priority}
                 eventdiagnoses.append(altered_event_diagnosis)
@@ -2562,7 +2562,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                 diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
                                            "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
                                            "major": event_diagnosis.major, "priority": event_diagnosis.priority,
                                            "created_date": event_diagnosis.created_date,
@@ -2684,7 +2684,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                 diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
                                            "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
                                            "major": event_diagnosis.major, "priority": event_diagnosis.priority,
                                            "created_date": event_diagnosis.created_date,
@@ -2983,7 +2983,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
                                            "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
                                            "major": event_diagnosis.major, "priority": event_diagnosis.priority,
                                            "created_date": event_diagnosis.created_date,
@@ -3046,7 +3046,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
                                            "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
                                            "major": event_diagnosis.major, "priority": event_diagnosis.priority,
                                            "created_date": event_diagnosis.created_date,
