@@ -1,5 +1,4 @@
 from datetime import date
-import json
 from django.db.models import F, Q, Count, Case, When, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
@@ -86,6 +85,7 @@ class EventSerializer(serializers.ModelSerializer):
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     comments = CommentSerializer(many=True, read_only=True)
+    new_event_diagnoses = serializers.ListField(write_only=True)
     new_organizations = serializers.ListField(write_only=True)
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
@@ -246,6 +246,9 @@ class EventSerializer(serializers.ModelSerializer):
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
                          'general': 'General'}
 
+        # pull out child event diagnoses list from the request
+        new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
+
         # pull out child organizations list from the request
         new_organizations = validated_data.pop('new_organizations', None)
 
@@ -260,6 +263,14 @@ class EventSerializer(serializers.ModelSerializer):
 
         user = self.context['request'].user
         event = Event.objects.create(**validated_data)
+
+        # create the child event diagnoses for this event
+        if new_event_diagnoses is not None:
+            for diagnosis_id in new_event_diagnoses:
+                if diagnosis_id is not None:
+                    diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
+                    if diagnosis is not None:
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -293,8 +304,8 @@ class EventSerializer(serializers.ModelSerializer):
                 if event_location is not None:
                     # use event to populate event field on event_location
                     event_location['event'] = event
-                    location_contacts = event_location.pop('location_contacts', None)
-                    location_species = event_location.pop('location_species', None)
+                    new_location_contacts = event_location.pop('new_location_contacts', None)
+                    new_location_species = event_location.pop('new_location_species', None)
 
                     # use id for country to get Country instance
                     event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
@@ -333,8 +344,8 @@ class EventSerializer(serializers.ModelSerializer):
                                                    comment_type=comment_type, created_by=user, modified_by=user)
 
                     # Create EventLocationContacts
-                    if location_contacts is not None:
-                        for location_contact in location_contacts:
+                    if new_location_contacts is not None:
+                        for location_contact in new_location_contacts:
                             location_contact['event_location'] = evt_location
 
                             # Convert ids to ForeignKey objects
@@ -348,9 +359,10 @@ class EventSerializer(serializers.ModelSerializer):
                             EventLocationContact.objects.create(**location_contact)
 
                     # Create EventLocationSpecies
-                    if location_species is not None:
-                        for location_spec in location_species:
+                    if new_location_species is not None:
+                        for location_spec in new_location_species:
                             location_spec['event_location'] = evt_location
+                            new_species_diagnoses = location_spec.pop('new_species_diagnoses', None)
 
                             # Convert ids to ForeignKey objects
                             location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
@@ -360,6 +372,15 @@ class EventSerializer(serializers.ModelSerializer):
                             location_spec['created_by'] = user
                             location_spec['modified_by'] = user
                             LocationSpecies.objects.create(**location_spec)
+
+                            # create the child species diagnoses for this event
+                            if new_species_diagnoses is not None:
+                                for diagnosis_id in new_species_diagnoses:
+                                    if diagnosis_id is not None:
+                                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
+                                        if diagnosis is not None:
+                                            SpeciesDiagnosis.objects.create(
+                                                location_speccies=location_spec, diagnosis=diagnosis)
 
         return event
 
@@ -447,6 +468,10 @@ class EventSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(details)
             else:
                 raise serializers.ValidationError(location_message)
+
+        # remove child event diagnoses list from the request
+        if 'new_event_diagnoses' in validated_data:
+            validated_data.pop('new_event_diagnoses')
 
         # remove child organizations list from the request
         if 'new_organizations' in validated_data:
@@ -552,7 +577,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'public', 'circle_read', 'circle_write', 'organizations', 'contacts', 'comments',
-                  'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
+                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
                   'created_date', 'created_by', 'modified_date', 'modified_by', 'permissions', 'permission_source',)
 
 
@@ -667,17 +692,21 @@ class EventAdminSerializer(serializers.ModelSerializer):
             else:
                 raise serializers.ValidationError(location_message)
 
-        # remove child organizations list from the request
-        if 'new_organizations' in validated_data:
-            validated_data.pop('new_organizations')
-
-        # remove child comments list from the request
-        if 'new_comments' in validated_data:
-            validated_data.pop('new_comments')
-
-        # remove child event_locations list from the request
-        if 'new_event_locations' in validated_data:
-            validated_data.pop('new_event_locations')
+        # # remove child event diagnoses list from the request
+        # if 'new_event_diagnoses' in validated_data:
+        #     validated_data.pop('new_event_diagnoses')
+        #
+        # # remove child organizations list from the request
+        # if 'new_organizations' in validated_data:
+        #     validated_data.pop('new_organizations')
+        #
+        # # remove child comments list from the request
+        # if 'new_comments' in validated_data:
+        #     validated_data.pop('new_comments')
+        #
+        # # remove child event_locations list from the request
+        # if 'new_event_locations' in validated_data:
+        #     validated_data.pop('new_event_locations')
 
         # # get the old (current) organization ID list for this Event
         # old_organizations = Organization.objects.filter(events=instance.id)
@@ -2809,7 +2838,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
         model = EventLocation
         fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
                   'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'administrative_level_two_points', 'county_multiple', 'county_unknown', 'flyways', 'location_species')
+                  'administrative_level_two_points', 'county_multiple', 'county_unknown', 'flyways', 'locationspecies')
 
 
 class EventLocationDetailSerializer(serializers.ModelSerializer):
@@ -2826,7 +2855,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'administrative_level_two_points', 'county_multiple',
                   'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'gnis_name', 'gnis_id',
-                  'flyways', 'contacts', 'location_species', 'comments',)
+                  'flyways', 'contacts', 'locationspecies', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
