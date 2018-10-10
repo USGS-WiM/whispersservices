@@ -2394,21 +2394,20 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
             diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
+            return diag
         else:
-            eventdiagnoses = []
+            unique_eventdiagnoses_ids = []
+            unique_eventdiagnoses = ''
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
+                diag_id = event_diagnosis.diagnosis.id
+                diag = Diagnosis.objects.get(pk=diag_id).name
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
-                eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+                if diag not in unique_eventdiagnoses_ids:
+                    unique_eventdiagnoses_ids.append(diag_id)
+                    unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses_ids else diag
+            return unique_eventdiagnoses
 
     type = serializers.StringRelatedField(source='event_type')
     affected = serializers.IntegerField(source='affected_count', read_only=True)
@@ -2445,10 +2444,12 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
+                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
+                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
+                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority}
                 eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
@@ -2558,10 +2559,16 @@ class EventSummarySerializer(serializers.ModelSerializer):
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
+                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
+                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
+                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
@@ -2674,10 +2681,16 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
+                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
+                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
+                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
@@ -2967,10 +2980,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
+                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
+                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
+                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
@@ -3024,10 +3043,16 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 suspect = event_diagnosis.suspect
                 if suspect:
                     diag = diag + " suspect"
+                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
+                                           "diagnosis_type": event_diagnosis.diagnosis_type.id,
+                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
+                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
