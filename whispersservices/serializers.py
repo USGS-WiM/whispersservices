@@ -7,6 +7,7 @@ from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
 OVERRIDE_ROLE_NAMES = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager']
+NWHC_ROLE_NAMES = ['SuperAdmin', 'Admin']
 
 # TODO: implement required field validations for nested objects
 
@@ -393,7 +394,7 @@ class EventSerializer(serializers.ModelSerializer):
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
             if new_complete is None or new_complete and (
-                    user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
+                    user == instance.created_by or user.role.name in OVERRIDE_ROLE_NAMES or user.is_superuser):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
@@ -403,7 +404,7 @@ class EventSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message)
 
         if new_complete and not instance.complete and (
-                user == instance.created_by or user.role in OVERRIDE_ROLE_NAMES or user.is_superuser):
+                user == instance.created_by or user.role.name in OVERRIDE_ROLE_NAMES or user.is_superuser):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
@@ -2081,6 +2082,73 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DiagnosisCause
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+######
+#
+#  Specimen Submission
+#
+######
+
+
+class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+
+        # Only allow NWHC admins to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            if not (user.role.name in NWHC_ROLE_NAMES or user.is_superuser):
+                raise serializers.ValidationError("You do not have permission to alter the request response.")
+            else:
+                validated_data['response_by'] = user
+
+        specimen_submission_request = SpecimenSubmissionRequest.objects.create(**validated_data)
+        return specimen_submission_request
+
+    def update(self, instance, validated_data):
+        user = self.context['request'].user
+
+        # Only allow NWHC admins to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            if not (user.role.name in NWHC_ROLE_NAMES or user.is_superuser):
+                raise serializers.ValidationError("You do not have permission to alter the request response.")
+            else:
+                instance.response_by = user
+
+        instance.request_datetime = validated_data.get('request_datetime', instance.request_datetime)
+        instance.request_type = validated_data.get('request_type', instance.request_type)
+        instance.request_response = validated_data.get('request_response', instance.request_response)
+
+        instance.save()
+        return instance
+
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+    response_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = SpecimenSubmissionRequest
+        fields = ('id', 'request_datetime', 'request_type', 'request_response', 'response_by',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class SpecimenSubmissionRequestTypeSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = SpecimenSubmissionRequestType
+        fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+
+
+class SpecimenSubmissionRequestResponseSerializer(serializers.ModelSerializer):
+    created_by = serializers.StringRelatedField()
+    modified_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = SpecimenSubmissionRequestResponse
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

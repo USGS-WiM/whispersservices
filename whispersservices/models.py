@@ -834,6 +834,57 @@ class DiagnosisCause(HistoryNameModel):
 
 ######
 #
+#  Specimen Submission
+#
+######
+
+
+class SpecimenSubmissionRequest(HistoryModel):
+    """
+    Specimen Submission Request
+    """
+
+    request_datetime = models.DateTimeField(null=True, blank=True)
+    request_type = models.ForeignKey('SpecimenSubmissionRequestType', models.PROTECT)
+    request_response = models.ForeignKey('SpecimenSubmissionRequestResponse', models.PROTECT, null=True,
+                                         related_name='specimensubmissionrequests')
+    response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
+                                    related_name='specimensubmissionrequests_responder')
+    comments = GenericRelation('Comment', related_name='specimensubmissionrequests')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_specimensubmissionrequest"
+
+
+class SpecimenSubmissionRequestType(HistoryNameModel):
+    """
+    Specimen Submission Request Type
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_specimensubmissionrequesttype"
+
+
+class SpecimenSubmissionRequestResponse(HistoryNameModel):
+    """
+    Specimen Submission Request Response
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_specimensubmissionrequestresponse"
+
+
+######
+#
 #  Misc
 #
 ######

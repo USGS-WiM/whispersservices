@@ -892,6 +892,28 @@ class DiagnosisCauseViewSet(HistoryViewSet):
 
 ######
 #
+#  Specimen Submission
+#
+######
+
+
+class SpecimenSubmissionRequestViewSet(HistoryViewSet):
+    queryset = SpecimenSubmissionRequest.objects.all()
+    serializer_class = SpecimenSubmissionRequestSerializer
+
+
+class SpecimenSubmissionRequestTypeViewSet(HistoryViewSet):
+    queryset = SpecimenSubmissionRequestType.objects.all()
+    serializer_class = SpecimenSubmissionRequestTypeSerializer
+
+
+class SpecimenSubmissionRequestResponseViewSet(HistoryViewSet):
+    queryset = SpecimenSubmissionRequestResponse.objects.all()
+    serializer_class = SpecimenSubmissionRequestResponseSerializer
+
+
+######
+#
 #  Misc
 #
 ######
@@ -935,29 +957,64 @@ class UserViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         user = self.request.user
-        # do not allow an anonymous user to see anything at all
+
+        # anonymous users cannot see anything
         if not user.is_authenticated:
             return User.objects.none()
-        # do not allow a public user to see anything except their own user data
-        if user.role.is_public:
-            return user
+        # public and partner users can only see themselves
+        elif user.role.is_public or user.role.is_partner or user.role.is_partnermanager:
+            return User.objects.filter(pk=user.id)
+        # user-specific requests and requests from a partner user can only return data owned by the user or user's org
+        elif user.role.is_partneradmin:
+            queryset = Contact.objects.all().filter(
+                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+            queryset = User.objects.all()
+        # otherwise return nothing
         else:
-            # never return the superuser(s)
-            queryset = User.objects.all().exclude(is_superuser=True)
-            # filter by username, exact
-            username = self.request.query_params.get('username', None)
-            if username is not None:
-                queryset = queryset.filter(username__exact=username)
-            email = self.request.query_params.get('email', None)
-            if email is not None:
-                queryset = queryset.filter(email__exact=email)
-            role = self.request.query_params.get('role', None)
-            if role is not None:
-                queryset = queryset.filter(role__exact=role)
-            organization = self.request.query_params.get('organization', None)
-            if email is not None:
-                queryset = queryset.filter(organization__exact=organization)
-            return queryset
+            return Contact.objects.none()
+
+        # never return the superuser(s)
+        queryset = queryset.exclude(is_superuser=True)
+        # filter by username, exact
+        username = self.request.query_params.get('username', None)
+        if username is not None:
+            queryset = queryset.filter(username__exact=username)
+        email = self.request.query_params.get('email', None)
+        if email is not None:
+            queryset = queryset.filter(email__exact=email)
+        role = self.request.query_params.get('role', None)
+        if role is not None:
+            queryset = queryset.filter(role__exact=role)
+        organization = self.request.query_params.get('organization', None)
+        if email is not None:
+            queryset = queryset.filter(organization__exact=organization)
+        return queryset
+
+        # # do not allow an anonymous user to see anything at all
+        # if not user.is_authenticated:
+        #     return User.objects.none()
+        # # do not allow a public user to see anything except their own user data
+        # if user.role.is_public:
+        #     return user
+        # else:
+        #     # never return the superuser(s)
+        #     queryset = User.objects.all().exclude(is_superuser=True)
+        #     # filter by username, exact
+        #     username = self.request.query_params.get('username', None)
+        #     if username is not None:
+        #         queryset = queryset.filter(username__exact=username)
+        #     email = self.request.query_params.get('email', None)
+        #     if email is not None:
+        #         queryset = queryset.filter(email__exact=email)
+        #     role = self.request.query_params.get('role', None)
+        #     if role is not None:
+        #         queryset = queryset.filter(role__exact=role)
+        #     organization = self.request.query_params.get('organization', None)
+        #     if email is not None:
+        #         queryset = queryset.filter(organization__exact=organization)
+        #     return queryset
 
 
 class AuthView(views.APIView):
