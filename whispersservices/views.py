@@ -937,7 +937,7 @@ class UserViewSet(HistoryViewSet):
         user = self.request.user
         # do not allow an anonymous user to see anything at all
         if not user.is_authenticated:
-            return None
+            return User.objects.none()
         # do not allow a public user to see anything except their own user data
         if user.role.is_public:
             return user

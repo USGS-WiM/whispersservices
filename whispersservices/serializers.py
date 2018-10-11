@@ -1644,11 +1644,10 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 
 class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     diagnosis_string = serializers.SerializerMethodField()
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
@@ -1661,11 +1660,10 @@ class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
@@ -1798,11 +1796,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     diagnosis_string = serializers.SerializerMethodField()
 
@@ -1814,16 +1811,14 @@ class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     def get_cause_string(self, obj):
-        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name
-        suspect = obj.suspect
-        if suspect:
+        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name if obj.cause else None
+        if cause:
             cause = cause + " suspect"
         return cause
 
@@ -2393,20 +2388,19 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return diag
+            return "Undetermined" if obj.complete else "Pending"
         else:
             unique_eventdiagnoses_ids = []
             unique_eventdiagnoses = ''
             for event_diagnosis in event_diagnoses:
-                diag_id = event_diagnosis.diagnosis.id
-                diag = Diagnosis.objects.get(pk=diag_id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                if diag not in unique_eventdiagnoses_ids:
-                    unique_eventdiagnoses_ids.append(diag_id)
-                    unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses_ids else diag
+                diag_id = event_diagnosis.diagnosis.id if event_diagnosis.diagnosis else None
+                if diag_id:
+                    diag = Diagnosis.objects.get(pk=diag_id).name
+                    if event_diagnosis.suspect:
+                        diag = diag + " suspect"
+                    if diag_id not in unique_eventdiagnoses_ids:
+                        unique_eventdiagnoses_ids.append(diag_id)
+                        unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses_ids else diag
             return unique_eventdiagnoses
 
     type = serializers.StringRelatedField(source='event_type')
@@ -2429,6 +2423,11 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
 # TODO: Make these three EventSummary serializers adhere to DRY Principle
 class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
+    # diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+    # if diagnosis:
+    #     diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+    # return diagnosis
+
     # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
     # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
@@ -2440,17 +2439,20 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         else:
             eventdiagnoses = []
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
-                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
-                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority}
-                eventdiagnoses.append(altered_event_diagnosis)
+                if event_diagnosis.diagnosis:
+                    diag_id = event_diagnosis.diagnosis.id
+                    diag_name = event_diagnosis.diagnosis.name
+                    if event_diagnosis.suspect:
+                        diag_name = diag_name + " suspect"
+                    diag_type = event_diagnosis.diagnosis.diagnosis_type
+                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                               "priority": event_diagnosis.priority}
+                    eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
@@ -2555,21 +2557,24 @@ class EventSummarySerializer(serializers.ModelSerializer):
         else:
             eventdiagnoses = []
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
-                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
-                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": event_diagnosis.modified_by}
-                eventdiagnoses.append(altered_event_diagnosis)
+                if event_diagnosis.diagnosis:
+                    diag_id = event_diagnosis.diagnosis.id
+                    diag_name = event_diagnosis.diagnosis.name
+                    if event_diagnosis.suspect:
+                        diag_name = diag_name + " suspect"
+                    diag_type = event_diagnosis.diagnosis.diagnosis_type
+                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                               "priority": event_diagnosis.priority,
+                                               "created_date": event_diagnosis.created_date,
+                                               "created_by": event_diagnosis.created_by,
+                                               "modified_date": event_diagnosis.modified_date,
+                                               "modified_by": event_diagnosis.modified_by}
+                    eventdiagnoses.append(altered_event_diagnosis)
             return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
@@ -2677,22 +2682,24 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         else:
             eventdiagnoses = []
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
-                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
-                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": event_diagnosis.modified_by}
-                eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+                if event_diagnosis.diagnosis:
+                    diag_id = event_diagnosis.diagnosis.id
+                    diag_name = event_diagnosis.diagnosis.name
+                    if event_diagnosis.suspect:
+                        diag_name = diag_name + " suspect"
+                    diag_type = event_diagnosis.diagnosis.diagnosis_type
+                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                               "priority": event_diagnosis.priority,
+                                               "created_date": event_diagnosis.created_date,
+                                               "created_by": event_diagnosis.created_by,
+                                               "modified_date": event_diagnosis.modified_date,
+                                               "modified_by": event_diagnosis.modified_by}
+                    eventdiagnoses.append(altered_event_diagnosis)
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2791,11 +2798,10 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     diagnosis_string = serializers.SerializerMethodField()
 
@@ -2807,16 +2813,14 @@ class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     def get_cause_string(self, obj):
-        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name
-        suspect = obj.suspect
-        if suspect:
+        cause = DiagnosisCause.objects.get(pk=obj.cause.id).name if obj.cause else None
+        if cause:
             cause = cause + " suspect"
         return cause
 
@@ -2885,11 +2889,10 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     diagnosis_string = serializers.SerializerMethodField()
 
@@ -2900,11 +2903,10 @@ class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
     def get_diagnosis_string(self, obj):
-        diag = Diagnosis.objects.get(pk=obj.diagnosis.id).name
-        suspect = obj.suspect
-        if suspect:
-            diag = diag + " suspect"
-        return diag
+        diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+        if diagnosis:
+            diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+        return diagnosis
 
     diagnosis_string = serializers.SerializerMethodField()
 
@@ -2976,22 +2978,24 @@ class EventDetailSerializer(serializers.ModelSerializer):
         else:
             eventdiagnoses = []
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
-                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
-                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": event_diagnosis.modified_by}
-                eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+                if event_diagnosis.diagnosis:
+                    diag_id = event_diagnosis.diagnosis.id
+                    diag_name = event_diagnosis.diagnosis.name
+                    if event_diagnosis.suspect:
+                        diag_name = diag_name + " suspect"
+                    diag_type = event_diagnosis.diagnosis.diagnosis_type
+                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                               "priority": event_diagnosis.priority,
+                                               "created_date": event_diagnosis.created_date,
+                                               "created_by": event_diagnosis.created_by,
+                                               "modified_date": event_diagnosis.modified_date,
+                                               "modified_by": event_diagnosis.modified_by}
+                    eventdiagnoses.append(altered_event_diagnosis)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -3039,22 +3043,24 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         else:
             eventdiagnoses = []
             for event_diagnosis in event_diagnoses:
-                diag = Diagnosis.objects.get(pk=event_diagnosis.diagnosis.id).name
-                suspect = event_diagnosis.suspect
-                if suspect:
-                    diag = diag + " suspect"
-                diag_type = DiagnosisType.objects.get(pk=event_diagnosis.diagnosis.diagnosis_type.id).name
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": event_diagnosis.diagnosis.id, "diagnosis_string": diag,
-                                           "diagnosis_type": event_diagnosis.diagnosis.diagnosis_type.id,
-                                           "diagnosis_type_string": diag_type, "suspect": event_diagnosis.suspect,
-                                           "major": event_diagnosis.major, "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": event_diagnosis.modified_by}
-                eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+                if event_diagnosis.diagnosis:
+                    diag_id = event_diagnosis.diagnosis.id
+                    diag_name = event_diagnosis.diagnosis.name
+                    if event_diagnosis.suspect:
+                        diag_name = diag_name + " suspect"
+                    diag_type = event_diagnosis.diagnosis.diagnosis_type
+                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                               "priority": event_diagnosis.priority,
+                                               "created_date": event_diagnosis.created_date,
+                                               "created_by": event_diagnosis.created_by,
+                                               "modified_date": event_diagnosis.modified_date,
+                                               "modified_by": event_diagnosis.modified_by}
+                    eventdiagnoses.append(altered_event_diagnosis)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
