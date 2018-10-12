@@ -2149,7 +2149,6 @@ class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
                 instance.response_by = user
 
         instance.event_location = validated_data.get('event_location', instance.event_location)
-        instance.request_datetime = validated_data.get('request_datetime', instance.request_datetime)
         instance.request_type = validated_data.get('request_type', instance.request_type)
         instance.request_response = validated_data.get('request_response', instance.request_response)
 
@@ -2162,7 +2161,7 @@ class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SpecimenSubmissionRequest
-        fields = ('id', 'request_datetime', 'request_type', 'request_response', 'response_by',
+        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 

@@ -845,12 +845,12 @@ class SpecimenSubmissionRequest(HistoryModel):
     """
 
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
-    request_datetime = models.DateTimeField(default=datetime.now(), null=True, blank=True)
     request_type = models.ForeignKey('SpecimenSubmissionRequestType', models.PROTECT)
     request_response = models.ForeignKey('SpecimenSubmissionRequestResponse', models.PROTECT, null=True,
                                          related_name='specimensubmissionrequests')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='specimensubmissionrequests_responder')
+    created_time = models.TimeField(default=datetime.now().time(), null=True, blank=True)
     comments = GenericRelation('Comment', related_name='specimensubmissionrequests')
 
     def __str__(self):
