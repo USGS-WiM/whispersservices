@@ -2118,12 +2118,12 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 ######
 #
-#  Specimen Submission
+#  Service Requests
 #
 ######
 
 
-class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
+class ServiceRequestSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
@@ -2135,7 +2135,7 @@ class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
             else:
                 validated_data['response_by'] = user
 
-        specimen_submission_request = SpecimenSubmissionRequest.objects.create(**validated_data)
+        specimen_submission_request = ServiceRequest.objects.create(**validated_data)
         return specimen_submission_request
 
     def update(self, instance, validated_data):
@@ -2160,26 +2160,26 @@ class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
     response_by = serializers.StringRelatedField()
 
     class Meta:
-        model = SpecimenSubmissionRequest
+        model = ServiceRequest
         fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class SpecimenSubmissionRequestTypeSerializer(serializers.ModelSerializer):
+class ServiceRequestTypeSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
     class Meta:
-        model = SpecimenSubmissionRequestType
+        model = ServiceRequestType
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
-class SpecimenSubmissionRequestResponseSerializer(serializers.ModelSerializer):
+class ServiceRequestResponseSerializer(serializers.ModelSerializer):
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
 
     class Meta:
-        model = SpecimenSubmissionRequestResponse
+        model = ServiceRequestResponse
         fields = ('id', 'name', 'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
