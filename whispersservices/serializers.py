@@ -1,5 +1,4 @@
-from datetime import date
-from django.db.models import F, Q, Count, Case, When, Sum
+from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers
@@ -307,6 +306,7 @@ class EventSerializer(serializers.ModelSerializer):
                     event_location['event'] = event
                     new_location_contacts = event_location.pop('new_location_contacts', None)
                     new_location_species = event_location.pop('new_location_species', None)
+                    new_specimen_submission_requests = event_location.pop('new_specimen_submission_requests', None)
 
                     # use id for country to get Country instance
                     event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
@@ -382,6 +382,14 @@ class EventSerializer(serializers.ModelSerializer):
                                         if diagnosis is not None:
                                             SpeciesDiagnosis.objects.create(
                                                 location_speccies=location_spec, diagnosis=diagnosis)
+
+                    # Create SpecimenSubmissionRequests
+                    if new_specimen_submission_requests is not None:
+                        for request_type_id in new_specimen_submission_requests:
+                            if request_type_id is not None and request_type_id in [1, 2]:
+                                request_type = SpecimenSubmissionRequestType.objects.filter(pk=request_type_id).first()
+                                SpecimenSubmissionRequest.objects.create(event_location=evt_location,
+                                                                         request_type=request_type)
 
         return event
 
@@ -1042,6 +1050,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     new_location_contacts = serializers.ListField(write_only=True, required=False)
     new_location_species = serializers.ListField(write_only=True, required=False)
+    new_specimen_submission_requests = serializers.ListField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -1062,6 +1071,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # event = Event.objects.filter(pk=validated_data['event']).first()
         location_contacts = validated_data.pop('new_location_contacts', None)
         location_species = validated_data.pop('new_location_species', None)
+        new_specimen_submission_requests = validated_data.pop('new_specimen_submission_requests', None)
 
         # # use id for country to get Country instance
         # country = Country.objects.filter(pk=validated_data['country']).first()
@@ -1117,6 +1127,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         if location_species is not None:
             for location_spec in location_species:
                 location_spec['event_location'] = evt_location
+                new_species_diagnoses = location_spec.pop('new_species_diagnoses', None)
 
                 # Convert ids to ForeignKey objects
                 location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
@@ -1127,7 +1138,23 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_spec['modified_by'] = user
                 LocationSpecies.objects.create(**location_spec)
 
-        # calculate the priorty value:
+                # create the child species diagnoses for this event
+                if new_species_diagnoses is not None:
+                    for diagnosis_id in new_species_diagnoses:
+                        if diagnosis_id is not None:
+                            diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
+                            if diagnosis is not None:
+                                SpeciesDiagnosis.objects.create(
+                                    location_speccies=location_spec, diagnosis=diagnosis)
+
+        # Create SpecimenSubmissionRequests
+        if new_specimen_submission_requests is not None:
+            for request_type_id in new_specimen_submission_requests:
+                if request_type_id is not None and request_type_id in [1, 2]:
+                    request_type = SpecimenSubmissionRequestType.objects.filter(pk=request_type_id).first()
+                    SpecimenSubmissionRequest.objects.create(event_location=evt_location, request_type=request_type)
+
+        # calculate the priority value:
         # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
         # or number_positive (for surveillance). Order locations within counties similarly.
         # TODO: figure out the following rule:
@@ -1195,6 +1222,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
     def update(self, instance, validated_data):
+
+        # remove child specimen submission requests list from the request
+        if 'new_specimen_submission_requests' in validated_data:
+            validated_data.pop('new_specimen_submission_requests')
 
         # remove child location_contacts list from the request
         if 'new_location_contacts' in validated_data:
@@ -1304,7 +1335,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
                   'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
-                  'new_location_contacts', 'new_location_species',
+                  'new_location_contacts', 'new_location_species', 'new_specimen_submission_requests',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
@@ -2117,6 +2148,7 @@ class SpecimenSubmissionRequestSerializer(serializers.ModelSerializer):
             else:
                 instance.response_by = user
 
+        instance.event_location = validated_data.get('event_location', instance.event_location)
         instance.request_datetime = validated_data.get('request_datetime', instance.request_datetime)
         instance.request_type = validated_data.get('request_type', instance.request_type)
         instance.request_response = validated_data.get('request_response', instance.request_response)
@@ -3159,14 +3191,17 @@ class FlatSpeciesDiagnosisSerializer(serializers.ModelSerializer):
     # a flattened (not nested) version of the essential fields of the FullResultSerializer, to populate CSV files
     # requested from the EventDetails or EventSummaries Search
     event_id = serializers.PrimaryKeyRelatedField(source='location_species.event_location.event', read_only=True)
-    event_reference = serializers.CharField(source='location_species.event_location.event.event_reference', read_only=True)
+    event_reference = serializers.CharField(
+        source='location_species.event_location.event.event_reference', read_only=True)
     event_type = serializers.StringRelatedField(source='location_species.event_location.event.event_type')
     complete = serializers.BooleanField(source='location_species.event_location.event.complete', read_only=True)
-    organization = serializers.StringRelatedField(source='location_species.event_location.event.organizations', many=True)
+    organization = serializers.StringRelatedField(
+        source='location_species.event_location.event.organizations', many=True)
     start_date = serializers.DateField(source='location_species.event_location.event.start_date', read_only=True)
     end_date = serializers.DateField(source='location_species.event_location.event.end_date', read_only=True)
     affected_count = serializers.IntegerField(source='location_species.event_location.event.affected_count')
-    event_diagnosis = serializers.StringRelatedField(source='location_species.event_location.event.eventdiagnoses', many=True)
+    event_diagnosis = serializers.StringRelatedField(
+        source='location_species.event_location.event.eventdiagnoses', many=True)
     location_id = serializers.PrimaryKeyRelatedField(source='location_species.event_location', read_only=True)
     location_priority = serializers.IntegerField(source='location_species.event_location.priority', read_only=True)
     county = serializers.StringRelatedField(source='location_species.event_location.administrative_level_two')

@@ -1,5 +1,5 @@
 from django.db import models
-from datetime import date
+from datetime import date, datetime
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -844,7 +844,8 @@ class SpecimenSubmissionRequest(HistoryModel):
     Specimen Submission Request
     """
 
-    request_datetime = models.DateTimeField(null=True, blank=True)
+    event_location = models.ForeignKey('EventLocation', models.PROTECT)
+    request_datetime = models.DateTimeField(default=datetime.now(), null=True, blank=True)
     request_type = models.ForeignKey('SpecimenSubmissionRequestType', models.PROTECT)
     request_response = models.ForeignKey('SpecimenSubmissionRequestResponse', models.PROTECT, null=True,
                                          related_name='specimensubmissionrequests')
