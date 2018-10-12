@@ -670,11 +670,18 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_events=True)
+        queryset = self.build_queryset(query_params, get_user_events=True).order_by('id')
 
-        serializer = FlatSpeciesDiagnosisSerializer(queryset, many=True, context={'request': request})
-
-        return Response(serializer.data, status=200)
+        if 'no_page' in self.request.query_params:
+            serializer = FlatSpeciesDiagnosisSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        else:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = FlatSpeciesDiagnosisSerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = FlatSpeciesDiagnosisSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -1108,10 +1115,18 @@ class ContactViewSet(HistoryViewSet):
     def user_contacts(self, request):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_contacts=True)
-        serializer = ContactSerializer(queryset, many=True, context={'request': request})
+        queryset = self.build_queryset(query_params, get_user_contacts=True).order_by('id')
 
-        return Response(serializer.data, status=200)
+        if 'no_page' in self.request.query_params:
+            serializer = ContactSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        else:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = ContactSerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = ContactSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -1163,10 +1178,18 @@ class SearchViewSet(viewsets.ModelViewSet):
     def user_searches(self, request):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_searches=True)
-        serializer = SearchSerializer(queryset, many=True, context={'request': request})
+        queryset = self.build_queryset(query_params, get_user_searches=True).order_by('id')
 
-        return Response(serializer.data, status=200)
+        if 'no_page' in self.request.query_params:
+            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        else:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = SearchSerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
 
     @action(detail=False)
     def top_ten(self, request):
@@ -1242,29 +1265,72 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_events=True)
+        queryset = self.build_queryset(query_params, get_user_events=True).order_by('id')
         user = self.request.user
+        no_page = True if 'no_page' in self.request.query_params else False
 
         # determine the appropriate serializer to ensure the requester sees only permitted data
         # anonymous user must use the public serializer
         if not user.is_authenticated:
-            serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-        # public users must use the public serializer
+            if no_page:
+                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+            else:
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+        # public users must use the public serializer unless in a circle
         elif user.role.is_public:
             if user in queryset[0].circle_write or user in queryset[0].circle_read:
-                serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
+                if no_page:
+                    serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
+                else:
+                    page = self.paginate_queryset(queryset)
+                    if page is not None:
+                        serializer = EventSummarySerializer(page, many=True, context={'request': request})
+                        return self.get_paginated_response(serializer.data)
+                    serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
             else:
-                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+                if no_page:
+                    serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+                else:
+                    page = self.paginate_queryset(queryset)
+                    if page is not None:
+                        serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
+                        return self.get_paginated_response(serializer.data)
+                    serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
         # admins have access to all fields
         elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
-            serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
+            if no_page:
+                serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
+            else:
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    serializer = EventSummaryAdminSerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
         # partner users can see public fields and event_reference field
         elif (user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin or user.role.is_affiliate
               or user in queryset[0].circle_write or user in queryset[0].circle_read):
-            serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
+            if no_page:
+                serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
+            else:
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    serializer = EventSummarySerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
         else:
-            serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+            if no_page:
+                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+            else:
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
 
@@ -1570,9 +1636,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     def flat(self, request, pk):
         # pk = self.request.parser_context['kwargs'].get('pk', None)
         queryset = FlatEventDetails.objects.filter(event_id=pk)
-        print(queryset)
         serializer = FlatEventDetailSerializer(queryset, many=True, context={'request': request})
-        print(serializer)
         return Response(serializer.data, status=200)
 
     # override the default renderers to use a csv renderer when requested

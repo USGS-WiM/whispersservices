@@ -1069,8 +1069,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                          'general': 'General'}
 
         # event = Event.objects.filter(pk=validated_data['event']).first()
-        location_contacts = validated_data.pop('new_location_contacts', None)
-        location_species = validated_data.pop('new_location_species', None)
+        new_location_contacts = validated_data.pop('new_location_contacts', None)
+        new_location_species = validated_data.pop('new_location_species', None)
         new_specimen_submission_requests = validated_data.pop('new_specimen_submission_requests', None)
 
         # # use id for country to get Country instance
@@ -1109,8 +1109,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                        comment_type=comment_type, created_by=user, modified_by=user)
 
         # Create EventLocationContacts
-        if location_contacts is not None:
-            for location_contact in location_contacts:
+        if new_location_contacts is not None:
+            for location_contact in new_location_contacts:
                 location_contact['event_location'] = evt_location
 
                 # Convert ids to ForeignKey objects
@@ -1124,8 +1124,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 EventLocationContact.objects.create(**location_contact)
 
         # Create EventLocationSpecies
-        if location_species is not None:
-            for location_spec in location_species:
+        if new_location_species is not None:
+            for location_spec in new_location_species:
                 location_spec['event_location'] = evt_location
                 new_species_diagnoses = location_spec.pop('new_species_diagnoses', None)
 
