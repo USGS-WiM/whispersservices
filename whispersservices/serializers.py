@@ -306,7 +306,7 @@ class EventSerializer(serializers.ModelSerializer):
                     event_location['event'] = event
                     new_location_contacts = event_location.pop('new_location_contacts', None)
                     new_location_species = event_location.pop('new_location_species', None)
-                    new_specimen_submission_requests = event_location.pop('new_specimen_submission_requests', None)
+                    new_service_requests = event_location.pop('new_service_requests', None)
 
                     # use id for country to get Country instance
                     event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
@@ -384,12 +384,11 @@ class EventSerializer(serializers.ModelSerializer):
                                                 location_speccies=location_spec, diagnosis=diagnosis)
 
                     # Create SpecimenSubmissionRequests
-                    if new_specimen_submission_requests is not None:
-                        for request_type_id in new_specimen_submission_requests:
+                    if new_service_requests is not None:
+                        for request_type_id in new_service_requests:
                             if request_type_id is not None and request_type_id in [1, 2]:
-                                request_type = SpecimenSubmissionRequestType.objects.filter(pk=request_type_id).first()
-                                SpecimenSubmissionRequest.objects.create(event_location=evt_location,
-                                                                         request_type=request_type)
+                                request_type = ServiceRequestType.objects.filter(pk=request_type_id).first()
+                                ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
 
         return event
 
@@ -1071,7 +1070,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # event = Event.objects.filter(pk=validated_data['event']).first()
         new_location_contacts = validated_data.pop('new_location_contacts', None)
         new_location_species = validated_data.pop('new_location_species', None)
-        new_specimen_submission_requests = validated_data.pop('new_specimen_submission_requests', None)
+        new_service_requests = validated_data.pop('new_service_requests', None)
 
         # # use id for country to get Country instance
         # country = Country.objects.filter(pk=validated_data['country']).first()
@@ -1148,11 +1147,11 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                     location_speccies=location_spec, diagnosis=diagnosis)
 
         # Create SpecimenSubmissionRequests
-        if new_specimen_submission_requests is not None:
-            for request_type_id in new_specimen_submission_requests:
+        if new_service_requests is not None:
+            for request_type_id in new_service_requests:
                 if request_type_id is not None and request_type_id in [1, 2]:
-                    request_type = SpecimenSubmissionRequestType.objects.filter(pk=request_type_id).first()
-                    SpecimenSubmissionRequest.objects.create(event_location=evt_location, request_type=request_type)
+                    request_type = ServiceRequestType.objects.filter(pk=request_type_id).first()
+                    ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
 
         # calculate the priority value:
         # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
@@ -1335,7 +1334,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
                   'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
-                  'new_location_contacts', 'new_location_species', 'new_specimen_submission_requests',
+                  'new_location_contacts', 'new_location_species', 'new_service_requests',
                   'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
