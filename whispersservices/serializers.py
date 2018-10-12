@@ -264,14 +264,6 @@ class EventSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
-        # create the child event diagnoses for this event
-        if new_event_diagnoses is not None:
-            for diagnosis_id in new_event_diagnoses:
-                if diagnosis_id is not None:
-                    diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                    if diagnosis is not None:
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
-
         # create the child organizations for this event
         if new_organizations is not None:
             for org_id in new_organizations:
@@ -390,6 +382,38 @@ class EventSerializer(serializers.ModelSerializer):
                                 request_type = SpecimenSubmissionRequestType.objects.filter(pk=request_type_id).first()
                                 SpecimenSubmissionRequest.objects.create(event_location=evt_location,
                                                                          request_type=request_type)
+
+        # create the child event diagnoses for this event
+        pending = Diagnosis.objects.filter(name='Pending').first()
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+
+        if new_event_diagnoses is not None:
+            # Can only use diagnoses that are already used by this event's species diagnoses
+            valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
+                location_species__event_location__event=event.id
+            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', Flat=True).distinct()
+            # If any new event diagnoses have a matching species diagnosis, then continue
+            if valid_diagnosis_ids is not None and any(x in new_event_diagnoses for x in valid_diagnosis_ids):
+                # We have a valid diagnosis other than pending or undetermined, so remove those two if in the list
+                if pending.id in new_event_diagnoses:
+                    new_event_diagnoses.remove(pending.id)
+                if undetermined.id in new_event_diagnoses:
+                    new_event_diagnoses.remove(undetermined.id)
+                # Now create the event diagnoses
+                for diagnosis_id in new_event_diagnoses:
+                    if diagnosis_id in valid_diagnosis_ids:
+                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
+            # Otherwise assign Pending or Undetermined, depending on event complete status
+            else:
+                new_diagnosis = undetermined if event.complete else pending
+                EventDiagnosis.objects.create(event=event, diagnosis=new_diagnosis, suspect=False)
+
+        # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
+        # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
+        else:
+            new_diagnosis = undetermined if event.complete else pending
+            EventDiagnosis.objects.create(event=event, diagnosis=new_diagnosis, suspect=False)
 
         return event
 
@@ -543,6 +567,32 @@ class EventSerializer(serializers.ModelSerializer):
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
         instance.save()
+
+        # Update event diagnoses as necessary
+        def get_event_diagnoses():
+            return EventDiagnosis.objects.filter(event=instance.id)
+
+        new_diagnosis = None
+
+        # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
+        #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
+        if not instance.complete:
+            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
+            if len(get_event_diagnoses()) == 0:
+                new_diagnosis = Diagnosis.objects.filter(name='Pending').first()
+        # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
+        #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
+        else:
+            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
+            if len(get_event_diagnoses()) == 0:
+                new_diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+            # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+            [evt_diag.delete() for evt_diag in get_event_diagnoses()]
+
+        if new_diagnosis:
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(event=instance, diagnosis=new_diagnosis, suspect=False)
 
         # # identify and delete relates where organization IDs are present in old list but not new list
         # delete_organizations = list(set(old_organizations) - set(new_organizations))
@@ -1710,29 +1760,41 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
+        pending = Diagnosis.objects.filter(name='Pending').first()
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
         event_specdiags = SpeciesDiagnosis.objects.filter(
-            location_species__event_location__event=data['event'])
-        if not event_specdiags or data['diagnosis'] not in [specdiag.diagnosis for specdiag in event_specdiags]:
+            location_species__event_location__event=data['event'].id).values_list('diagnosis', Flat=True).distinct()
+        if (not event_specdiags or data['diagnosis'].id not in event_specdiags
+                or data['diagnosis'].id in [pending.id, undetermined.id]):
             message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
             raise serializers.ValidationError(message)
 
         return data
 
     def create(self, validated_data):
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        #
         # # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
         # # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
         # if 'diagnosis' in validated_data and not validated_data['diagnosis']:
-        #     event = Event.objects.filter(id=validated_data['event']).first()
+        #     event_id = validated_data['event'].id
+        #
+        #     def get_event_diagnoses():
+        #         return EventDiagnosis.objects.filter(event=event_id)
+        #
+        #     event = Event.objects.filter(id=event_id).first()
+        #     # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
+        #     #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
         #     if not event.complete:
-        #         validated_data['diagnosis'] = pending
+        #         [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
+        #         if len(get_event_diagnoses()) == 0:
+        #             validated_data['diagnosis'] = pending
+        #     # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
+        #     #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
         #     else:
-        #         validated_data['diagnosis'] = undetermined
+        #         [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
+        #         if len(get_event_diagnoses()) == 0:
+        #             validated_data['diagnosis'] = undetermined
         #         # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-        #         other_event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-        #         [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
+        #         [evt_diag.delete() for evt_diag in get_event_diagnoses()]
         #
         # # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
