@@ -899,24 +899,24 @@ class DiagnosisCauseViewSet(HistoryViewSet):
 
 ######
 #
-#  Specimen Submission
+#  Service Requests
 #
 ######
 
 
-class SpecimenSubmissionRequestViewSet(HistoryViewSet):
-    queryset = SpecimenSubmissionRequest.objects.all()
-    serializer_class = SpecimenSubmissionRequestSerializer
+class ServiceRequestViewSet(HistoryViewSet):
+    queryset = ServiceRequest.objects.all()
+    serializer_class = ServiceRequestSerializer
 
 
-class SpecimenSubmissionRequestTypeViewSet(HistoryViewSet):
-    queryset = SpecimenSubmissionRequestType.objects.all()
-    serializer_class = SpecimenSubmissionRequestTypeSerializer
+class ServiceRequestTypeViewSet(HistoryViewSet):
+    queryset = ServiceRequestType.objects.all()
+    serializer_class = ServiceRequestTypeSerializer
 
 
-class SpecimenSubmissionRequestResponseViewSet(HistoryViewSet):
-    queryset = SpecimenSubmissionRequestResponse.objects.all()
-    serializer_class = SpecimenSubmissionRequestResponseSerializer
+class ServiceRequestResponseViewSet(HistoryViewSet):
+    queryset = ServiceRequestResponse.objects.all()
+    serializer_class = ServiceRequestResponseSerializer
 
 
 ######

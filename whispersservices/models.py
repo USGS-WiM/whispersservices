@@ -877,54 +877,54 @@ class DiagnosisCause(HistoryNameModel):
 
 ######
 #
-#  Specimen Submission
+#  Service Requests
 #
 ######
 
 
-class SpecimenSubmissionRequest(HistoryModel):
+class ServiceRequest(HistoryModel):
     """
-    Specimen Submission Request
+    Service Submission Request
     """
 
     event_location = models.ForeignKey('EventLocation', models.PROTECT)
-    request_datetime = models.DateTimeField(default=datetime.now(), null=True, blank=True)
-    request_type = models.ForeignKey('SpecimenSubmissionRequestType', models.PROTECT)
-    request_response = models.ForeignKey('SpecimenSubmissionRequestResponse', models.PROTECT, null=True,
-                                         related_name='specimensubmissionrequests')
+    request_type = models.ForeignKey('ServiceRequestType', models.PROTECT)
+    request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
+                                         related_name='servicerequests')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='specimensubmissionrequests_responder')
-    comments = GenericRelation('Comment', related_name='specimensubmissionrequests')
+                                    related_name='servicerequests_responder')
+    created_time = models.TimeField(default=datetime.now().time(), null=True, blank=True)
+    comments = GenericRelation('Comment', related_name='servicerequests')
 
     def __str__(self):
         return str(self.id)
 
     class Meta:
-        db_table = "whispers_specimensubmissionrequest"
+        db_table = "whispers_servicerequest"
 
 
-class SpecimenSubmissionRequestType(HistoryNameModel):
+class ServiceRequestType(HistoryNameModel):
     """
-    Specimen Submission Request Type
-    """
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        db_table = "whispers_specimensubmissionrequesttype"
-
-
-class SpecimenSubmissionRequestResponse(HistoryNameModel):
-    """
-    Specimen Submission Request Response
+    Service Submission Request Type
     """
 
     def __str__(self):
         return self.name
 
     class Meta:
-        db_table = "whispers_specimensubmissionrequestresponse"
+        db_table = "whispers_servicerequesttype"
+
+
+class ServiceRequestResponse(HistoryNameModel):
+    """
+    Service Request Response
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_servicerequestresponse"
 
 
 ######
