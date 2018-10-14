@@ -387,33 +387,24 @@ class EventSerializer(serializers.ModelSerializer):
         pending = Diagnosis.objects.filter(name='Pending').first()
         undetermined = Diagnosis.objects.filter(name='Undetermined').first()
 
+        # remove Pending or Undetermined if in the list because one or the other already exists from event save
+        [new_event_diagnoses.remove(diag) for diag in new_event_diagnoses if diag in [pending.id, undetermined.id]]
+
         if new_event_diagnoses is not None:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
             ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', Flat=True).distinct()
-            # If any new event diagnoses have a matching species diagnosis, then continue
-            if valid_diagnosis_ids is not None and any(x in new_event_diagnoses for x in valid_diagnosis_ids):
-                # We have a valid diagnosis other than pending or undetermined, so remove those two if in the list
-                if pending.id in new_event_diagnoses:
-                    new_event_diagnoses.remove(pending.id)
-                if undetermined.id in new_event_diagnoses:
-                    new_event_diagnoses.remove(undetermined.id)
-                # Now create the event diagnoses
+            # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
+            if valid_diagnosis_ids is not None:
                 for diagnosis_id in new_event_diagnoses:
                     if diagnosis_id in valid_diagnosis_ids:
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
                         EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
-            # Otherwise assign Pending or Undetermined, depending on event complete status
-            else:
-                new_diagnosis = undetermined if event.complete else pending
-                EventDiagnosis.objects.create(event=event, diagnosis=new_diagnosis, suspect=False)
-
-        # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-        # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
-        else:
-            new_diagnosis = undetermined if event.complete else pending
-            EventDiagnosis.objects.create(event=event, diagnosis=new_diagnosis, suspect=False)
+                # Now that we have the new event diagnoses created,
+                # check for existing Pending or Undetermined records and delete them
+                event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
 
         return event
 
@@ -567,32 +558,6 @@ class EventSerializer(serializers.ModelSerializer):
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
         instance.save()
-
-        # Update event diagnoses as necessary
-        def get_event_diagnoses():
-            return EventDiagnosis.objects.filter(event=instance.id)
-
-        new_diagnosis = None
-
-        # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
-        if not instance.complete:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
-            if len(get_event_diagnoses()) == 0:
-                new_diagnosis = Diagnosis.objects.filter(name='Pending').first()
-        # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
-        else:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
-            if len(get_event_diagnoses()) == 0:
-                new_diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
-            # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-            [evt_diag.delete() for evt_diag in get_event_diagnoses()]
-
-        if new_diagnosis:
-            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=instance, diagnosis=new_diagnosis, suspect=False)
 
         # # identify and delete relates where organization IDs are present in old list but not new list
         # delete_organizations = list(set(old_organizations) - set(new_organizations))
@@ -1755,53 +1720,33 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Diagnosis from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
-        pending = Diagnosis.objects.filter(name='Pending').first()
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
         event_specdiags = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=data['event'].id).values_list('diagnosis', Flat=True).distinct()
         if (not event_specdiags or data['diagnosis'].id not in event_specdiags
-                or data['diagnosis'].id in [pending.id, undetermined.id]):
+                or data['diagnosis'].name in ['Pending', 'Undetermined']):
             message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
             raise serializers.ValidationError(message)
 
         return data
 
     def create(self, validated_data):
-        # # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-        # # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
-        # if 'diagnosis' in validated_data and not validated_data['diagnosis']:
-        #     event_id = validated_data['event'].id
-        #
-        #     def get_event_diagnoses():
-        #         return EventDiagnosis.objects.filter(event=event_id)
-        #
-        #     event = Event.objects.filter(id=event_id).first()
-        #     # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
-        #     #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
-        #     if not event.complete:
-        #         [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
-        #         if len(get_event_diagnoses()) == 0:
-        #             validated_data['diagnosis'] = pending
-        #     # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
-        #     #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
-        #     else:
-        #         [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
-        #         if len(get_event_diagnoses()) == 0:
-        #             validated_data['diagnosis'] = undetermined
-        #         # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-        #         [evt_diag.delete() for evt_diag in get_event_diagnoses()]
-        #
-        # # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        # if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-        #     validated_data['suspect'] = False
+
+        # TODO: Check on this... the rule seeme pointless unless a user can manually assign Undetermined, which seemingly contradicts other rules
+        # # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+        # if validated_data['event'].complete and validated_data['diagnosis'] == undetermined.id:
+        #     [evt_diag.delete() for evt_diag in get_event_diagnoses()]
 
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
+
+        # Now that we have the new event diagnoses created,
+        # check for existing Pending records and delete them
+        evt_diags = EventDiagnosis.objects.filter(event=validated_data['event'].id)
+        [evt_diag.delete() for evt_diag in evt_diags if evt_diag.diagnosis.name == 'Pending']
 
         # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
@@ -1842,18 +1787,6 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
-
-        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        # if instance.diagnosis in [pending, undetermined]:
-        #     instance.suspect = False
-        #
-        #     if instance.diagnosis == undetermined:
-        #         # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-        #         other_event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id).exclude(id=instance.id)
-        #         [other_event_diagnosis.delete() for other_event_diagnosis in other_event_diagnoses]
 
         # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
@@ -2545,25 +2478,20 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
     #                             unique_eventdiagnoses += '; ' + species.name if unique_eventdiagnoses else species.name
     #     return unique_eventdiagnoses
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            return "Undetermined" if obj.complete else "Pending"
-        else:
-            unique_eventdiagnoses_ids = []
-            unique_eventdiagnoses = ''
-            for event_diagnosis in event_diagnoses:
-                diag_id = event_diagnosis.diagnosis.id if event_diagnosis.diagnosis else None
-                if diag_id:
-                    diag = Diagnosis.objects.get(pk=diag_id).name
-                    if event_diagnosis.suspect:
-                        diag = diag + " suspect"
-                    if diag_id not in unique_eventdiagnoses_ids:
-                        unique_eventdiagnoses_ids.append(diag_id)
-                        unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses_ids else diag
-            return unique_eventdiagnoses
+        unique_eventdiagnoses_ids = []
+        unique_eventdiagnoses = ''
+        for event_diagnosis in event_diagnoses:
+            diag_id = event_diagnosis.diagnosis.id if event_diagnosis.diagnosis else None
+            if diag_id:
+                diag = Diagnosis.objects.get(pk=diag_id).name
+                if event_diagnosis.suspect:
+                    diag = diag + " suspect"
+                if diag_id not in unique_eventdiagnoses_ids:
+                    unique_eventdiagnoses_ids.append(diag_id)
+                    unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses_ids else diag
+        return unique_eventdiagnoses
 
     type = serializers.StringRelatedField(source='event_type')
     affected = serializers.IntegerField(source='affected_count', read_only=True)
@@ -2590,32 +2518,25 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     #     diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
     # return diagnosis
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
-        else:
-            eventdiagnoses = []
-            for event_diagnosis in event_diagnoses:
-                if event_diagnosis.diagnosis:
-                    diag_id = event_diagnosis.diagnosis.id
-                    diag_name = event_diagnosis.diagnosis.name
-                    if event_diagnosis.suspect:
-                        diag_name = diag_name + " suspect"
-                    diag_type = event_diagnosis.diagnosis.diagnosis_type
-                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
-                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                               "priority": event_diagnosis.priority}
-                    eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority}
+                eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2708,36 +2629,29 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
 class EventSummarySerializer(serializers.ModelSerializer):
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
-        else:
-            eventdiagnoses = []
-            for event_diagnosis in event_diagnoses:
-                if event_diagnosis.diagnosis:
-                    diag_id = event_diagnosis.diagnosis.id
-                    diag_name = event_diagnosis.diagnosis.name
-                    if event_diagnosis.suspect:
-                        diag_name = diag_name + " suspect"
-                    diag_type = event_diagnosis.diagnosis.diagnosis_type
-                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
-                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                               "priority": event_diagnosis.priority,
-                                               "created_date": event_diagnosis.created_date,
-                                               "created_by": event_diagnosis.created_by,
-                                               "modified_date": event_diagnosis.modified_date,
-                                               "modified_by": event_diagnosis.modified_by}
-                    eventdiagnoses.append(altered_event_diagnosis)
-            return eventdiagnoses
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
+                eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -2833,35 +2747,28 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
 class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
-        else:
-            eventdiagnoses = []
-            for event_diagnosis in event_diagnoses:
-                if event_diagnosis.diagnosis:
-                    diag_id = event_diagnosis.diagnosis.id
-                    diag_name = event_diagnosis.diagnosis.name
-                    if event_diagnosis.suspect:
-                        diag_name = diag_name + " suspect"
-                    diag_type = event_diagnosis.diagnosis.diagnosis_type
-                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
-                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                               "priority": event_diagnosis.priority,
-                                               "created_date": event_diagnosis.created_date,
-                                               "created_by": event_diagnosis.created_by,
-                                               "modified_date": event_diagnosis.modified_date,
-                                               "modified_by": event_diagnosis.modified_by}
-                    eventdiagnoses.append(altered_event_diagnosis)
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
+                eventdiagnoses.append(altered_event_diagnosis)
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -3129,35 +3036,28 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
-        else:
-            eventdiagnoses = []
-            for event_diagnosis in event_diagnoses:
-                if event_diagnosis.diagnosis:
-                    diag_id = event_diagnosis.diagnosis.id
-                    diag_name = event_diagnosis.diagnosis.name
-                    if event_diagnosis.suspect:
-                        diag_name = diag_name + " suspect"
-                    diag_type = event_diagnosis.diagnosis.diagnosis_type
-                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
-                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                               "priority": event_diagnosis.priority,
-                                               "created_date": event_diagnosis.created_date,
-                                               "created_by": event_diagnosis.created_by,
-                                               "modified_date": event_diagnosis.modified_date,
-                                               "modified_by": event_diagnosis.modified_by}
-                    eventdiagnoses.append(altered_event_diagnosis)
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
+                eventdiagnoses.append(altered_event_diagnosis)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -3194,35 +3094,28 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
 
-    # If no event-level diagnosis indicated by user, use event diagnosis of "Pending" for ongoing investigations
-    # ("Complete"=0) and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1)
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        if not event_diagnoses:
-            diag = "Undetermined" if obj.complete else "Pending"
-            return [{"id": None, "event": obj.id, "diagnosis": None, "diagnosis_string": diag,
-                     "suspect": None, "major": None, "priority": None}]
-        else:
-            eventdiagnoses = []
-            for event_diagnosis in event_diagnoses:
-                if event_diagnosis.diagnosis:
-                    diag_id = event_diagnosis.diagnosis.id
-                    diag_name = event_diagnosis.diagnosis.name
-                    if event_diagnosis.suspect:
-                        diag_name = diag_name + " suspect"
-                    diag_type = event_diagnosis.diagnosis.diagnosis_type
-                    diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                    diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
-                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                               "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                               "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                               "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                               "priority": event_diagnosis.priority,
-                                               "created_date": event_diagnosis.created_date,
-                                               "created_by": event_diagnosis.created_by,
-                                               "modified_date": event_diagnosis.modified_date,
-                                               "modified_by": event_diagnosis.modified_by}
-                    eventdiagnoses.append(altered_event_diagnosis)
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else None
+                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date,
+                                           "created_by": event_diagnosis.created_by,
+                                           "modified_date": event_diagnosis.modified_date,
+                                           "modified_by": event_diagnosis.modified_by}
+                eventdiagnoses.append(altered_event_diagnosis)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user

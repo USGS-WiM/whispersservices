@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from datetime import date, datetime
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
@@ -129,12 +131,37 @@ class Event(PermissionsHistoryModel):
     comments = GenericRelation('Comment', related_name='events')
 
     # override the save method to toggle quality check field when complete field changes
+    # and update event diagnoses as necessary so there is always at least one
     def save(self, *args, **kwargs):
         # Disable Quality check field until field "complete" =1.
         # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
         if not self.complete:
             self.quality_check = None
         super(Event, self).save(*args, **kwargs)
+
+        def get_event_diagnoses():
+            event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
+            return event_diagnoses if event_diagnoses is not None else []
+
+        new_diagnosis = None
+
+        # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
+        #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
+        if not self.complete:
+            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
+            if len(get_event_diagnoses()) == 0:
+                new_diagnosis = Diagnosis.objects.filter(name='Pending').first()
+        # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
+        #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
+        else:
+            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
+            if len(get_event_diagnoses()) == 0:
+                new_diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+
+        if new_diagnosis:
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(event=self, diagnosis=new_diagnosis, suspect=False)
 
     def __str__(self):
         return str(self.id)
@@ -683,6 +710,22 @@ class EventDiagnosis(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_eventdiagnosis"
         verbose_name_plural = "eventdiagnoses"
+        # unique_together = ('event', 'diagnosis')
+
+
+# After an EventDiagnosis is deleted,
+# ensure there is at least one EventDiagnosis for the deleted EventDiagnosis's parent Event,
+# and if there are none left, will need to create a new Pending or Undetermined EventDiagnosis,
+# depending on the Event's complete status
+@receiver(post_delete, sender=EventDiagnosis)
+def delete_event_diagnosis(sender, instance, **kwargs):
+
+    if not EventDiagnosis.objects.filter(event=instance.event.id):
+        new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
+        new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        EventDiagnosis.objects.create(event=instance.event, diagnosis=new_diagnosis, suspect=False)
 
 
 class SpeciesDiagnosis(PermissionsHistoryModel):
