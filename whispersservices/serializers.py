@@ -2964,7 +2964,7 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
 class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
-    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
+    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points', default='')
     country_string = serializers.StringRelatedField(source='country')
     locationspecies = LocationSpeciesDetailPublicSerializer(many=True)
 
@@ -2978,7 +2978,7 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
 class EventLocationDetailSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
-    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points')
+    administrative_level_two_points = serializers.CharField(source='administrative_level_two.points', default='')
     country_string = serializers.StringRelatedField(source='country')
     locationspecies = LocationSpeciesDetailSerializer(many=True)
     comments = CommentSerializer(many=True)
