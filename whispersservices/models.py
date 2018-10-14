@@ -710,7 +710,7 @@ class EventDiagnosis(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_eventdiagnosis"
         verbose_name_plural = "eventdiagnoses"
-        # unique_together = ('event', 'diagnosis')
+        unique_together = ('event', 'diagnosis')
 
 
 # After an EventDiagnosis is deleted,
