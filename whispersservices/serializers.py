@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
@@ -106,6 +107,7 @@ class EventSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
+    # TODO: properly validate child objects too rather than naively trust submitted data
     def validate(self, data):
         if 'request' in self.context and self.context['request'].method == 'POST':
             if 'new_event_locations' not in data:
@@ -126,52 +128,56 @@ class EventSerializer(serializers.ModelSerializer):
                 est_sick_is_valid = True
                 est_dead_is_valid = True
                 details = []
-                mortality_morbidity = EventStatus.objects.filter(id=1).first()
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
-                    if 'start_date' in item and type(item['start_date']) is date:
+                    if 'start_date' in item:
+                        try:
+                            datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                        except ValueError:
+                            details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
-                    if 'location_species' in item:
-                        spec = item['location_species']
-                        if 'species' in spec and spec['species'] is not None:
-                            min_location_species = True
-                        if 'population_count' in spec and spec['population_count'] is not None:
-                            dead_count = 0
-                            sick_count = 0
-                            if 'dead_count_estimated' in spec or 'dead_count' in spec:
-                                dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                            if 'sick_count_estimated' in spec or 'sick_count' in spec:
-                                sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                            if spec['population_count'] >= dead_count + sick_count:
-                                pop_is_valid.append(True)
-                            else:
-                                pop_is_valid.append(False)
-                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                and 'sick_count' in spec and spec['sick_count'] is not None
-                                and not spec['sick_count_estimated'] > spec['sick_count']):
-                            est_sick_is_valid = False
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and 'dead_count' in spec and spec['dead_count'] is not None
-                                and not spec['dead_count_estimated'] > spec['dead_count']):
-                            est_dead_is_valid = False
-                        if data['event_status'] == mortality_morbidity:
-                            if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
-                                min_species_count = True
-                            elif 'dead_count' in spec and spec['dead_count'] > 0:
-                                min_species_count = True
-                            elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
-                                min_species_count = True
-                            elif 'sick_count' in spec and spec['sick_count'] > 0:
-                                min_species_count = True
+                    if 'new_location_species' in item:
+                        for spec in item['new_location_species']:
+                            if 'species' in spec and spec['species'] is not None:
+                                min_location_species = True
+                            if 'population_count' in spec and spec['population_count'] is not None:
+                                dead_count = 0
+                                sick_count = 0
+                                if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                                    dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                                    sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                if spec['population_count'] >= dead_count + sick_count:
+                                    pop_is_valid.append(True)
+                                else:
+                                    pop_is_valid.append(False)
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None
+                                    and not spec['sick_count_estimated'] > spec['sick_count']):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None
+                                    and not spec['dead_count_estimated'] > spec['dead_count']):
+                                est_dead_is_valid = False
+                            if data['event_type'].id == mortality_morbidity.id:
+                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                    min_species_count = True
+                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                    min_species_count = True
+                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                    min_species_count = True
+                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                    min_species_count = True
                 if not min_start_date:
                     details.append("start_date is required for at least one new event_location.")
                 if not min_location_species:
-                    details.append("Each new event_location requires at least one new location_species.")
+                    details.append("Each new_event_location requires at least one new_location_species.")
                 if False in pop_is_valid:
-                    message = "location_species population_count cannot be less than the sum of dead_count"
+                    message = "new_location_species population_count cannot be less than the sum of dead_count"
                     message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                     details.append(message)
                 if not min_species_count:
-                    message = "At least one new location_species requires at least one species count in any of the"
+                    message = "At least one new_location_species requires at least one species count in any of the"
                     message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
                 if not est_sick_is_valid:
@@ -196,40 +202,50 @@ class EventSerializer(serializers.ModelSerializer):
                     est_sick_is_valid = True
                     est_dead_is_valid = True
                     details = []
-                    mortality_morbidity = EventStatus.objects.filter(id=1).first()
+                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                     for item in data['new_event_locations']:
-                        spec = item['location_species']
-                        if ('start_date' in item and item['start_date'] is not None
-                                and 'end_date' in item and item['end_date'] is not None):
-                            start_date = item['start_date']
-                            end_date = item['end_date']
-                            if not (type(start_date) is date and type(end_date) is date and start_date > end_date):
-                                end_date_is_valid = False
-                        else:
-                            end_date_is_valid = False
-                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                and 'sick_count' in spec and spec['sick_count'] is not None
-                                and not spec['sick_count_estimated'] > spec['sick_count']):
-                            est_sick_is_valid = False
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and 'dead_count' in spec and spec['dead_count'] is not None
-                                and not spec['dead_count_estimated'] > spec['dead_count']):
-                            est_dead_is_valid = False
-                        if data['event_status'] == mortality_morbidity:
-                            if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
-                                species_count_is_valid.append(True)
-                            elif 'dead_count' in spec and spec['dead_count'] > 0:
-                                species_count_is_valid.append(True)
-                            elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
-                                species_count_is_valid.append(True)
-                            elif 'sick_count' in spec and spec['sick_count'] > 0:
-                                species_count_is_valid.append(True)
+                        for spec in item['location_species']:
+                            if ('start_date' in item and item['start_date'] is not None
+                                    and 'end_date' in item and item['end_date'] is not None):
+                                try:
+                                    start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                                except ValueError:
+                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                    start_date = datetime.now().date
+                                    details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                                try:
+                                    end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                                except ValueError:
+                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                    end_date = datetime.now().date() + timedelta(days=1)
+                                    details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                                if not start_date < end_date:
+                                    end_date_is_valid = False
                             else:
-                                species_count_is_valid.append(False)
+                                end_date_is_valid = False
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None
+                                    and not spec['sick_count_estimated'] > spec['sick_count']):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None
+                                    and not spec['dead_count_estimated'] > spec['dead_count']):
+                                est_dead_is_valid = False
+                            if data['event_type'] == mortality_morbidity.id:
+                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                    species_count_is_valid.append(True)
+                                else:
+                                    species_count_is_valid.append(False)
                     if not end_date_is_valid:
                         details.append(location_message)
                     if False in species_count_is_valid:
-                        message = "Each location_species requires at least one species count in any of the following"
+                        message = "Each new_location_species requires at least one species count in any of these"
                         message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                         details.append(message)
                     if not est_sick_is_valid:
@@ -364,16 +380,31 @@ class EventSerializer(serializers.ModelSerializer):
 
                             location_spec['created_by'] = user
                             location_spec['modified_by'] = user
-                            LocationSpecies.objects.create(**location_spec)
+                            location_species = LocationSpecies.objects.create(**location_spec)
 
                             # create the child species diagnoses for this event
                             if new_species_diagnoses is not None:
-                                for diagnosis_id in new_species_diagnoses:
-                                    if diagnosis_id is not None:
-                                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                                        if diagnosis is not None:
-                                            SpeciesDiagnosis.objects.create(
-                                                location_speccies=location_spec, diagnosis=diagnosis)
+                                for spec_diag in new_species_diagnoses:
+                                    if spec_diag is not None:
+                                        new_species_diagnosis_organizations = spec_diag.pop(
+                                            'new_species_diagnosis_organizations', None)
+                                        spec_diag['location_species'] = location_species
+                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                            pk=spec_diag['diagnosis']).first()
+                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                            pk=spec_diag['cause']).first()
+                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                            pk=spec_diag['basis']).first()
+                                        species_diagnosis = SpeciesDiagnosis.objects.create(**spec_diag)
+
+                                        # create the child organizations for this species diagnosis
+                                        if new_species_diagnosis_organizations is not None:
+                                            for org_id in new_species_diagnosis_organizations:
+                                                if org_id is not None:
+                                                    org = Organization.objects.filter(pk=org_id).first()
+                                                    if org is not None:
+                                                        SpeciesDiagnosisOrganization.objects.create(
+                                                            species_diagnosis=species_diagnosis, organization=org)
 
                     # Create SpecimenSubmissionRequests
                     if new_service_request is not None:
@@ -392,7 +423,7 @@ class EventSerializer(serializers.ModelSerializer):
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', Flat=True).distinct()
+            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct()
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for diagnosis_id in new_event_diagnoses:
@@ -401,7 +432,7 @@ class EventSerializer(serializers.ModelSerializer):
                         EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
-                event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
+                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
                 [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
 
         return event
@@ -440,11 +471,11 @@ class EventSerializer(serializers.ModelSerializer):
                 species_diagnosis_basis_is_valid = []
                 species_diagnosis_cause_is_valid = []
                 details = []
-                mortality_morbidity = EventStatus.objects.filter(id=1).first()
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date > location.start_date:
                         raise serializers.ValidationError(location_message)
-                    if instance.event_status == mortality_morbidity:
+                    if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
@@ -629,6 +660,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
+    # TODO: properly validate child objects too rather than naively trust submitted data
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
 
@@ -663,11 +695,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 species_diagnosis_basis_is_valid = []
                 species_diagnosis_cause_is_valid = []
                 details = []
-                mortality_morbidity = EventStatus.objects.filter(id=1).first()
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date > location.start_date:
                         raise serializers.ValidationError(location_message)
-                    if instance.event_status == mortality_morbidity:
+                    if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
@@ -834,7 +866,7 @@ class EventSuperEventSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "SuperEvent for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -898,7 +930,7 @@ class EventAbstractSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Abstracts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -916,7 +948,7 @@ class EventCaseSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Cases from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -934,7 +966,7 @@ class EventLabsiteSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Labsites from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -959,7 +991,7 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Organizations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -1023,7 +1055,7 @@ class EventContactSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Contacts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -1067,7 +1099,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event' in data and data['event'].complete:
+        if data['event'].complete:
             message = "Locations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -1357,7 +1389,7 @@ class EventLocationContactSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event_location' in data and data['event_location'].event.complete:
+        if data['event_location'].event.complete:
             message = "Contacts from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -1428,10 +1460,12 @@ class EventLocationFlywaySerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event_location' in data and data['event_location'].event.complete:
+        if data['event_location'].event.complete:
             message = "Flyways from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+
+        return data
 
     class Meta:
         model = EventLocationFlyway
@@ -1469,7 +1503,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'event_location' in data and data['event_location'].event.complete:
+        if data['event_location'].event.complete:
             message = "Species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -1723,9 +1757,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(message)
 
         event_specdiags = SpeciesDiagnosis.objects.filter(
-            location_species__event_location__event=data['event'].id).values_list('diagnosis', Flat=True).distinct()
-        if (not event_specdiags or data['diagnosis'].id not in event_specdiags
-                or data['diagnosis'].name in ['Pending', 'Undetermined']):
+            location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
+        diagnosis = Diagnosis.objects.filter(id=data['diagnosis']).first()
+        if diagnosis is not None and (not event_specdiags or diagnosis.id not in event_specdiags
+                                      or diagnosis.name in ['Pending', 'Undetermined']):
             message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
             raise serializers.ValidationError(message)
 
@@ -1853,7 +1888,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'location_species' in data and data['location_species'].event_location.event.complete:
+        if data['location_species'].event_location.event.complete:
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
@@ -2063,12 +2098,12 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'species_diagnosis' in data and data['species_diagnosis'].location_species.event_location.event.complete:
+        if data['species_diagnosis'].location_species.event_location.event.complete:
             message = "Organizations from a diagnosis from a species from a location from a complete event"
             message += " may not be changed unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
-        if not data['organization'].laboratory:
+        if data['organizations'].laboratory:
             raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # a diagnosis can only be used once for a location-species-labID combination
