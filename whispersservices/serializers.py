@@ -417,7 +417,7 @@ class EventSerializer(serializers.ModelSerializer):
         undetermined = Diagnosis.objects.filter(name='Undetermined').first()
 
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(diag) for diag in new_event_diagnoses if diag in [pending.id, undetermined.id]]
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
 
         if new_event_diagnoses is not None:
             # Can only use diagnoses that are already used by this event's species diagnoses
@@ -426,10 +426,10 @@ class EventSerializer(serializers.ModelSerializer):
             ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct()
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
-                for diagnosis_id in new_event_diagnoses:
-                    if diagnosis_id in valid_diagnosis_ids:
-                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis)
+                for event_diagnosis in new_event_diagnoses:
+                    if event_diagnosis in valid_diagnosis_ids:
+                        diagnosis = Diagnosis.objects.filter(pk=event_diagnosis['diagnosis']).first()
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
