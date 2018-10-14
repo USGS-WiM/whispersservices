@@ -2765,6 +2765,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                                            "modified_date": event_diagnosis.modified_date,
                                            "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
 
     def get_administrativelevelones(self, obj):
         unique_l1_ids = []
@@ -3054,6 +3055,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                                            "modified_date": event_diagnosis.modified_date,
                                            "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -3112,6 +3114,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                                            "modified_date": event_diagnosis.modified_date,
                                            "modified_by": event_diagnosis.modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
