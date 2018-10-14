@@ -168,6 +168,7 @@ class Event(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_event"
+        ordering = ['id']
         # TODO: 'unique together' fields
 
 
@@ -184,6 +185,7 @@ class EventSuperEvent(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventsuperevent"
+        ordering = ['id']
 
 
 class SuperEvent(HistoryModel):
@@ -199,6 +201,7 @@ class SuperEvent(HistoryModel):
 
     class Meta:
         db_table = "whispers_superevent"
+        ordering = ['id']
 
 
 class EventType(HistoryNameModel):
@@ -211,6 +214,7 @@ class EventType(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_eventtype"
+        ordering = ['id']
 
 
 class Staff(HistoryModel):
@@ -228,6 +232,7 @@ class Staff(HistoryModel):
 
     class Meta:
         db_table = "whispers_staff"
+        ordering = ['id']
 
 
 class LegalStatus(HistoryNameModel):
@@ -240,6 +245,7 @@ class LegalStatus(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_legalstatus"
+        ordering = ['id']
 
 
 class EventStatus(HistoryNameModel):
@@ -253,6 +259,7 @@ class EventStatus(HistoryNameModel):
     class Meta:
         db_table = "whispers_eventstatus"
         verbose_name_plural = "eventstatuses"
+        ordering = ['id']
 
 
 class EventAbstract(HistoryModel):
@@ -269,6 +276,7 @@ class EventAbstract(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventabstract"
+        ordering = ['id']
 
 
 class EventCase(HistoryModel):
@@ -284,6 +292,7 @@ class EventCase(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventcase"
+        ordering = ['id']
 
 
 class EventLabsite(HistoryModel):
@@ -299,6 +308,7 @@ class EventLabsite(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventlabsite"
+        ordering = ['id']
 
 
 class EventOrganization(PermissionsHistoryModel):
@@ -315,6 +325,7 @@ class EventOrganization(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_eventorganization"
+        ordering = ['event', 'priority']
 
 
 class EventContact(PermissionsHistoryModel):
@@ -330,6 +341,7 @@ class EventContact(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_eventcontact"
+        ordering = ['id']
 
 
 ######
@@ -418,6 +430,7 @@ class EventLocation(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_eventlocation"
+        ordering = ['event', 'priority']
 
 
 class EventLocationContact(HistoryModel):
@@ -434,6 +447,7 @@ class EventLocationContact(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventlocationcontact"
+        ordering = ['id']
 
 
 class Country(HistoryNameModel):
@@ -450,6 +464,7 @@ class Country(HistoryNameModel):
     class Meta:
         db_table = "whispers_country"
         verbose_name_plural = "countries"
+        ordering = ['id']
 
 
 class AdministrativeLevelOne(HistoryNameModel):
@@ -465,6 +480,7 @@ class AdministrativeLevelOne(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_administrativelevelone"
+        ordering = ['id']
 
 
 class AdministrativeLevelTwo(HistoryModel):
@@ -486,6 +502,7 @@ class AdministrativeLevelTwo(HistoryModel):
     class Meta:
         db_table = "whispers_administrativeleveltwo"
         unique_together = ('name', 'administrative_level_one')
+        ordering = ['id']
 
 
 class AdministrativeLevelLocality(HistoryNameModel):
@@ -502,6 +519,7 @@ class AdministrativeLevelLocality(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_adminstrativelevellocality"
+        ordering = ['id']
 
 
 class LandOwnership(HistoryNameModel):
@@ -514,6 +532,7 @@ class LandOwnership(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_landownership"
+        ordering = ['id']
 
 
 class EventLocationFlyway(HistoryModel):
@@ -529,6 +548,7 @@ class EventLocationFlyway(HistoryModel):
 
     class Meta:
         db_table = "whispers_eventlocationflyway"
+        ordering = ['id']
 
 
 class Flyway(HistoryNameModel):
@@ -541,6 +561,7 @@ class Flyway(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_flyway"
+        ordering = ['id']
 
 
 ######
@@ -606,6 +627,7 @@ class LocationSpecies(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_locationspecies"
         verbose_name_plural = "locationspecies"
+        ordering = ['event_location', 'priority']
 
 
 class Species(HistoryModel):
@@ -629,6 +651,7 @@ class Species(HistoryModel):
     class Meta:
         db_table = "whispers_species"
         verbose_name_plural = "species"
+        ordering = ['id']
 
 
 class AgeBias(HistoryNameModel):
@@ -642,6 +665,7 @@ class AgeBias(HistoryNameModel):
     class Meta:
         db_table = "whispers_agebias"
         verbose_name_plural = "agebiases"
+        ordering = ['id']
 
 
 class SexBias(HistoryNameModel):
@@ -655,6 +679,7 @@ class SexBias(HistoryNameModel):
     class Meta:
         db_table = "whispers_sexbias"
         verbose_name_plural = "sexbiases"
+        ordering = ['id']
 
 
 ######
@@ -677,6 +702,7 @@ class Diagnosis(HistoryNameModel):
     class Meta:
         db_table = "whispers_diagnosis"
         verbose_name_plural = "diagnoses"
+        ordering = ['id']
 
 
 class DiagnosisType(HistoryNameModel):
@@ -691,6 +717,7 @@ class DiagnosisType(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_diagnosistype"
+        ordering = ['id']
 
 
 class EventDiagnosis(PermissionsHistoryModel):
@@ -711,6 +738,7 @@ class EventDiagnosis(PermissionsHistoryModel):
         db_table = "whispers_eventdiagnosis"
         verbose_name_plural = "eventdiagnoses"
         unique_together = ('event', 'diagnosis')
+        ordering = ['event', 'priority']
 
 
 # After an EventDiagnosis is deleted,
@@ -832,6 +860,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         db_table = "whispers_speciesdiagnosis"
         verbose_name_plural = "speciesdiagnoses"
         unique_together = ("location_species", "diagnosis")
+        ordering = ['location_species', 'priority']
 
 
 class SpeciesDiagnosisOrganization(HistoryModel):
@@ -848,6 +877,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
     class Meta:
         db_table = "whispers_speciesdiagnosisorganization"
         unique_together = ("species_diagnosis", "organization")
+        ordering = ['id']
 
 
 class DiagnosisBasis(HistoryNameModel):
@@ -861,6 +891,7 @@ class DiagnosisBasis(HistoryNameModel):
     class Meta:
         db_table = "whispers_diagnosisbasis"
         verbose_name_plural = "diagnosisbases"
+        ordering = ['id']
 
 
 class DiagnosisCause(HistoryNameModel):
@@ -873,6 +904,7 @@ class DiagnosisCause(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_diagnosiscause"
+        ordering = ['id']
 
 
 ######
@@ -901,6 +933,7 @@ class ServiceRequest(HistoryModel):
 
     class Meta:
         db_table = "whispers_servicerequest"
+        ordering = ['id']
 
 
 class ServiceRequestType(HistoryNameModel):
@@ -913,6 +946,7 @@ class ServiceRequestType(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_servicerequesttype"
+        ordering = ['id']
 
 
 class ServiceRequestResponse(HistoryNameModel):
@@ -925,6 +959,7 @@ class ServiceRequestResponse(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_servicerequestresponse"
+        ordering = ['id']
 
 
 ######
@@ -952,6 +987,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
 
     class Meta:
         db_table = "whispers_comment"
+        ordering = ['id']
 
 
 class CommentType(HistoryNameModel):
@@ -964,6 +1000,7 @@ class CommentType(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_commenttype"
+        ordering = ['id']
 
 
 class Artifact(HistoryModel):  # TODO: implement file fields
@@ -979,6 +1016,7 @@ class Artifact(HistoryModel):  # TODO: implement file fields
 
     class Meta:
         db_table = "whispers_artifact"
+        ordering = ['id']
 
 
 ######
@@ -1006,6 +1044,7 @@ class User(AbstractUser):
 
     class Meta:
         db_table = "whispers_user"
+        ordering = ['id']
 
 
 class Role(HistoryNameModel):
@@ -1046,6 +1085,7 @@ class Role(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_role"
+        ordering = ['id']
 
 
 class Circle(HistoryNameModel):
@@ -1060,6 +1100,7 @@ class Circle(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_circle"
+        ordering = ['id']
 
 
 class CircleUser(HistoryModel):
@@ -1075,6 +1116,7 @@ class CircleUser(HistoryModel):
 
     class Meta:
         db_table = "whispers_circleuser"
+        ordering = ['id']
 
 
 # TODO: apply permissions to this model such that only admins and up can write (create/update/delete)
@@ -1102,6 +1144,7 @@ class Organization(HistoryNameModel):
 
     class Meta:
         db_table = "whispers_organization"
+        ordering = ['id']
 
 
 class Contact(HistoryModel):
@@ -1129,6 +1172,7 @@ class Contact(HistoryModel):
 
     class Meta:
         db_table = "whispers_contact"
+        ordering = ['id']
 
 
 class ContactType(HistoryModel):
@@ -1143,6 +1187,7 @@ class ContactType(HistoryModel):
 
     class Meta:
         db_table = "whispers_contacttype"
+        ordering = ['id']
 
 
 class Search(PermissionsHistoryModel):
@@ -1157,6 +1202,7 @@ class Search(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_search"
         verbose_name_plural = "searches"
+        ordering = ['id']
 
 
 class FlatEventDetails(models.Model):
