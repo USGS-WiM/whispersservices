@@ -718,11 +718,8 @@ class SpeciesDiagnosisDetailsViewSet(ReadOnlyHistoryViewSet):
 
         # filter by complete, exact
         complete = query_params.get('complete', None)
-        if complete is not None and complete.lower() in ['true', 'false']:
-            if complete.lower() == 'true':
-                queryset = queryset.filter(location_species__event_location__event__complete__exact=True)
-            else:
-                queryset = queryset.filter(location_species__event_location__event__complete__exact=False)
+        if complete is not None and complete in ['True', 'true', 'False', 'false']:
+            queryset = queryset.filter(location_species__event_location__event__complete__exact=complete)
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None:
@@ -1084,8 +1081,8 @@ class OrganizationViewSet(HistoryViewSet):
             contacts_list = contacts.split(',')
             queryset = queryset.filter(contacts__in=contacts_list)
         laboratory = self.request.query_params.get('laboratory', None)
-        if laboratory is not None:
-            queryset = queryset.filter(contacts__exact=laboratory)
+        if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
+            queryset = queryset.filter(laboratory__exact=laboratory)
 
         # all requests from anonymous users must only return published data
         if not user.is_authenticated:
@@ -1443,11 +1440,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # filter by complete, exact
         complete = query_params.get('complete', None)
-        if complete is not None and complete.lower() in ['true', 'false']:
-            if complete.lower() == 'true':
-                queryset = queryset.filter(complete__exact=True)
-            else:
-                queryset = queryset.filter(complete__exact=False)
+        if complete is not None and complete in ['True', 'true', 'False', 'false']:
+            queryset = queryset.filter(complete__exact=complete)
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None:
