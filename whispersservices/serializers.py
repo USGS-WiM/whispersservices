@@ -2672,16 +2672,15 @@ class EventSummarySerializer(serializers.ModelSerializer):
                 diag_type = event_diagnosis.diagnosis.diagnosis_type
                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+                created_by = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
                 modified_by = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by.username,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": modified_by}
+                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
+                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
         return eventdiagnoses
 
@@ -2791,16 +2790,15 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                 diag_type = event_diagnosis.diagnosis.diagnosis_type
                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+                created_by = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
                 modified_by = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by.username,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": modified_by}
+                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
+                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
         return eventdiagnoses
 
@@ -3084,16 +3082,15 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 diag_type = event_diagnosis.diagnosis.diagnosis_type
                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+                created_by = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
                 modified_by = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by.username,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": modified_by}
+                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
+                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
         return eventdiagnoses
 
@@ -3146,16 +3143,15 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 diag_type = event_diagnosis.diagnosis.diagnosis_type
                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+                created_by = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
                 modified_by = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date,
-                                           "created_by": event_diagnosis.created_by.username,
-                                           "modified_date": event_diagnosis.modified_date,
-                                           "modified_by": modified_by}
+                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
+                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by}
                 eventdiagnoses.append(altered_event_diagnosis)
         return eventdiagnoses
 

@@ -143,25 +143,25 @@ class Event(PermissionsHistoryModel):
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
             return event_diagnoses if event_diagnoses is not None else []
 
-        new_diagnosis = None
+        diagnosis = None
 
         # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
         #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
         if not self.complete:
             [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
             if len(get_event_diagnoses()) == 0:
-                new_diagnosis = Diagnosis.objects.filter(name='Pending').first()
+                diagnosis = Diagnosis.objects.filter(name='Pending').first()
         # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
         #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
         else:
             [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
             if len(get_event_diagnoses()) == 0:
-                new_diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+                diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
 
-        if new_diagnosis:
+        if diagnosis:
             # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
             # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=self, diagnosis=new_diagnosis, suspect=False)
+            EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, created_by=self.created_by)
 
     def __str__(self):
         return str(self.id)
@@ -753,7 +753,8 @@ def delete_event_diagnosis(sender, instance, **kwargs):
         new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        EventDiagnosis.objects.create(event=instance.event, diagnosis=new_diagnosis, suspect=False)
+        EventDiagnosis.objects.create(
+            event=instance.event, diagnosis=new_diagnosis, suspect=False, created_by=instance.created_by)
 
 
 class SpeciesDiagnosis(PermissionsHistoryModel):
