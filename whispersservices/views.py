@@ -4,8 +4,7 @@ from collections import OrderedDict
 from django.utils import timezone
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.db.models import Q, F, Sum
-from django.contrib.auth import authenticate, login, logout
+from django.db.models import Q, F, Sum, Count
 from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, generics, permissions, authentication, status, filters
 from rest_framework.decorators import action
@@ -1455,15 +1454,21 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if diagnosis is not None:
             if LIST_DELIMETER in diagnosis:
                 diagnosis_list = diagnosis.split(',')
+                queryset = queryset.prefetch_related('eventdiagnoses').filter(
+                    eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
                 if and_params is not None and 'diagnosis' in and_params:
-                    queries = [Q(eventdiagnoses__diagnosis__exact=val) for val in diagnosis_list]
-                    query = queries.pop()
-                    for item in queries:
-                        query &= item
-                    queryset = queryset.filter(query).distinct()
-                else:
-                    queryset = queryset.prefetch_related('eventdiagnoses').filter(
-                        eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
+                    # first, count the species for each returned event
+                    # and only allow those with the same or greater count as the length of the query_param list
+                    queryset = queryset.annotate(count_diagnosies=Count(
+                        'eventdiagnoses__diagnosis', distinct=True)).filter(
+                        count_diagnoses__gte=len(diagnosis_list))
+                    diagnosis_list_ints = [int(i) for i in diagnosis_list]
+                    # next, find only the events that have _all_ the requested values, not just any of them
+                    for item in queryset:
+                        evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
+                        all_diagnoses = [evtdiag.diagnosis.id for evtdiag in evtdiags]
+                        if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
+                            queryset = queryset.exclude(pk=item.id)
             else:
                 queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis).distinct()
         # filter by diagnosistype ID, exact list
@@ -1471,15 +1476,21 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if diagnosis_type is not None:
             if LIST_DELIMETER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
+                queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
+                    eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
                 if and_params is not None and 'diagnosis_type' in and_params:
-                    queries = [Q(eventdiagnoses__diagnosis__diagnosis_type__exact=val) for val in diagnosis_type_list]
-                    query = queries.pop()
-                    for item in queries:
-                        query &= item
-                    queryset = queryset.filter(query).distinct()
-                else:
-                    queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
-                        eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
+                    # first, count the species for each returned event
+                    # and only allow those with the same or greater count as the length of the query_param list
+                    queryset = queryset.annotate(count_diagnosis_types=Count(
+                        'eventdiagnoses__diagnosis__diagnosis_type', distinct=True)).filter(
+                        count_diagnosis_types__gte=len(diagnosis_type_list))
+                    diagnosis_type_list_ints = [int(i) for i in diagnosis_type_list]
+                    # next, find only the events that have _all_ the requested values, not just any of them
+                    for item in queryset:
+                        evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
+                        all_diagnosis_types = [evtdiag.diagnosis.diagnosis_type.id for evtdiag in evtdiags]
+                        if not set(diagnosis_type_list_ints).issubset(set(all_diagnosis_types)):
+                            queryset = queryset.exclude(pk=item.id)
             else:
                 queryset = queryset.filter(eventdiagnoses__diagnosis__diagnosis_type__exact=diagnosis_type).distinct()
         # filter by species ID, exact list
@@ -1487,15 +1498,21 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if species is not None:
             if LIST_DELIMETER in species:
                 species_list = species.split(',')
+                queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
+                    eventlocations__locationspecies__species__in=species_list).distinct()
                 if and_params is not None and 'species' in and_params:
-                    queries = [Q(eventlocations__locationspecies__species__in=val) for val in species_list]
-                    query = queries.pop()
-                    for item in queries:
-                        query &= item
-                    queryset = queryset.filter(query).distinct()
-                else:
-                    queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
-                        eventlocations__locationspecies__species__in=species_list).distinct()
+                    # first, count the species for each returned event
+                    # and only allow those with the same or greater count as the length of the query_param list
+                    queryset = queryset.annotate(count_species=Count(
+                        'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
+                    species_list_ints = [int(i) for i in species_list]
+                    # next, find only the events that have _all_ the requested values, not just any of them
+                    for item in queryset:
+                        evtlocs = EventLocation.objects.filter(event_id=item.id)
+                        locspecs = LocationSpecies.objects.filter(event_location__in=evtlocs)
+                        all_species = [locspec.species.id for locspec in locspecs]
+                        if not set(species_list_ints).issubset(set(all_species)):
+                            queryset = queryset.exclude(pk=item.id)
             else:
                 queryset = queryset.filter(eventlocations__locationspecies__species__exact=species).distinct()
         # filter by administrative_level_one, exact list
@@ -1503,15 +1520,25 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if administrative_level_one is not None:
             if LIST_DELIMETER in administrative_level_one:
                 admin_level_one_list = administrative_level_one.split(',')
+                queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
+                    eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
                 if and_params is not None and 'administrative_level_one' in and_params:
-                    queries = [Q(eventlocations__administrative_level_one__exact=val) for val in admin_level_one_list]
-                    query = queries.pop()
-                    for item in queries:
-                        query &= item
-                    queryset = queryset.filter(query).distinct()
-                else:
-                    queryset = queryset.prefetch_related('eventlocations__administrative_level_one').filter(
-                        eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
+                    # this _should_ be fairly straight forward with the postgresql ArrayAgg function,
+                    # (which would offload the hard work to postgresql and make this whole operation faster)
+                    # but that function is just throwing an error about a Serial data type,
+                    # so the following is a work-around
+
+                    # first, count the eventlocations for each returned event
+                    # and only allow those with the same or greater count as the length of the query_param list
+                    queryset = queryset.annotate(
+                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_one_list))
+                    admin_level_one_list_ints = [int(i) for i in admin_level_one_list]
+                    # next, find only the events that have _all_ the requested values, not just any of them
+                    for item in queryset:
+                        evtlocs = EventLocation.objects.filter(event_id=item.id)
+                        all_a1s = [evtloc.administrative_level_one.id for evtloc in evtlocs]
+                        if not set(admin_level_one_list_ints).issubset(set(all_a1s)):
+                            queryset = queryset.exclude(pk=item.id)
             else:
                 queryset = queryset.filter(
                     eventlocations__administrative_level_one__exact=administrative_level_one).distinct()
@@ -1520,15 +1547,20 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if administrative_level_two is not None:
             if LIST_DELIMETER in administrative_level_two:
                 admin_level_two_list = administrative_level_two.split(',')
+                queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
+                    eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
                 if and_params is not None and 'administrative_level_two' in and_params:
-                    queries = [Q(eventlocations__administrative_level_two__exact=val) for val in admin_level_two_list]
-                    query = queries.pop()
-                    for item in queries:
-                        query &= item
-                    queryset = queryset.filter(query).distinct()
-                else:
-                    queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
-                        eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
+                    # first, count the eventlocations for each returned event
+                    # and only allow those with the same or greater count as the length of the query_param list
+                    queryset = queryset.annotate(
+                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_two_list))
+                    admin_level_two_list_ints = [int(i) for i in admin_level_two_list]
+                    # next, find only the events that have _all_ the requested values, not just any of them
+                    for item in queryset:
+                        evtlocs = EventLocation.objects.filter(event_id=item.id)
+                        all_a2s = [evtloc.administrative_level_two.id for evtloc in evtlocs]
+                        if not set(admin_level_two_list_ints).issubset(set(all_a2s)):
+                            queryset = queryset.exclude(pk=item.id)
             else:
                 queryset = queryset.filter(
                     eventlocations__administrative_level_two__exact=administrative_level_two).distinct()

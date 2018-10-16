@@ -161,7 +161,8 @@ class Event(PermissionsHistoryModel):
         if diagnosis:
             # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
             # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, created_by=self.created_by)
+            EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False,
+                                          created_by=self.created_by, modified_by=self.modified_by)
 
     def __str__(self):
         return str(self.id)
@@ -754,7 +755,8 @@ def delete_event_diagnosis(sender, instance, **kwargs):
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
         EventDiagnosis.objects.create(
-            event=instance.event, diagnosis=new_diagnosis, suspect=False, created_by=instance.created_by)
+            event=instance.event, diagnosis=new_diagnosis, suspect=False,
+            created_by=instance.created_by, modified_by=instance.modified_by)
 
 
 class SpeciesDiagnosis(PermissionsHistoryModel):
