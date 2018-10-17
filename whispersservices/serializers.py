@@ -1885,6 +1885,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     cause_string = serializers.SerializerMethodField()
     created_by = serializers.StringRelatedField()
     modified_by = serializers.StringRelatedField()
+    new_species_diagnosis_organizations = serializers.ListField(write_only=True)
 
     def validate(self, data):
 
@@ -1897,6 +1898,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         tested_count = data['tested_count'] if 'tested_count' in data and data['tested_count'] is not None else None
         suspect_count = data['suspect_count'] if 'suspect_count' in data and data['suspect_count'] is not None else None
         pos_count = data['positive_count'] if 'positive_count' in data and data['positive_count'] is not None else None
+        if 'new_species_diagnosis_organizations' in data and data['new_species_diagnosis_organizations'] is not None:
+            new_species_diagnosis_organizations = data['new_species_diagnosis_organizations']
+        else:
+            new_species_diagnosis_organizations = None
+
+        if new_species_diagnosis_organizations is not None:
+            for org in new_species_diagnosis_organizations:
+                if not org.laboratory:
+                    raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
@@ -1939,6 +1949,16 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
+        new_species_diagnosis_organizations = validated_data.pop('new_species_diagnosis_organizations', None)
+
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # For new data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
         # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
@@ -1994,14 +2014,33 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         species_diagnosis.priority = species_diagnosis.priority if self_priority_updated else priority
         species_diagnosis.save()
 
+        if new_species_diagnosis_organizations is not None:
+            for org_id in new_species_diagnosis_organizations:
+                org = Organization.objects.filter(id=org_id).first()
+                if org:
+                    SpeciesDiagnosisOrganization.objects.create(species_diagnosis=species_diagnosis, organization=org,
+                                                                created_by=user, modified_by=user)
+
         return species_diagnosis
 
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context, 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
-        orgs = SpeciesDiagnosisOrganization.objects.filter(species_diagnosis=instance.id)
+        # get the old (current) org ID list for this Species Diagnosis
+        old_org_ids = SpeciesDiagnosisOrganization.objects.filter(
+            species_diagnosis=instance.id).values_list('id', flat=True)
+
+        # pull out org ID list from the request
+        if 'new_species_diagnosis_organizations' in self.initial_data:
+            new_org_ids = self.initial_data['new_species_diagnosis_organizations']
+        else:
+            new_org_ids = []
 
         # for positive_count, only allowed to enter >0 if provide laboratory name.
-        if validated_data['positive_count'] > 0 and len(orgs) == 0:
+        if validated_data['positive_count'] > 0 and (len(old_org_ids) == 0 or len(new_org_ids) == 0):
             message = "The positive count cannot be greater than zero if there is no laboratory for this diagnosis."
             raise serializers.ValidationError(message)
 
@@ -2036,7 +2075,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         instance.positive_count = validated_data.get('positive_count', instance.positive_count)
         instance.suspect_count = validated_data.get('suspect_count', instance.suspect_count)
         instance.pooled = validated_data.get('pooled', instance.pooled)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if user:
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -2083,13 +2122,28 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
+        # identify and delete relates where sample IDs are present in old list but not new list
+        delete_org_ids = list(set(old_org_ids) - set(new_org_ids))
+        for org_id in delete_org_ids:
+            delete_org = SpeciesDiagnosisOrganization.objects.filter(species_diagnosis=instance.id, organization=org_id)
+            delete_org.delete()
+
+        # identify and create relates where sample IDs are present in new list but not old list
+        add_org_ids = list(set(new_org_ids) - set(old_org_ids))
+        for org_id in add_org_ids:
+            org = Organization.objects.filter(id=org_id).first()
+            if org:
+                SpeciesDiagnosisOrganization.objects.create(species_diagnosis=instance, organization=org,
+                                                            created_by=user, modified_by=user)
+
         return instance
 
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
                   'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled',
-                  'organizations', 'created_date', 'created_by', 'modified_date', 'modified_by',)
+                  'organizations', 'new_species_diagnosis_organizations',
+                  'created_date', 'created_by', 'modified_date', 'modified_by',)
 
 
 class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
@@ -2103,7 +2157,7 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
             message += " may not be changed unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
-        if data['organizations'].laboratory:
+        if data['organization'].laboratory:
             raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # a diagnosis can only be used once for a location-species-labID combination
