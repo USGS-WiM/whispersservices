@@ -2051,7 +2051,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             new_org_ids = []
 
         # for positive_count, only allowed to enter >0 if provide laboratory name.
-        if validated_data['positive_count'] > 0 and (len(old_org_ids) == 0 or len(new_org_ids) == 0):
+        if ('positive_count' in validated_data and validated_data['positive_count'] is not None
+                and validated_data['positive_count'] > 0 and (len(old_org_ids) == 0 or len(new_org_ids) == 0)):
             message = "The positive count cannot be greater than zero if there is no laboratory for this diagnosis."
             raise serializers.ValidationError(message)
 
