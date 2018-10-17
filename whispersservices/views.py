@@ -1344,14 +1344,16 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
             else:
                 queryset = queryset.filter(eventlocations__gnis_id__exact=gnis_id).distinct()
-        # filter by affected, exact list
-        affected_count = query_params.get('affected_count', None)
-        if affected_count is not None:
-            if LIST_DELIMETER in affected_count:
-                affected_count_list = affected_count.split(',')
-                queryset = queryset.filter(affected_count__in=affected_count_list)
-            else:
-                queryset = queryset.filter(affected_count__exact=affected_count)
+        # filter by affected, (greater than or equal to only, less than or equal to only,
+        # or between both, depending on which URL params appear)
+        affected_count__gte = query_params.get('affected_count__gte', None)
+        affected_count__lte = query_params.get('affected_count__lte', None)
+        if affected_count__gte is not None and affected_count__lte is not None:
+            queryset = queryset.filter(affected_count__gte=affected_count__gte, affected_count__lte=affected_count__lte)
+        elif affected_count__gte is not None:
+            queryset = queryset.filter(affected_count__gte=affected_count__gte)
+        elif affected_count__lte is not None:
+            queryset = queryset.filter(affected_count__lte=affected_count__lte)
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
         # the date filters below are date-exclusive
         start_date = query_params.get('start_date', None)
