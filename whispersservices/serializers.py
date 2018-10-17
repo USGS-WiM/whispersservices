@@ -582,7 +582,7 @@ class EventSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
-        if 'request' in self.context and 'user' in self.context['request']:
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -807,7 +807,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -1022,7 +1022,7 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
         instance.event = validated_data.get('event', instance.event)
         instance.organization = validated_data.get('organization', instance.organization)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -1297,7 +1297,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         instance.land_ownership = validated_data.get('land_ownership', instance.land_ownership)
         instance.gnis_name = validated_data.get('gnis_name', instance.gnis_name)
         instance.gnis_id = validated_data.get('gnis_id', instance.gnis_id)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -1580,7 +1580,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         instance.captive = validated_data.get('captive', instance.captive)
         instance.age_bias = validated_data.get('age_bias', instance.age_bias)
         instance.sex_bias = validated_data.get('sex_bias', instance.sex_bias)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -1815,7 +1815,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         instance.suspect = validated_data.get('suspect', instance.suspect)
         instance.major = validated_data.get('major', instance.major)
         instance.priority = validated_data.get('priority', instance.priority)
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             instance.modified_by = self.context['request'].user
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
@@ -1904,8 +1904,9 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             new_species_diagnosis_organizations = None
 
         if new_species_diagnosis_organizations is not None:
-            for org in new_species_diagnosis_organizations:
-                if not org.laboratory:
+            for org_id in new_species_diagnosis_organizations:
+                org = Organization.objects.filter(id=org_id).first()
+                if org and not org.laboratory:
                     raise serializers.ValidationError("SpeciesDiagnosis Organization can only be a laboratory.")
 
         # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
@@ -1949,7 +1950,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
             user = None
@@ -1988,7 +1989,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             # first update self priority then update this specdiag priority
             if not self_priority_updated:
                 # first check if self diagnosis cause is equal to this specdiag diagnosis cause
-                if species_diagnosis.cause.id == specdiag.cause.id:
+                if species_diagnosis.cause and species_diagnosis.cause.id == specdiag.cause.id:
                     if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
                         species_diagnosis.priority = priority
                         priority += 1
@@ -1998,7 +1999,17 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                         priority += 1
                         self_priority_updated = True
                 # else check if self diagnosis cause is less than this specdiag diagnosis cause
-                elif species_diagnosis.cause.id < specdiag.cause.id:
+                elif species_diagnosis.cause and species_diagnosis.cause.id < specdiag.cause.id:
+                    if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif species_diagnosis.diagnosis.name < specdiag.diagnosis.name:
+                        species_diagnosis.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                # else check if both self diagnosis cause and this specdiag diagnosis cause are null
+                elif species_diagnosis.cause is None and specdiag.cause is None:
                     if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
                         species_diagnosis.priority = priority
                         priority += 1
@@ -2024,7 +2035,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         return species_diagnosis
 
     def update(self, instance, validated_data):
-        if 'request' in self.context and hasattr(self.context, 'user'):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
             user = None
