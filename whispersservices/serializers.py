@@ -2218,9 +2218,22 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
+    new_comments = serializers.ListField(write_only=True)
+
+    def validate(self, data):
+        if 'new_comments' in data and data['new_comments'] is not None:
+            if 'comment' not in data['new_comments']:
+                raise serializers.ValidationError("A comment must have comment text.")
+            elif 'comment_type' not in data['new_comments']:
+                raise serializers.ValidationError("A comment must have a comment type.")
+
+        return data
 
     def create(self, validated_data):
         user = self.context['request'].user
+
+        # pull out child comments list from the request
+        new_comments = validated_data.pop('new_comments', None)
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
@@ -2230,10 +2243,23 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                 validated_data['response_by'] = user
 
         specimen_submission_request = ServiceRequest.objects.create(**validated_data)
+
+        # create the child comments for this event
+        if new_comments is not None:
+            for comment in new_comments:
+                if comment is not None:
+                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                    Comment.objects.create(content_object=specimen_submission_request, comment=comment['comment'],
+                                           comment_type=comment_type, created_by=user, modified_by=user)
+
         return specimen_submission_request
 
     def update(self, instance, validated_data):
         user = self.context['request'].user
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
@@ -2255,7 +2281,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ServiceRequest
-        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time',
+        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time', 'new_comments',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
