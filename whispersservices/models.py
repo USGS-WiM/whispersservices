@@ -726,6 +726,11 @@ class EventDiagnosis(PermissionsHistoryModel):
     Event Diagnosis
     """
 
+    @property
+    def diagnosis_string(self):
+        """Returns diagnosis name of the record, appended with word 'suspect' if record has suspect=True"""
+        return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
+
     event = models.ForeignKey('Event', models.PROTECT, related_name='eventdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='eventdiagnoses')
     suspect = models.BooleanField(default=True)
@@ -733,7 +738,7 @@ class EventDiagnosis(PermissionsHistoryModel):
     priority = models.IntegerField(null=True)
 
     def __str__(self):
-        return str(self.diagnosis)
+        return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
     class Meta:
         db_table = "whispers_eventdiagnosis"
@@ -763,6 +768,16 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     """
     SpeciesDiagnosis
     """
+
+    @property
+    def diagnosis_string(self):
+        """Returns diagnosis name of the record, appended with word 'suspect' if record has suspect=True"""
+        return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
+
+    @property
+    def cause_string(self):
+        """Returns cause name of the record, appended with word 'suspect' if record has suspect=True"""
+        return str(self.cause) + " suspect" if self.suspect and self.cause else str(self.cause) if self.cause else ''
 
     location_species = models.ForeignKey('LocationSpecies', models.PROTECT, related_name='speciesdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='speciesdiagnoses')
@@ -857,7 +872,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).delete()
 
     def __str__(self):
-        return str(self.id)
+        return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
     class Meta:
         db_table = "whispers_speciesdiagnosis"
