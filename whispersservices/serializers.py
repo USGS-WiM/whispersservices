@@ -19,8 +19,8 @@ NWHC_ROLE_NAMES = ['SuperAdmin', 'Admin']
 
 
 class CommentSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Comment
@@ -30,8 +30,8 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 class CommentTypeSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = CommentType
@@ -40,8 +40,8 @@ class CommentTypeSerializer(serializers.ModelSerializer):
 
 
 class ArtifactSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Artifact
@@ -83,8 +83,8 @@ class EventPublicSerializer(serializers.ModelSerializer):
 
 # TODO: allow read-only staff field for event owner org
 class EventSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
@@ -639,8 +639,8 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class EventAdminSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
@@ -866,8 +866,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
 
 class EventSuperEventSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -885,8 +885,8 @@ class EventSuperEventSerializer(serializers.ModelSerializer):
 
 
 class SuperEventSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = SuperEvent
@@ -895,8 +895,8 @@ class SuperEventSerializer(serializers.ModelSerializer):
 
 
 class EventTypeSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = EventType
@@ -905,8 +905,8 @@ class EventTypeSerializer(serializers.ModelSerializer):
 
 
 class StaffSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Staff
@@ -916,8 +916,8 @@ class StaffSerializer(serializers.ModelSerializer):
 
 
 class LegalStatusSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = LegalStatus
@@ -926,8 +926,8 @@ class LegalStatusSerializer(serializers.ModelSerializer):
 
 
 class EventStatusSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = EventStatus
@@ -936,8 +936,8 @@ class EventStatusSerializer(serializers.ModelSerializer):
 
 
 class EventAbstractSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -955,8 +955,8 @@ class EventAbstractSerializer(serializers.ModelSerializer):
 
 
 class EventCaseSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -974,8 +974,8 @@ class EventCaseSerializer(serializers.ModelSerializer):
 
 
 class EventLabsiteSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1000,8 +1000,8 @@ class EventOrganizationPublicSerializer(serializers.ModelSerializer):
 
 
 class EventOrganizationSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1065,8 +1065,8 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
 
 class EventContactSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1103,8 +1103,8 @@ class EventLocationPublicSerializer(serializers.ModelSerializer):
 
 
 class EventLocationSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
     country_string = serializers.StringRelatedField(source='country')
@@ -1401,8 +1401,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
 
 class EventLocationContactSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1421,8 +1421,8 @@ class EventLocationContactSerializer(serializers.ModelSerializer):
 
 
 class CountrySerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Country
@@ -1432,8 +1432,8 @@ class CountrySerializer(serializers.ModelSerializer):
 
 
 class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     country_string = serializers.StringRelatedField(source='country')
 
     class Meta:
@@ -1444,8 +1444,8 @@ class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
 
 
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
 
     class Meta:
@@ -1457,8 +1457,8 @@ class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
 
 
 class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = AdministrativeLevelLocality
@@ -1468,8 +1468,8 @@ class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
 
 
 class LandOwnershipSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = LandOwnership
@@ -1478,8 +1478,8 @@ class LandOwnershipSerializer(serializers.ModelSerializer):
 
 
 class EventLocationFlywaySerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1498,8 +1498,8 @@ class EventLocationFlywaySerializer(serializers.ModelSerializer):
 
 
 class FlywaySerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Flyway
@@ -1523,8 +1523,8 @@ class LocationSpeciesPublicSerializer(serializers.ModelSerializer):
 
 
 class LocationSpeciesSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -1683,8 +1683,8 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Species
@@ -1695,8 +1695,8 @@ class SpeciesSerializer(serializers.ModelSerializer):
 
 
 class AgeBiasSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = AgeBias
@@ -1705,8 +1705,8 @@ class AgeBiasSerializer(serializers.ModelSerializer):
 
 
 class SexBiasSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = SexBias
@@ -1730,8 +1730,8 @@ class DiagnosisPublicSerializer(serializers.ModelSerializer):
 
 
 class DiagnosisSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis_type')
 
     class Meta:
@@ -1742,8 +1742,8 @@ class DiagnosisSerializer(serializers.ModelSerializer):
 
 
 class DiagnosisTypeSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = DiagnosisType
@@ -1761,8 +1761,8 @@ class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
@@ -1880,8 +1880,8 @@ class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_species_diagnosis_organizations = serializers.ListField(write_only=True)
 
     def validate(self, data):
@@ -2157,8 +2157,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -2191,8 +2191,8 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
 
 
 class DiagnosisBasisSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = DiagnosisBasis
@@ -2201,8 +2201,8 @@ class DiagnosisBasisSerializer(serializers.ModelSerializer):
 
 
 class DiagnosisCauseSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = DiagnosisCause
@@ -2249,8 +2249,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     response_by = serializers.StringRelatedField()
 
     class Meta:
@@ -2261,8 +2261,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestTypeSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = ServiceRequestType
@@ -2271,8 +2271,8 @@ class ServiceRequestTypeSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestResponseSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = ServiceRequestResponse
@@ -2331,8 +2331,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class RoleSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Role
@@ -2408,8 +2408,8 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = Organization
@@ -2420,8 +2420,8 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 
 class ContactSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     organization_string = serializers.StringRelatedField(source='organization')
@@ -2448,8 +2448,8 @@ class ContactSerializer(serializers.ModelSerializer):
 
 
 class ContactTypeSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = ContactType
@@ -2466,8 +2466,8 @@ class SearchPublicSerializer(serializers.ModelSerializer):
 
 
 class SearchSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
@@ -2756,7 +2756,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_by_string": created_by_string,
+                                           "created_by": created_by, "created_by_string": created_by_string,
                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
                                            "modified_by_string": modified_by_string}
                 eventdiagnoses.append(altered_event_diagnosis)
@@ -2834,8 +2834,8 @@ class EventSummarySerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
@@ -2955,8 +2955,8 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
@@ -3166,8 +3166,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
 
 class EventDetailAdminSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField()
-    modified_by_string = serializers.StringRelatedField()
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
