@@ -123,7 +123,10 @@ class EventSerializer(serializers.ModelSerializer):
             #    (sick + dead + estimated_sick + estimated_dead >= 1)
             # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
             # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+            # 7. Every location needs at least one comment, which must be one of the following types:
+            #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
+                comments_is_valid = []
                 min_start_date = False
                 min_location_species = False
                 min_species_count = False
@@ -133,6 +136,15 @@ class EventSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
+                    if 'new_comments' in item:
+                        for comment in item['new_comments']:
+                            if ('comment_type' in comment and comment['comment_type'] is not None
+                                    and comment['comment_type'] in [1, 2, 3, 4]):
+                                comments_is_valid.append(True)
+                            else:
+                                comments_is_valid.append(False)
+                    else:
+                        comments_is_valid.append(False)
                     if 'start_date' in item:
                         try:
                             datetime.strptime(item['start_date'], '%Y-%m-%d').date()
@@ -171,6 +183,10 @@ class EventSerializer(serializers.ModelSerializer):
                                     min_species_count = True
                                 elif 'sick_count' in spec and spec['sick_count'] > 0:
                                     min_species_count = True
+                if False in comments_is_valid:
+                    message = "Each new_event_location requires at least one new_comment, which must be one of"
+                    message += " the following types: Site description, History, Environmental factors, Clinical signs"
+                    details.append(message)
                 if not min_start_date:
                     details.append("start_date is required for at least one new event_location.")
                 if not min_location_species:
@@ -541,36 +557,6 @@ class EventSerializer(serializers.ModelSerializer):
         if 'new_event_locations' in validated_data:
             validated_data.pop('new_event_locations')
 
-        # # get the old (current) organization ID list for this Event
-        # old_organizations = Organization.objects.filter(events=instance.id)
-        #
-        # # pull out organization ID list from the request
-        # if 'new_organizations' in self.initial_data:
-        #     new_organizations_ids = self.initial_data['new_organizations']
-        #     new_organizations = Organization.objects.filter(id__in=new_organizations_ids)
-        # else:
-        #     new_organizations = []
-        #
-        # # get the old (current) comment ID list for this Event
-        # old_comments = Comment.objects.filter(events=instance.id)
-        #
-        # # pull out organization ID list from the request
-        # if 'new_comments' in self.initial_data:
-        #     new_comments_ids = self.initial_data['new_comments']
-        #     new_comments = Comment.objects.filter(id__in=new_comments_ids)
-        # else:
-        #     new_comments = []
-        #
-        # # get the old (current) event_location ID list for this Event
-        # old_event_locations = Comment.objects.filter(events=instance.id)
-        #
-        # # pull out event_location ID list from the request
-        # if 'new_event_locations' in self.initial_data:
-        #     new_event_locations_ids = self.initial_data['new_event_locations']
-        #     new_event_locations = Comment.objects.filter(id__in=new_event_locations_ids)
-        # else:
-        #     new_event_locations = []
-
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
@@ -590,42 +576,6 @@ class EventSerializer(serializers.ModelSerializer):
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
         instance.save()
-
-        # # identify and delete relates where organization IDs are present in old list but not new list
-        # delete_organizations = list(set(old_organizations) - set(new_organizations))
-        # for organization in delete_organizations:
-        #     delete_organization = EventOrganization.objects.filter(event=instance, organization=organization)
-        #     delete_organization.delete()
-        #
-        # # identify and create relates where organization IDs are present in new list but not old list
-        # add_organizations = list(set(new_organizations) - set(old_organizations))
-        # for organization in add_organizations:
-        #     EventOrganization.objects.create(event=instance, organization=organization,
-        #                                      created_by=user, modified_by=user)
-        #
-        # # identify and delete relates where organization IDs are present in old list but not new list
-        # delete_comments = list(set(old_comments) - set(new_comments))
-        # for comment in delete_comments:
-        #     delete_comment = Comment.objects.filter(pk=comment.id)
-        #     delete_comment.delete()
-        #
-        # # identify and create relates where organization IDs are present in new list but not old list
-        # add_comments = list(set(new_comments) - set(old_comments))
-        # for comment in add_comments:
-        #     Comment.objects.create(content_object=instance, comment=comment.comment,
-        #                            comment_type=comment.comment_type, created_by=user, modified_by=user)
-        #
-        # # identify and delete relates where event_location IDs are present in old list but not new list
-        # delete_event_locations = list(set(old_event_locations) - set(new_event_locations))
-        # for event_location in delete_event_locations:
-        #     delete_event_location = EventLocation.objects.filter(event=instance, event_location=event_location)
-        #     delete_event_location.delete()
-        #
-        # # identify and create relates where event_location IDs are present in new list but not old list
-        # add_event_locations = list(set(new_event_locations) - set(old_event_locations))
-        # for event_location in add_event_locations:
-        #     EventLocation.objects.create(event=instance, event_location=event_location,
-        #                                  created_by=user, modified_by=user)
 
         return instance
 
@@ -665,6 +615,352 @@ class EventAdminSerializer(serializers.ModelSerializer):
         return permission_source
 
     # TODO: properly validate child objects too rather than naively trust submitted data
+    def validate(self, data):
+        if 'request' in self.context and self.context['request'].method == 'POST':
+            if 'new_event_locations' not in data:
+                raise serializers.ValidationError("new_event_locations is a required field")
+            # 1. Not every location needs a start date at initiation, but at least one location must.
+            # 2. Not every location needs a species at initiation, but at least one location must.
+            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #    and estimated_dead for at least one species in the event at the time of event initiation.
+            #    (sick + dead + estimated_sick + estimated_dead >= 1)
+            # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
+            # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+            # 7. Every location needs at least one comment, which must be one of the following types:
+            #    Site description, History, Environmental factors, Clinical signs
+            if 'new_event_locations' in data:
+                comments_is_valid = []
+                min_start_date = False
+                min_location_species = False
+                min_species_count = False
+                pop_is_valid = []
+                est_sick_is_valid = True
+                est_dead_is_valid = True
+                details = []
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                for item in data['new_event_locations']:
+                    if 'new_comments' in item:
+                        for comment in item['new_comments']:
+                            if ('comment_type' in comment and comment['comment_type'] is not None
+                                    and comment['comment_type'] in [1, 2, 3, 4]):
+                                comments_is_valid.append(True)
+                            else:
+                                comments_is_valid.append(False)
+                    else:
+                        comments_is_valid.append(False)
+                    if 'start_date' in item:
+                        try:
+                            datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                        except ValueError:
+                            details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
+                        min_start_date = True
+                    if 'new_location_species' in item:
+                        for spec in item['new_location_species']:
+                            if 'species' in spec and spec['species'] is not None:
+                                min_location_species = True
+                            if 'population_count' in spec and spec['population_count'] is not None:
+                                dead_count = 0
+                                sick_count = 0
+                                if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                                    dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                                    sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                if spec['population_count'] >= dead_count + sick_count:
+                                    pop_is_valid.append(True)
+                                else:
+                                    pop_is_valid.append(False)
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None
+                                    and not spec['sick_count_estimated'] > spec['sick_count']):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None
+                                    and not spec['dead_count_estimated'] > spec['dead_count']):
+                                est_dead_is_valid = False
+                            if data['event_type'].id == mortality_morbidity.id:
+                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                    min_species_count = True
+                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                    min_species_count = True
+                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                    min_species_count = True
+                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                    min_species_count = True
+                if False in comments_is_valid:
+                    message = "Each new_event_location requires at least one new_comment, which must be one of"
+                    message += " the following types: Site description, History, Environmental factors, Clinical signs"
+                    details.append(message)
+                if not min_start_date:
+                    details.append("start_date is required for at least one new event_location.")
+                if not min_location_species:
+                    details.append("Each new_event_location requires at least one new_location_species.")
+                if False in pop_is_valid:
+                    message = "new_location_species population_count cannot be less than the sum of dead_count"
+                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+                    details.append(message)
+                if not min_species_count:
+                    message = "At least one new_location_species requires at least one species count in any of the"
+                    message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_sick_is_valid:
+                    details.append("Estimated sick count must always be more than known sick count.")
+                if not est_dead_is_valid:
+                    details.append("Estimated dead count must always be more than known dead count.")
+                if details:
+                    raise serializers.ValidationError(details)
+
+            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+            #   and estimated_dead per species at the time of event completion.
+            #   (sick + dead + estimated_sick + estimated_dead >= 1)
+            if 'complete' in data and data['complete'] is True:
+                location_message = "The event may not be marked complete until all of its locations have an end date"
+                location_message += " and each location's end date is after that location's start date."
+                if 'new_event_locations' not in data:
+                    raise serializers.ValidationError(location_message)
+                else:
+                    end_date_is_valid = True
+                    species_count_is_valid = []
+                    est_sick_is_valid = True
+                    est_dead_is_valid = True
+                    details = []
+                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                    for item in data['new_event_locations']:
+                        for spec in item['location_species']:
+                            if ('start_date' in item and item['start_date'] is not None
+                                    and 'end_date' in item and item['end_date'] is not None):
+                                try:
+                                    start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                                except ValueError:
+                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                    start_date = datetime.now().date
+                                    details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                                try:
+                                    end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                                except ValueError:
+                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                    end_date = datetime.now().date() + timedelta(days=1)
+                                    details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                                if not start_date < end_date:
+                                    end_date_is_valid = False
+                            else:
+                                end_date_is_valid = False
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None
+                                    and not spec['sick_count_estimated'] > spec['sick_count']):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None
+                                    and not spec['dead_count_estimated'] > spec['dead_count']):
+                                est_dead_is_valid = False
+                            if data['event_type'] == mortality_morbidity.id:
+                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                    species_count_is_valid.append(True)
+                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                    species_count_is_valid.append(True)
+                                else:
+                                    species_count_is_valid.append(False)
+                    if not end_date_is_valid:
+                        details.append(location_message)
+                    if False in species_count_is_valid:
+                        message = "Each new_location_species requires at least one species count in any of these"
+                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                        details.append(message)
+                    if not est_sick_is_valid:
+                        details.append("Estimated sick count must always be more than known sick count.")
+                    if not est_dead_is_valid:
+                        details.append("Estimated dead count must always be more than known dead count.")
+                    if details:
+                        raise serializers.ValidationError(details)
+        return data
+
+    def create(self, validated_data):
+
+        comment_types = {'site_description': 'Site description', 'history': 'History',
+                         'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
+                         'general': 'General'}
+
+        # pull out child event diagnoses list from the request
+        new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
+
+        # pull out child organizations list from the request
+        new_organizations = validated_data.pop('new_organizations', None)
+
+        # pull out child comments list from the request
+        new_comments = validated_data.pop('new_comments', None)
+
+        # pull out child event_locations list from the request
+        new_event_locations = validated_data.pop('new_event_locations', None)
+
+        # pull out child superevents list from the request
+        new_superevents = validated_data.pop('new_superevents', None)
+
+        user = self.context['request'].user
+        event = Event.objects.create(**validated_data)
+
+        # create the child organizations for this event
+        if new_organizations is not None:
+            for org_id in new_organizations:
+                if org_id is not None:
+                    org = Organization.objects.filter(pk=org_id).first()
+                    if org is not None:
+                        EventOrganization.objects.create(event=event, organization=org)
+        else:
+            EventOrganization.objects.create(event=event, organization=user.organization)
+
+        # create the child comments for this event
+        if new_comments is not None:
+            for comment in new_comments:
+                if comment is not None:
+                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                    Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
+                                           created_by=user, modified_by=user)
+
+        # create the child superevents for this event
+        if new_superevents is not None:
+            for superevent_id in new_superevents:
+                if superevent_id is not None:
+                    superevent = SuperEvent.objects.filter(pk=superevent_id).first()
+                    if superevent is not None:
+                        EventSuperEvent.objects.create(event=event, superevent=superevent)
+
+        # create the child event_locations for this event
+        if new_event_locations is not None:
+            for event_location in new_event_locations:
+                if event_location is not None:
+                    # use event to populate event field on event_location
+                    event_location['event'] = event
+                    new_location_contacts = event_location.pop('new_location_contacts', None)
+                    new_location_species = event_location.pop('new_location_species', None)
+                    new_service_request = event_location.pop('new_service_request', None)
+
+                    # use id for country to get Country instance
+                    event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
+                    # same for other things
+                    event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                        pk=event_location['administrative_level_one']).first()
+                    event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                        pk=event_location['administrative_level_two']).first()
+                    event_location['land_ownership'] = LandOwnership.objects.filter(
+                        pk=event_location['land_ownership']).first()
+
+                    # create object for comment creation while removing unserialized fields for EventLocation
+                    comments = {'site_description': event_location.pop('site_description', None),
+                                'history': event_location.pop('history', None),
+                                'environmental_factors': event_location.pop('environmental_factors', None),
+                                'clinical_signs': event_location.pop('clinical_signs', None),
+                                'general': event_location.pop('comment', None)}
+
+                    # create the event_location and return object for use in event_location_contacts object
+                    event_location['created_by'] = user
+                    event_location['modified_by'] = user
+
+                    # if the event_location has no name value but does have a gnis_name value,
+                    # then copy the value of gnis_name to name
+                    # this need only happen on creation since the two fields should maintain no durable relationship
+                    if event_location['name'] == '' and event_location['gnis_name'] != '':
+                        event_location['name'] = event_location['gnis_name']
+                    evt_location = EventLocation.objects.create(**event_location)
+
+                    for key, value in comment_types.items():
+
+                        comment_type = CommentType.objects.filter(name=value).first()
+
+                        if comments[key] is not None and len(comments[key]) > 0:
+                            Comment.objects.create(content_object=evt_location, comment=comments[key],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
+
+                    # Create EventLocationContacts
+                    if new_location_contacts is not None:
+                        for location_contact in new_location_contacts:
+                            location_contact['event_location'] = evt_location
+
+                            # Convert ids to ForeignKey objects
+                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                            location_contact['contact_type'] = ContactType.objects.filter(
+                                pk=location_contact['contact_type']).first()
+                            del location_contact['id']
+
+                            location_contact['created_by'] = user
+                            location_contact['modified_by'] = user
+                            EventLocationContact.objects.create(**location_contact)
+
+                    # Create EventLocationSpecies
+                    if new_location_species is not None:
+                        for location_spec in new_location_species:
+                            location_spec['event_location'] = evt_location
+                            new_species_diagnoses = location_spec.pop('new_species_diagnoses', None)
+
+                            # Convert ids to ForeignKey objects
+                            location_spec['species'] = Species.objects.filter(pk=location_spec['species']).first()
+                            location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
+                            location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
+
+                            location_spec['created_by'] = user
+                            location_spec['modified_by'] = user
+                            location_species = LocationSpecies.objects.create(**location_spec)
+
+                            # create the child species diagnoses for this event
+                            if new_species_diagnoses is not None:
+                                for spec_diag in new_species_diagnoses:
+                                    if spec_diag is not None:
+                                        new_species_diagnosis_organizations = spec_diag.pop(
+                                            'new_species_diagnosis_organizations', None)
+                                        spec_diag['location_species'] = location_species
+                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                            pk=spec_diag['diagnosis']).first()
+                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                            pk=spec_diag['cause']).first()
+                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                            pk=spec_diag['basis']).first()
+                                        species_diagnosis = SpeciesDiagnosis.objects.create(**spec_diag)
+
+                                        # create the child organizations for this species diagnosis
+                                        if new_species_diagnosis_organizations is not None:
+                                            for org_id in new_species_diagnosis_organizations:
+                                                if org_id is not None:
+                                                    org = Organization.objects.filter(pk=org_id).first()
+                                                    if org is not None:
+                                                        SpeciesDiagnosisOrganization.objects.create(
+                                                            species_diagnosis=species_diagnosis, organization=org)
+
+                    # Create SpecimenSubmissionRequests
+                    if new_service_request is not None:
+                        if new_service_request is not None and new_service_request in [1, 2]:
+                            request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
+                            ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
+
+        # create the child event diagnoses for this event
+        pending = Diagnosis.objects.filter(name='Pending').first()
+        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+
+        # remove Pending or Undetermined if in the list because one or the other already exists from event save
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
+
+        if new_event_diagnoses is not None:
+            # Can only use diagnoses that are already used by this event's species diagnoses
+            valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
+                location_species__event_location__event=event.id
+            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct()
+            # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
+            if valid_diagnosis_ids is not None:
+                for event_diagnosis in new_event_diagnoses:
+                    if event_diagnosis in valid_diagnosis_ids:
+                        diagnosis = Diagnosis.objects.filter(pk=event_diagnosis['diagnosis']).first()
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
+                # Now that we have the new event diagnoses created,
+                # check for existing Pending or Undetermined records and delete them
+                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
+
+        return event
+
+    # TODO: properly validate child objects too rather than naively trust submitted data
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
 
@@ -683,7 +979,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
             message += " if the 'complete' field is set to False."
             raise serializers.ValidationError(message)
 
-        new_complete = validated_data.get('complete', None)
         if new_complete and not instance.complete:
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
@@ -750,51 +1045,21 @@ class EventAdminSerializer(serializers.ModelSerializer):
             else:
                 raise serializers.ValidationError(location_message)
 
-        # # remove child event diagnoses list from the request
-        # if 'new_event_diagnoses' in validated_data:
-        #     validated_data.pop('new_event_diagnoses')
-        #
-        # # remove child organizations list from the request
-        # if 'new_organizations' in validated_data:
-        #     validated_data.pop('new_organizations')
-        #
-        # # remove child comments list from the request
-        # if 'new_comments' in validated_data:
-        #     validated_data.pop('new_comments')
-        #
-        # # remove child event_locations list from the request
-        # if 'new_event_locations' in validated_data:
-        #     validated_data.pop('new_event_locations')
+        # remove child event diagnoses list from the request
+        if 'new_event_diagnoses' in validated_data:
+            validated_data.pop('new_event_diagnoses')
 
-        # # get the old (current) organization ID list for this Event
-        # old_organizations = Organization.objects.filter(events=instance.id)
-        #
-        # # pull out organization ID list from the request
-        # if 'new_organizations' in self.initial_data:
-        #     new_organizations_ids = self.initial_data['new_organizations']
-        #     new_organizations = Organization.objects.filter(id__in=new_organizations_ids)
-        # else:
-        #     new_organizations = []
-        #
-        # # get the old (current) comment ID list for this Event
-        # old_comments = Comment.objects.filter(events=instance.id)
-        #
-        # # pull out organization ID list from the request
-        # if 'new_comments' in self.initial_data:
-        #     new_comments_ids = self.initial_data['new_comments']
-        #     new_comments = Comment.objects.filter(id__in=new_comments_ids)
-        # else:
-        #     new_comments = []
-        #
-        # # get the old (current) event_location ID list for this Event
-        # old_event_locations = Comment.objects.filter(events=instance.id)
-        #
-        # # pull out event_location ID list from the request
-        # if 'new_event_locations' in self.initial_data:
-        #     new_event_locations_ids = self.initial_data['new_event_locations']
-        #     new_event_locations = Comment.objects.filter(id__in=new_event_locations_ids)
-        # else:
-        #     new_event_locations = []
+        # remove child organizations list from the request
+        if 'new_organizations' in validated_data:
+            validated_data.pop('new_organizations')
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
+
+        # remove child event_locations list from the request
+        if 'new_event_locations' in validated_data:
+            validated_data.pop('new_event_locations')
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -816,42 +1081,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
         else:
             instance.modified_by = validated_data.get('modified_by', instance.modified_by)
         instance.save()
-
-        # # identify and delete relates where organization IDs are present in old list but not new list
-        # delete_organizations = list(set(old_organizations) - set(new_organizations))
-        # for organization in delete_organizations:
-        #     delete_organization = EventOrganization.objects.filter(event=instance, organization=organization)
-        #     delete_organization.delete()
-        #
-        # # identify and create relates where organization IDs are present in new list but not old list
-        # add_organizations = list(set(new_organizations) - set(old_organizations))
-        # for organization in add_organizations:
-        #     EventOrganization.objects.create(event=instance, organization=organization,
-        #                                      created_by=user, modified_by=user)
-        #
-        # # identify and delete relates where organization IDs are present in old list but not new list
-        # delete_comments = list(set(old_comments) - set(new_comments))
-        # for comment in delete_comments:
-        #     delete_comment = Comment.objects.filter(pk=comment.id)
-        #     delete_comment.delete()
-        #
-        # # identify and create relates where organization IDs are present in new list but not old list
-        # add_comments = list(set(new_comments) - set(old_comments))
-        # for comment in add_comments:
-        #     Comment.objects.create(content_object=instance, comment=comment.comment,
-        #                            comment_type=comment.comment_type, created_by=user, modified_by=user)
-        #
-        # # identify and delete relates where event_location IDs are present in old list but not new list
-        # delete_event_locations = list(set(old_event_locations) - set(new_event_locations))
-        # for event_location in delete_event_locations:
-        #     delete_event_location = EventLocation.objects.filter(event=instance, event_location=event_location)
-        #     delete_event_location.delete()
-        #
-        # # identify and create relates where event_location IDs are present in new list but not old list
-        # add_event_locations = list(set(new_event_locations) - set(old_event_locations))
-        # for event_location in add_event_locations:
-        #     EventLocation.objects.create(event=instance, event_location=event_location,
-        #                                  created_by=user, modified_by=user)
 
         return instance
 

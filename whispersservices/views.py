@@ -194,12 +194,12 @@ class EventViewSet(HistoryViewSet):
         # all list requests, and all requests from public users (except circle members), must use the public serializer
         elif self.action == 'list' or user.role.is_public:
             return EventPublicSerializer
-        # all create requests imply that the requester is the owner, so use the owner serializer
-        elif self.action == 'create':
-            return EventSerializer
         # for all other requests admins have access to all fields
         elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
             return EventAdminSerializer
+        # all create requests imply that the requester is the owner, so use the owner serializer
+        elif self.action == 'create':
+            return EventSerializer
         # non-admins and non-owners (and non-owner orgs and shared circles) must use the public serializer
         else:
             return EventPublicSerializer
