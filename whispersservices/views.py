@@ -118,7 +118,7 @@ class EventViewSet(HistoryViewSet):
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
         # if the event is complete, it cannot be deleted
-        if self.get_object().event.complete:
+        if self.get_object().complete:
             message = "A complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)

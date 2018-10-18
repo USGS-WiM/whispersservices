@@ -178,8 +178,8 @@ class EventSuperEvent(HistoryModel):
     Table to allow many-to-many relationship between Events and Super Events.
     """
 
-    event = models.ForeignKey('Event', models.PROTECT)
-    superevent = models.ForeignKey('SuperEvent', models.PROTECT)
+    event = models.ForeignKey('Event', models.CASCADE)
+    superevent = models.ForeignKey('SuperEvent', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
@@ -268,7 +268,7 @@ class EventAbstract(HistoryModel):
     Event Abstract
     """
 
-    event = models.ForeignKey('Event', models.PROTECT, related_name='eventabstracts')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventabstracts')
     text = models.TextField(blank=True)
     lab_id = models.IntegerField(null=True)
 
@@ -285,7 +285,7 @@ class EventCase(HistoryModel):
     Event Case
     """
 
-    event = models.ForeignKey('Event', models.PROTECT, related_name='eventcases')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventcases')
     case = models.CharField(max_length=6, blank=True, default='')
 
     def __str__(self):
@@ -301,7 +301,7 @@ class EventLabsite(HistoryModel):
     Event Labsite
     """
 
-    event = models.ForeignKey('Event', models.PROTECT, related_name='eventlabsites')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlabsites')
     lab_id = models.IntegerField(null=True)
 
     def __str__(self):
@@ -317,8 +317,8 @@ class EventOrganization(PermissionsHistoryModel):
     Table to allow many-to-many relationship between Events and Organizations.
     """
 
-    event = models.ForeignKey('Event', models.PROTECT)
-    organization = models.ForeignKey('Organization', models.PROTECT)
+    event = models.ForeignKey('Event', models.CASCADE)
+    organization = models.ForeignKey('Organization', models.CASCADE)
     priority = models.IntegerField(null=True)
 
     def __str__(self):
@@ -334,8 +334,8 @@ class EventContact(PermissionsHistoryModel):
     Table to allow many-to-many relationship between Events and Contacts.
     """
 
-    event = models.ForeignKey('Event', models.PROTECT)
-    contact = models.ForeignKey('Contact', models.PROTECT)
+    event = models.ForeignKey('Event', models.CASCADE)
+    contact = models.ForeignKey('Contact', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
@@ -358,7 +358,7 @@ class EventLocation(PermissionsHistoryModel):
     """
 
     name = models.CharField(max_length=128, blank=True, default='')
-    event = models.ForeignKey('Event', models.PROTECT, related_name='eventlocations')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlocations')
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
     country = models.ForeignKey('Country', models.PROTECT, related_name='eventlocations')
@@ -439,8 +439,8 @@ class EventLocationContact(HistoryModel):
     Table to allow many-to-many relationship between Event Locations and Contacts.
     """
 
-    event_location = models.ForeignKey('EventLocation', models.PROTECT)
-    contact = models.ForeignKey('Contact', models.PROTECT)
+    event_location = models.ForeignKey('EventLocation', models.CASCADE)
+    contact = models.ForeignKey('Contact', models.CASCADE)
     contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts')
 
     def __str__(self):
@@ -473,7 +473,7 @@ class AdministrativeLevelOne(HistoryNameModel):
     Administrative Level One (ex. in US it is State)
     """
 
-    country = models.ForeignKey('Country', models.PROTECT, related_name='administrativelevelones')
+    country = models.ForeignKey('Country', models.CASCADE, related_name='administrativelevelones')
     abbreviation = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
@@ -491,7 +491,7 @@ class AdministrativeLevelTwo(HistoryModel):
 
     name = models.CharField(max_length=128)
     administrative_level_one = models.ForeignKey(
-        'AdministrativeLevelOne', models.PROTECT, related_name='administrativeleveltwos')
+        'AdministrativeLevelOne', models.CASCADE, related_name='administrativeleveltwos')
     points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
     centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
     centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
@@ -511,7 +511,7 @@ class AdministrativeLevelLocality(HistoryNameModel):
     Table for looking up local names for adminstrative levels based on country
     """
 
-    country = models.ForeignKey('Country', models.PROTECT, related_name='country')
+    country = models.ForeignKey('Country', models.CASCADE, related_name='country')
     admin_level_one_name = models.CharField(max_length=128, blank=True, default='')
     admin_level_two_name = models.CharField(max_length=128, blank=True, default='')
 
@@ -541,8 +541,8 @@ class EventLocationFlyway(HistoryModel):
     Table to allow many-to-many relationship between Event Locations and Flyways.
     """
 
-    event_location = models.ForeignKey('EventLocation', models.PROTECT)
-    flyway = models.ForeignKey('Flyway', models.PROTECT)
+    event_location = models.ForeignKey('EventLocation', models.CASCADE)
+    flyway = models.ForeignKey('Flyway', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
@@ -577,7 +577,7 @@ class LocationSpecies(PermissionsHistoryModel):
     Location Species
     """
 
-    event_location = models.ForeignKey('EventLocation', models.PROTECT, related_name='locationspecies')
+    event_location = models.ForeignKey('EventLocation', models.CASCADE, related_name='locationspecies')
     species = models.ForeignKey('Species', models.PROTECT, related_name='locationspecies')
     population_count = models.IntegerField(null=True)
     sick_count = models.IntegerField(null=True)
@@ -731,7 +731,7 @@ class EventDiagnosis(PermissionsHistoryModel):
         """Returns diagnosis name of the record, appended with word 'suspect' if record has suspect=True"""
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
-    event = models.ForeignKey('Event', models.PROTECT, related_name='eventdiagnoses')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='eventdiagnoses')
     suspect = models.BooleanField(default=True)
     major = models.BooleanField(default=False)
@@ -751,17 +751,20 @@ class EventDiagnosis(PermissionsHistoryModel):
 # ensure there is at least one EventDiagnosis for the deleted EventDiagnosis's parent Event,
 # and if there are none left, will need to create a new Pending or Undetermined EventDiagnosis,
 # depending on the Event's complete status
+# However, if Event has been deleted, then don't attempt to create another EventDiagnosis
 @receiver(post_delete, sender=EventDiagnosis)
 def delete_event_diagnosis(sender, instance, **kwargs):
 
-    if not EventDiagnosis.objects.filter(event=instance.event.id):
-        new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
-        new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
-        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        EventDiagnosis.objects.create(
-            event=instance.event, diagnosis=new_diagnosis, suspect=False,
-            created_by=instance.created_by, modified_by=instance.modified_by)
+    # only continue if parent Event still exists
+    if not instance.event.DoesNotExist:
+        if not EventDiagnosis.objects.filter(event=instance.event.id):
+            new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
+            new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(
+                event=instance.event, diagnosis=new_diagnosis, suspect=False,
+                created_by=instance.created_by, modified_by=instance.modified_by)
 
 
 class SpeciesDiagnosis(PermissionsHistoryModel):
@@ -779,7 +782,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         """Returns cause name of the record, appended with word 'suspect' if record has suspect=True"""
         return str(self.cause) + " suspect" if self.suspect and self.cause else str(self.cause) if self.cause else ''
 
-    location_species = models.ForeignKey('LocationSpecies', models.PROTECT, related_name='speciesdiagnoses')
+    location_species = models.ForeignKey('LocationSpecies', models.CASCADE, related_name='speciesdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='speciesdiagnoses')
     cause = models.ForeignKey('DiagnosisCause', models.PROTECT, null=True, related_name='speciesdiagnoses')
     basis = models.ForeignKey('DiagnosisBasis', models.PROTECT, null=True, related_name='speciesdiagnoses')
@@ -886,8 +889,8 @@ class SpeciesDiagnosisOrganization(HistoryModel):
     Table to allow many-to-many relationship between SpeciesDiagnosis and Organizations.
     """
 
-    species_diagnosis = models.ForeignKey('SpeciesDiagnosis', models.PROTECT)
-    organization = models.ForeignKey('Organization', models.PROTECT)
+    species_diagnosis = models.ForeignKey('SpeciesDiagnosis', models.CASCADE)
+    organization = models.ForeignKey('Organization', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
@@ -937,7 +940,7 @@ class ServiceRequest(HistoryModel):
     Service Submission Request
     """
 
-    event_location = models.ForeignKey('EventLocation', models.PROTECT)
+    event_location = models.ForeignKey('EventLocation', models.CASCADE)
     request_type = models.ForeignKey('ServiceRequestType', models.PROTECT)
     request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
                                          related_name='servicerequests')
@@ -1126,8 +1129,8 @@ class CircleUser(HistoryModel):
     Table to allow many-to-many relationship between Circles and Users.
     """
 
-    circle = models.ForeignKey('Circle', models.PROTECT)
-    user = models.ForeignKey('User', models.PROTECT)
+    circle = models.ForeignKey('Circle', models.CASCADE)
+    user = models.ForeignKey('User', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
@@ -1153,7 +1156,7 @@ class Organization(HistoryNameModel):
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
-    parent_organization = models.ForeignKey('self', models.PROTECT, null=True, related_name='child_organizations')
+    parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='child_organizations')
     do_not_publish = models.BooleanField(default=False)
     laboratory = models.BooleanField(default=False)
 
