@@ -2004,7 +2004,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         event_specdiags = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
-        diagnosis = Diagnosis.objects.filter(id=data['diagnosis']).first()
+        diagnosis = Diagnosis.objects.filter(id=data['diagnosis'].id).first()
         if diagnosis is not None and (not event_specdiags or diagnosis.id not in event_specdiags
                                       or diagnosis.name in ['Pending', 'Undetermined']):
             message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
@@ -2542,6 +2542,7 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 ######
 
 
+# TODO: impose minimum security requirements on passwords
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')
@@ -2573,7 +2574,9 @@ class UserSerializer(serializers.ModelSerializer):
         instance.user_status = validated_data.get('user_status', instance.user_status)
         instance.modified_by = self.context['request'].user
 
-        instance.set_password(validated_data.get('password', instance.password))
+        new_password = validated_data.get('password', None)
+        if new_password is not None:
+            instance.set_password(new_password)
         instance.save()
 
         return instance
