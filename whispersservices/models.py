@@ -14,6 +14,14 @@ from simple_history.models import HistoricalRecords
 # is_staff, is_active, is_superuser, last_login, date_joined
 # For more information, see: https://docs.djangoproject.com/en/2.0/ref/contrib/auth/#user
 
+# TODO: consider putting the following in a config file
+SUPERADMIN, ADMIN, PARTNERADMIN, PARTNERMANAGER, PARTNER = ('SuperAdmin', 'Admin',
+                                                            'PartnerAdmin', 'PartnerManager', 'Partner')
+NWHC_ROLES = [SUPERADMIN, ADMIN]
+CREATOR_ROLES = [SUPERADMIN, ADMIN, PARTNERADMIN, PARTNERMANAGER, PARTNER]
+UPDATER_ROLES = [ADMIN, PARTNERADMIN, PARTNERMANAGER, PARTNER]
+OVERRIDE_ROLES = [SUPERADMIN, ADMIN, PARTNERADMIN, PARTNERMANAGER]
+
 
 ######
 #
@@ -68,32 +76,32 @@ class PermissionsHistoryModel(HistoryModel):
 
     @staticmethod
     def has_write_permission(request):
-        # Only a superuser and users with specific roles can 'write' an event
+        # Only users with specific roles can 'write' an event
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
         # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
         # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
-        allowed_role_names = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner']
-        allowed_role_ids = Role.objects.filter(name__in=allowed_role_names).values_list('id', flat=True)
         if not request.user.is_authenticated:
             return False
         else:
-            return request.user.role.id in allowed_role_ids or request.user.is_superuser
+            return request.user.role.name in CREATOR_ROLES
 
     def has_object_update_permission(self, request):
-        # Only the creator or a manager/admin member of the creator's organization or a superuser can update an event
+        # Only superadmins or the creator or a manager/admin member of the creator's organization can update an event
         if not request.user.is_authenticated:
             return False
         else:
-            return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
+            return (request.user.role.is_superadmin or request.user == self.created_by or (
+                    request.user.organization == self.created_by.organization and (
+                    request.user.role.name in UPDATER_ROLES)))
 
     def has_object_destroy_permission(self, request):
-        # Only the creator or a manager/admin member of the creator's organization or a superuser can delete an event
+        # Only superadmins or the creator or a manager/admin member of the creator's organization can delete an event
         if not request.user.is_authenticated:
             return False
         else:
-            return request.user == self.created_by or (request.user.organization == self.created_by.organization and (
-                    request.user.role.is_partnermanager or request.user.role.is_partneradmin)) or request.user.is_superuser
+            return (request.user.role.is_superadmin or request.user == self.created_by or (
+                    request.user.organization == self.created_by.organization and (
+                    request.user.role.name in UPDATER_ROLES)))
 
     class Meta:
         abstract = True

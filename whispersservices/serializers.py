@@ -6,9 +6,6 @@ from rest_framework import serializers
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
-OVERRIDE_ROLE_NAMES = ['SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager']
-NWHC_ROLE_NAMES = ['SuperAdmin', 'Admin']
-
 # TODO: implement required field validations for nested objects
 
 ######
@@ -80,6 +77,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
                   'permissions', 'permission_source',)
+
 
 # TODO: allow read-only staff field for event owner org
 class EventSerializer(serializers.ModelSerializer):
@@ -277,6 +275,14 @@ class EventSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        # TODO: figure out if this logic is necessary, see: https://www.django-rest-framework.org/api-guide/requests/#user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
@@ -300,7 +306,6 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
 
-        user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
         # create the child organizations for this event
@@ -475,14 +480,19 @@ class EventSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
-        user = self.context['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
         new_complete = validated_data.get('complete', None)
 
         if instance.complete:
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
             if new_complete is None or new_complete and (
-                    user == instance.created_by or user.role.name in OVERRIDE_ROLE_NAMES or user.is_superuser):
+                    user.role.is_superadmin or user == instance.created_by or (
+                    user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
@@ -492,7 +502,8 @@ class EventSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message)
 
         if new_complete and not instance.complete and (
-                user == instance.created_by or user.role.name in OVERRIDE_ROLE_NAMES or user.is_superuser):
+                user.role.is_superadmin or user == instance.created_by or (
+                user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
@@ -592,10 +603,7 @@ class EventSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
         instance.save()
 
         return instance
@@ -807,6 +815,13 @@ class EventAdminSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
@@ -827,7 +842,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out child superevents list from the request
         new_superevents = validated_data.pop('new_superevents', None)
 
-        user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
         # pull out child service request from the request
@@ -1006,6 +1020,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
     # TODO: properly validate child objects too rather than naively trust submitted data
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
         new_complete = validated_data.get('complete', None)
         quality_check = validated_data.get('quality_check', None)
@@ -1022,7 +1040,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
             message += " if the 'complete' field is set to False."
             raise serializers.ValidationError(message)
 
-        if new_complete and not instance.complete:
+        if new_complete and not instance.complete and (
+                user.role.is_superadmin or user == instance.created_by or (
+                user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
@@ -1123,10 +1143,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
         instance.save()
 
         return instance
@@ -1310,13 +1327,14 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
         return event_organization
 
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
         instance.event = validated_data.get('event', instance.event)
         instance.organization = validated_data.get('organization', instance.organization)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # calculate the priorty value:
         # Sort by owner organization first, then by order of entry.
@@ -1391,15 +1409,28 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if data['event'].complete:
-            message = "Locations from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
+        message_complete = "Locations from a complete event may not be changed"
+        message_complete += " unless the event is first re-opened by the event owner or an administrator."
+
+        # TODO: repeat this code block on all event.complete checks
+        if 'request' in self.context:
+            # if this is a new EventLocation check if the Event is complete
+            if self.context['request'].method == 'POST' and data['event'].complete:
+                raise serializers.ValidationError(message_complete)
+            # else this is an existing EventLocation so check if this is an update and if parent Event is complete
+            elif self.context['request'].method in ['PUT', 'PATCH'] and self.instance.event.complete:
+                raise serializers.ValidationError(message_complete)
 
         return data
 
     def create(self, validated_data):
-        user = self.context['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
@@ -1552,6 +1583,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
         # remove child location_contacts list from the request
         if 'new_location_contacts' in validated_data:
@@ -1579,10 +1614,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         instance.land_ownership = validated_data.get('land_ownership', instance.land_ownership)
         instance.gnis_name = validated_data.get('gnis_name', instance.gnis_name)
         instance.gnis_id = validated_data.get('gnis_id', instance.gnis_id)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # if an event_location has no name value but does have a gnis_name value, copy the value of gnis_name to name
         # this need only happen on creation since the two fields should maintain no durable relationship
@@ -1598,7 +1630,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         self_priority_updated = False
         # get all event_locations for the parent event except self, and sort by county name asc and affected count desc
         evtlocs = EventLocation.objects.filter(
-            event=validated_data['event'].id
+            event=instance.event.id
         ).exclude(
             id=instance.id
         ).annotate(
@@ -1857,6 +1889,10 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         return location_species
 
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
         # update the LocationSpecies object
         instance.event_location = validated_data.get('event_location', instance.event_location)
@@ -1870,10 +1906,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         instance.captive = validated_data.get('captive', instance.captive)
         instance.age_bias = validated_data.get('age_bias', instance.age_bias)
         instance.sex_bias = validated_data.get('sex_bias', instance.sex_bias)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         if instance.population_count is not None:
             dead_count = 0
@@ -2090,6 +2123,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         return event_diagnosis
 
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
 
         # update the EventDiagnosis object
         instance.event = validated_data.get('event', instance.event)
@@ -2097,10 +2134,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         instance.suspect = validated_data.get('suspect', instance.suspect)
         instance.major = validated_data.get('major', instance.major)
         instance.priority = validated_data.get('priority', instance.priority)
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # calculate the priorty value:
         # TODO: following rule cannot be applied because cause field does not exist on this model
@@ -2349,10 +2383,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         instance.positive_count = validated_data.get('positive_count', instance.positive_count)
         instance.suspect_count = validated_data.get('suspect_count', instance.suspect_count)
         instance.pooled = validated_data.get('pooled', instance.pooled)
-        if user:
-            instance.modified_by = self.context['request'].user
-        else:
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # calculate the priorty value:
         # Order species diagnoses by causal
@@ -2496,14 +2527,20 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        user = self.context['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         # pull out child comments list from the request
         new_comments = validated_data.pop('new_comments', None)
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
-            if not (user.role.name in NWHC_ROLE_NAMES or user.is_superuser):
+            if not (user.role.name in NWHC_ROLES):
                 raise serializers.ValidationError("You do not have permission to alter the request response.")
             else:
                 validated_data['response_by'] = user
@@ -2521,7 +2558,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         return service_request
 
     def update(self, instance, validated_data):
-        user = self.context['request'].user
 
         # remove child comments list from the request
         if 'new_comments' in validated_data:
@@ -2529,7 +2565,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
-            if not (user.role.name in NWHC_ROLE_NAMES or user.is_superuser):
+            if 'request' in self.context and hasattr(self.context['request'], 'user'):
+                user = self.context['request'].user
+            else:
+                user = None
+
+            if not user:
+                raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
+            if not (user.role.name in NWHC_ROLES):
                 raise serializers.ValidationError("You do not have permission to alter the request response.")
             else:
                 instance.response_by = user
@@ -2647,9 +2691,16 @@ class CircleSerlializer(serializers.ModelSerializer):
         # create the Circle object
         circle = Circle.objects.create(**validated_data)
 
-        # create a Sample Analysis Batch object for each sample ID submitted
+        # create a CicleUser object for each User ID submitted
         if new_users:
-            user = self.context['request'].user
+            if 'request' in self.context and hasattr(self.context['request'], 'user'):
+                user = self.context['request'].user
+            else:
+                user = None
+
+            if not user:
+                raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
             for new_user_id in new_users:
                 new_user = User.objects.get(id=new_user_id)
                 CircleUser.objects.create(user=new_user, circle=circle, created_by=user, modified_by=user)
@@ -2658,7 +2709,13 @@ class CircleSerlializer(serializers.ModelSerializer):
 
     # on update, also update child objects (circle-user M:M relates), including additions and deletions
     def update(self, instance, validated_data):
-        user = self.context['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         # get the old (current) user ID list for this circle
         old_users = User.objects.filter(circles=instance.id)
@@ -2790,15 +2847,27 @@ class SearchSerializer(serializers.ModelSerializer):
     #         return existing_search
 
     def create(self, validated_data):
-        user = self.context['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        if not user:
+            raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
         validated_data['created_by'] = user
         validated_data['modified_by'] = user
         search = Search.objects.create(**validated_data)
         return search
 
     def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
         instance.name = validated_data.get('name', instance.name)
-        instance.modified_by = self.context['request'].user
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modifed_by)
         instance.save()
         return instance
 
