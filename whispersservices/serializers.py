@@ -94,6 +94,7 @@ class EventSerializer(serializers.ModelSerializer):
     new_comments = serializers.ListField(write_only=True)
     new_event_locations = serializers.ListField(write_only=True)
     new_superevents = serializers.ListField(write_only=True)
+    new_service_request = serializers.JSONField(write_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -296,6 +297,9 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child superevents list from the request
         new_superevents = validated_data.pop('new_superevents', None)
 
+        # pull out child service request from the request
+        new_service_request = validated_data.pop('new_service_request', None)
+
         user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
@@ -325,6 +329,12 @@ class EventSerializer(serializers.ModelSerializer):
                     if superevent is not None:
                         EventSuperEvent.objects.create(event=event, superevent=superevent)
 
+        # Create the child service requests for this event
+        if new_service_request is not None:
+            if new_service_request is not None and new_service_request in [1, 2]:
+                request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
+                ServiceRequest.objects.create(event=event, request_type=request_type)
+
         # create the child event_locations for this event
         if new_event_locations is not None:
             for event_location in new_event_locations:
@@ -333,7 +343,6 @@ class EventSerializer(serializers.ModelSerializer):
                     event_location['event'] = event
                     new_location_contacts = event_location.pop('new_location_contacts', None)
                     new_location_species = event_location.pop('new_location_species', None)
-                    new_service_request = event_location.pop('new_service_request', None)
 
                     # use id for country to get Country instance
                     event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
@@ -424,12 +433,6 @@ class EventSerializer(serializers.ModelSerializer):
                                                     if org is not None:
                                                         SpeciesDiagnosisOrganization.objects.create(
                                                             species_diagnosis=species_diagnosis, organization=org)
-
-                    # Create SpecimenSubmissionRequests
-                    if new_service_request is not None:
-                        if new_service_request is not None and new_service_request in [1, 2]:
-                            request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
-                            ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').first()
@@ -584,7 +587,7 @@ class EventSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'public', 'circle_read', 'circle_write', 'organizations', 'contacts', 'comments',
                   'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
-                  'created_date', 'created_by', 'created_by_string',
+                  'new_service_request', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
 
 
@@ -1090,7 +1093,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                   'circle_read', 'circle_write', 'superevents', 'organizations', 'contacts', 'comments',
-                  'created_date', 'created_by', 'created_by_string',
+                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
+                  'new_service_request', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
 
 
@@ -2447,6 +2451,7 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
+    comments = CommentSerializer(many=True, read_only=True)
     new_comments = serializers.ListField(write_only=True)
 
     def validate(self, data):
@@ -2497,7 +2502,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             else:
                 instance.response_by = user
 
-        instance.event_location = validated_data.get('event_location', instance.event_location)
+        instance.event = validated_data.get('event', instance.event)
         instance.request_type = validated_data.get('request_type', instance.request_type)
         instance.request_response = validated_data.get('request_response', instance.request_response)
 
@@ -2510,8 +2515,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ServiceRequest
-        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time', 'new_comments',
-                  'created_date', 'created_by', 'created_by_string',
+        fields = ('id', 'event', 'request_type', 'request_response', 'response_by', 'created_time', 'comments',
+                  'new_comments', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 

@@ -940,8 +940,8 @@ class ServiceRequest(HistoryModel):
     Service Submission Request
     """
 
-    event_location = models.ForeignKey('EventLocation', models.CASCADE)
-    request_type = models.ForeignKey('ServiceRequestType', models.PROTECT)
+    event = models.ForeignKey('Event', models.CASCADE, related_name='servicerequests')
+    request_type = models.ForeignKey('ServiceRequestType', models.PROTECT, related_name='servicerequests')
     request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
                                          related_name='servicerequests')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
