@@ -309,9 +309,11 @@ class EventSerializer(serializers.ModelSerializer):
                 if org_id is not None:
                     org = Organization.objects.filter(pk=org_id).first()
                     if org is not None:
-                        EventOrganization.objects.create(event=event, organization=org)
+                        EventOrganization.objects.create(event=event, organization=org,
+                                                         created_by=user, modified_by=user)
         else:
-            EventOrganization.objects.create(event=event, organization=user.organization)
+            EventOrganization.objects.create(event=event, organization=user.organization,
+                                             created_by=user, modified_by=user)
 
         # create the child comments for this event
         if new_comments is not None:
@@ -327,13 +329,24 @@ class EventSerializer(serializers.ModelSerializer):
                 if superevent_id is not None:
                     superevent = SuperEvent.objects.filter(pk=superevent_id).first()
                     if superevent is not None:
-                        EventSuperEvent.objects.create(event=event, superevent=superevent)
+                        EventSuperEvent.objects.create(event=event, superevent=superevent,
+                                                       created_by=user, modified_by=user)
 
         # Create the child service requests for this event
         if new_service_request is not None:
             if new_service_request is not None and new_service_request in [1, 2]:
+                new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
-                ServiceRequest.objects.create(event=event, request_type=request_type)
+                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                created_by=user, modified_by=user)
+
+                # create the child comments for this service request
+                if new_comments is not None:
+                    for comment in new_comments:
+                        if comment is not None:
+                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -432,7 +445,8 @@ class EventSerializer(serializers.ModelSerializer):
                                                     org = Organization.objects.filter(pk=org_id).first()
                                                     if org is not None:
                                                         SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org)
+                                                            species_diagnosis=species_diagnosis, organization=org,
+                                                            created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').first()
@@ -560,6 +574,10 @@ class EventSerializer(serializers.ModelSerializer):
         if 'new_event_locations' in validated_data:
             validated_data.pop('new_event_locations')
 
+        # remove child service_requests list from the request
+        if 'new_service_requests' in validated_data:
+            validated_data.pop('new_eservice_requests')
+
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
@@ -601,6 +619,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     comments = CommentSerializer(many=True, read_only=True)
+    new_event_diagnoses = serializers.ListField(write_only=True)
+    new_organizations = serializers.ListField(write_only=True)
+    new_comments = serializers.ListField(write_only=True)
+    new_event_locations = serializers.ListField(write_only=True)
+    new_superevents = serializers.ListField(write_only=True)
+    new_service_request = serializers.JSONField(write_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -806,15 +830,20 @@ class EventAdminSerializer(serializers.ModelSerializer):
         user = self.context['request'].user
         event = Event.objects.create(**validated_data)
 
+        # pull out child service request from the request
+        new_service_request = validated_data.pop('new_service_request', None)
+
         # create the child organizations for this event
         if new_organizations is not None:
             for org_id in new_organizations:
                 if org_id is not None:
                     org = Organization.objects.filter(pk=org_id).first()
                     if org is not None:
-                        EventOrganization.objects.create(event=event, organization=org)
+                        EventOrganization.objects.create(event=event, organization=org,
+                                                         created_by=user, modified_by=user)
         else:
-            EventOrganization.objects.create(event=event, organization=user.organization)
+            EventOrganization.objects.create(event=event, organization=user.organization,
+                                             created_by=user, modified_by=user)
 
         # create the child comments for this event
         if new_comments is not None:
@@ -830,7 +859,24 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 if superevent_id is not None:
                     superevent = SuperEvent.objects.filter(pk=superevent_id).first()
                     if superevent is not None:
-                        EventSuperEvent.objects.create(event=event, superevent=superevent)
+                        EventSuperEvent.objects.create(event=event, superevent=superevent,
+                                                       created_by=user, modified_by=user)
+
+        # Create the child service requests for this event
+        if new_service_request is not None:
+            if new_service_request is not None and new_service_request in [1, 2]:
+                new_comments = new_service_request.pop('new_comments', None)
+                request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
+                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                created_by=user, modified_by=user)
+
+                # create the child comments for this service request
+                if new_comments is not None:
+                    for comment in new_comments:
+                        if comment is not None:
+                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -840,7 +886,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     event_location['event'] = event
                     new_location_contacts = event_location.pop('new_location_contacts', None)
                     new_location_species = event_location.pop('new_location_species', None)
-                    new_service_request = event_location.pop('new_service_request', None)
 
                     # use id for country to get Country instance
                     event_location['country'] = Country.objects.filter(pk=event_location['country']).first()
@@ -930,13 +975,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                     org = Organization.objects.filter(pk=org_id).first()
                                                     if org is not None:
                                                         SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org)
-
-                    # Create SpecimenSubmissionRequests
-                    if new_service_request is not None:
-                        if new_service_request is not None and new_service_request in [1, 2]:
-                            request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
-                            ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
+                                                            species_diagnosis=species_diagnosis, organization=org,
+                                                            created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').first()
@@ -1063,6 +1103,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # remove child event_locations list from the request
         if 'new_event_locations' in validated_data:
             validated_data.pop('new_event_locations')
+
+        # remove child service_requests list from the request
+        if 'new_service_requests' in validated_data:
+            validated_data.pop('new_eservice_requests')
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -1344,7 +1388,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     new_location_contacts = serializers.ListField(write_only=True, required=False)
     new_location_species = serializers.ListField(write_only=True, required=False)
-    new_service_request = serializers.JSONField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -1365,7 +1408,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # event = Event.objects.filter(pk=validated_data['event']).first()
         new_location_contacts = validated_data.pop('new_location_contacts', None)
         new_location_species = validated_data.pop('new_location_species', None)
-        new_service_request = validated_data.pop('new_service_request', None)
 
         # # use id for country to get Country instance
         # country = Country.objects.filter(pk=validated_data['country']).first()
@@ -1439,13 +1481,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                             diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
                             if diagnosis is not None:
                                 SpeciesDiagnosis.objects.create(
-                                    location_speccies=location_spec, diagnosis=diagnosis)
-
-        # Create SpecimenSubmissionRequests
-        if new_service_request is not None:
-            if new_service_request is not None and new_service_request in [1, 2]:
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
-                ServiceRequest.objects.create(event_location=evt_location, request_type=request_type)
+                                    location_speccies=location_spec, diagnosis=diagnosis,
+                                    created_by=user, modified_by=user)
 
         # calculate the priority value:
         # Group by county first. Order counties by decreasing number of sick plus dead (for morbidity/mortality events)
@@ -1515,10 +1552,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
     def update(self, instance, validated_data):
-
-        # remove child specimen submission requests list from the request
-        if 'new_specimen_submission_requests' in validated_data:
-            validated_data.pop('new_specimen_submission_requests')
 
         # remove child location_contacts list from the request
         if 'new_location_contacts' in validated_data:
@@ -1628,8 +1661,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
                   'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
-                  'new_location_contacts', 'new_location_species', 'new_service_request',
-                  'created_date', 'created_by', 'created_by_string',
+                  'new_location_contacts', 'new_location_species', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
@@ -2476,17 +2508,17 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             else:
                 validated_data['response_by'] = user
 
-        specimen_submission_request = ServiceRequest.objects.create(**validated_data)
+        service_request = ServiceRequest.objects.create(**validated_data)
 
-        # create the child comments for this event
+        # create the child comments for this service request
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=specimen_submission_request, comment=comment['comment'],
+                    Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
 
-        return specimen_submission_request
+        return service_request
 
     def update(self, instance, validated_data):
         user = self.context['request'].user
@@ -2548,6 +2580,7 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 
 
 # TODO: impose minimum security requirements on passwords
+# TODO: better protect this endpoint: anon and partner users can create a user but should only be able to submit 'username', 'password', 'first_name', 'last_name', 'email', others auto-assigned, admins can submit all except is_superuser
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')

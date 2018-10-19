@@ -1047,6 +1047,7 @@ class Artifact(HistoryModel):  # TODO: implement file fields
 ######
 
 
+# TODO: revisit settings; role should default to Public, org should default to Public (doesn't exist yet)
 class User(AbstractUser):
     """
     Extends the default User model.
