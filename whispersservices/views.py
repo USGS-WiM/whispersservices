@@ -1,6 +1,7 @@
 import datetime as dtmod
 from datetime import datetime as dt
 from collections import OrderedDict
+from django.core.mail import send_mail, EmailMessage
 from django.utils import timezone
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -39,6 +40,9 @@ User = get_user_model()
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
+
+# TODO: replace this with a more permanent solution
+WHISPERS_EMAIL_ADDRESS = User.objects.filter(id=1).first().email
 
 
 ######
@@ -797,6 +801,27 @@ class CircleViewSet(HistoryViewSet):
 
 class OrganizationViewSet(HistoryViewSet):
     # serializer_class = OrganizationSerializer
+
+    @action(detail=False)
+    def request_new(self, request):
+        other_nwhc_email_addresses = []
+        user_email_address = request.user.email
+
+        # construct and send the request email
+        subject = "Request New Organization"
+        body = "A user has requested a new organization:\r\n\r\n"
+        body += request.body
+        from_address = user_email_address
+        to_list = [WHISPERS_EMAIL_ADDRESS, ]
+        bcc_list = other_nwhc_email_addresses
+        reply_to_list = [user_email_address, ]
+        headers = None  # {'Message-ID': 'foo'}
+        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+        try:
+            email.send(fail_silently=False)
+            return Response({'status': 'email sent'}, status=200)
+        except TypeError:
+            return Response({'status': 'send email failed, please contact the administrator.'}, status=500)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):

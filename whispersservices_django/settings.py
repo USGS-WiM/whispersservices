@@ -89,6 +89,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'whispersservices_django.wsgi.application'
 
+EMAIL_BACKEND = CONFIG.get('email', 'EMAIL_BACKEND')
+EMAIL_HOST = CONFIG.get('email', 'EMAIL_HOST')
+EMAIL_HOST_PASSWORD = CONFIG.get('email', 'EMAIL_HOST_PASSWORD')
+EMAIL_HOST_USER = CONFIG.get('email', 'EMAIL_HOST_USER')
+EMAIL_PORT = CONFIG.get('email', 'EMAIL_PORT')
+EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
+DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
+# EMAIL_HOST = '127.0.0.1'
+# EMAIL_PORT = '25'
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
