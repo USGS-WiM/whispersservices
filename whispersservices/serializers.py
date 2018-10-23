@@ -8,6 +8,9 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 # TODO: implement required field validations for nested objects
 
+COMMENT_CONTENT_TYPES = ['event', 'superevent', 'eventlocation', 'servicerequest']
+
+
 ######
 #
 #  Misc
@@ -16,14 +19,54 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 
 class CommentSerializer(serializers.ModelSerializer):
+    def get_content_type_string(self, obj):
+        return obj.content_type.model
+
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    content_type_string = serializers.SerializerMethodField()
+    new_content_type = serializers.CharField(write_only=True, required=False)
+
+    def validate(self, data):
+        if self.context['request'].method == 'POST':
+            if 'object_id' not in data or data['object_id'] is None:
+                raise serializers.ValidationError("object_id is required.")
+            if 'new_content_type' not in data or data['new_content_type'] is None:
+                raise serializers.ValidationError("new_content_type is required.")
+            elif data['new_content_type'] not in COMMENT_CONTENT_TYPES:
+                raise serializers.ValidationError("new_content_type mut be one of: " + ", ".join(COMMENT_CONTENT_TYPES))
+        return data
+
+    def create(self, validated_data):
+        new_content_type = validated_data.pop('new_content_type')
+        content_type = ContentType.objects.filter(app_label='whispersservices', model=new_content_type).first()
+        content_object = content_type.model_class().objects.filter(id=validated_data['object_id']).first()
+        comment = Comment.objects.create(**validated_data, content_object=content_object)
+        return comment
+
+    def update(self, instance, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        # Do not allow the user to change the related content_type of object_id;
+        # if they really need to make such a change, they should delete the comment and create a new one
+        instance.comment = validated_data.get('comment', instance.comment)
+        instance.comment_type = validated_data.get('comment_type', instance.comment_type)
+        instance.object_id = instance.object_id
+        instance.new_content_type = instance.content_type
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modifed_by)
+
+        instance.save()
+        return instance
 
     class Meta:
         model = Comment
-        fields = ('id', 'comment', 'comment_type',
+        fields = ('id', 'comment', 'comment_type', 'object_id', 'content_type_string', 'new_content_type',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+        extra_kwargs = {'object_id': {'required': False}}
 
 
 class CommentTypeSerializer(serializers.ModelSerializer):
@@ -286,7 +329,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
-                         'general': 'General'}
+                         'other': 'Other'}
 
         # pull out child event diagnoses list from the request
         new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
@@ -377,7 +420,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 'history': event_location.pop('history', None),
                                 'environmental_factors': event_location.pop('environmental_factors', None),
                                 'clinical_signs': event_location.pop('clinical_signs', None),
-                                'general': event_location.pop('comment', None)}
+                                'other': event_location.pop('comment', None)}
 
                     # create the event_location and return object for use in event_location_contacts object
                     event_location['created_by'] = user
@@ -3476,7 +3519,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     # eventlocations = EventLocationDetailSerializer(many=True)
-    eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
+    # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)

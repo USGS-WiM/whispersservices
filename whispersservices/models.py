@@ -1004,7 +1004,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
     """
 
     comment = models.TextField(blank=True)
-    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', null=True)
+    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments')
 
     # Below the mandatory fields for generic relation
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
