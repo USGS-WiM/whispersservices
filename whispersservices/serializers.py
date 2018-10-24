@@ -3509,6 +3509,30 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
                   'speciesdiagnoses',)
 
 
+class EventLocationContactDetailSerializer(serializers.ModelSerializer):
+    def get_owner_organization_string(self, obj):
+        return Organization.objects.filter(id=obj.contact.owner_organization).first().name
+
+    contact_type_string = serializers.StringRelatedField(source='contact_type')
+    first_name = serializers.StringRelatedField(source='contact.first_name')
+    last_name = serializers.StringRelatedField(source='contact.last_name')
+    email = serializers.StringRelatedField(source='contact.email')
+    phone = serializers.StringRelatedField(source='contact.phone')
+    affiliation = serializers.StringRelatedField(source='contact.affiliation')
+    title = serializers.StringRelatedField(source='contact.title')
+    position = serializers.StringRelatedField(source='contact.position')
+    organization = serializers.PrimaryKeyRelatedField(source='contact.organization', read_only=True)
+    organization_string = serializers.StringRelatedField(source='contact.organization')
+    owner_organization = serializers.PrimaryKeyRelatedField(source='contact.owner_organization', read_only=True)
+    owner_organization_string = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EventLocationContact
+        fields = ('id', 'contact', 'contact_type', 'contact_type_string', 'first_name', 'last_name',
+                  'email', 'phone', 'affiliation', 'title', 'position', 'organization', 'organization_string',
+                  'owner_organization', 'owner_organization_string',)
+
+
 class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
     administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
     administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
@@ -3530,6 +3554,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
     country_string = serializers.StringRelatedField(source='country')
     locationspecies = LocationSpeciesDetailSerializer(many=True)
     comments = CommentSerializer(many=True)
+    eventlocationcontacts = EventLocationContactDetailSerializer(source='eventlocationcontact_set', many=True)
 
     class Meta:
         model = EventLocation
@@ -3537,7 +3562,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'administrative_level_two_points', 'county_multiple',
                   'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'gnis_name', 'gnis_id',
-                  'flyways', 'contacts', 'locationspecies', 'comments',)
+                  'flyways', 'eventlocationcontacts', 'locationspecies', 'comments',)
 
 
 class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
@@ -3600,7 +3625,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    # eventlocations = EventLocationDetailSerializer(many=True)
+    eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
@@ -3627,6 +3652,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
+                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
                                            "created_by_string": created_by_string,
                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
                                            "modified_by_string": modified_by_string}
