@@ -130,12 +130,12 @@ class EventSerializer(serializers.ModelSerializer):
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     comments = CommentSerializer(many=True, read_only=True)
-    new_event_diagnoses = serializers.ListField(write_only=True)
-    new_organizations = serializers.ListField(write_only=True)
-    new_comments = serializers.ListField(write_only=True)
-    new_event_locations = serializers.ListField(write_only=True)
-    new_superevents = serializers.ListField(write_only=True)
-    new_service_request = serializers.JSONField(write_only=True)
+    new_event_diagnoses = serializers.ListField(write_only=True, required=False)
+    new_organizations = serializers.ListField(write_only=True, required=False)
+    new_comments = serializers.ListField(write_only=True, required=False)
+    new_event_locations = serializers.ListField(write_only=True, required=False)
+    new_superevents = serializers.ListField(write_only=True, required=False)
+    new_service_request = serializers.JSONField(write_only=True, required=False)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -670,12 +670,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
     comments = CommentSerializer(many=True, read_only=True)
-    new_event_diagnoses = serializers.ListField(write_only=True)
-    new_organizations = serializers.ListField(write_only=True)
-    new_comments = serializers.ListField(write_only=True)
-    new_event_locations = serializers.ListField(write_only=True)
-    new_superevents = serializers.ListField(write_only=True)
-    new_service_request = serializers.JSONField(write_only=True)
+    new_event_diagnoses = serializers.ListField(write_only=True, required=False)
+    new_organizations = serializers.ListField(write_only=True, required=False)
+    new_comments = serializers.ListField(write_only=True, required=False)
+    new_event_locations = serializers.ListField(write_only=True, required=False)
+    new_superevents = serializers.ListField(write_only=True, required=False)
+    new_service_request = serializers.JSONField(write_only=True, required=False)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1070,20 +1070,25 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         new_complete = validated_data.get('complete', None)
         quality_check = validated_data.get('quality_check', None)
-        # if the quality_check field is included and set to True, update it and return the instance
-        # (ignoring any other submitted changes, because the event is 'locked' by virtue of being complete
-        if quality_check:
-            instance.quality_check = quality_check
-            instance.modified_by = validated_data.get('modified_by', instance.modified_by)
-            instance.save()
-            return instance
-        # if the complete field is not included or set to True, the event cannot be changed
-        if new_complete is None or new_complete:
-            message = "Complete events may only be changed by the event owner or an administrator"
-            message += " if the 'complete' field is set to False."
-            raise serializers.ValidationError(message)
 
-        if new_complete and not instance.complete and (
+        # if event is complete only a few things are permitted (admin can set quality_check or reopen event)
+        if instance.complete:
+            # if the event is complete and the quality_check field is included and set to a date,
+            # update the quality_check field and return the event
+            # (ignoring any other submitted changes since the event is 'locked' by virtue of being complete)
+            if quality_check:
+                instance.quality_check = quality_check
+                instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+                instance.save()
+                return instance
+            # if the event is complete and the complete field is not included or True, the event cannot be changed
+            if new_complete is None or new_complete:
+                message = "Complete events may only be changed by the event owner or an administrator"
+                message += " if the 'complete' field is set to False in the request."
+                raise serializers.ValidationError(message)
+
+        # otherwise event is not yet complete
+        if not instance.complete and new_complete and (
                 user.role.is_superadmin or user == instance.created_by or (
                 user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
             # only let the status be changed to 'complete=True' if
@@ -1115,7 +1120,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 species_count_is_valid.append(True)
                             elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
+                                if (spec.sick_count or 0) > 0 and spec.sick_count_estimated <= (spec.sick_count or 0):
                                     est_count_gt_known_count = False
                             elif spec.sick_count is not None and spec.sick_count > 0:
                                 species_count_is_valid.append(True)

@@ -129,7 +129,7 @@ class Event(PermissionsHistoryModel):
     event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1)
     legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1)
     legal_number = models.CharField(max_length=128, blank=True, default='')
-    quality_check = models.BooleanField(default=False)
+    quality_check = models.DateField(null=True)
     public = models.BooleanField(default=True)
     circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
     circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
