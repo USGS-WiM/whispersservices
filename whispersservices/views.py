@@ -146,7 +146,7 @@ class EventViewSet(HistoryViewSet):
                 circle_write = obj.circle_write if obj.circle_write is not None else []
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
                                         or user in circle_read or user in circle_write
-                                        or user.is_superuser or user.role.is_superadmin or user.role.is_admin):
+                                        or user.role.is_superadmin or user.role.is_admin):
                     return queryset
             return queryset.filter(public=True)
         # all list requests, and all requests from public users (except circle members), must only return public data
@@ -171,7 +171,7 @@ class EventViewSet(HistoryViewSet):
                     circle_read = obj.circle_read if obj.circle_read is not None else []
                     circle_write = obj.circle_write if obj.circle_write is not None else []
                     # admins have full access to all fields
-                    if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                    if user.role.is_superadmin or user.role.is_admin:
                         return EventAdminSerializer
                     elif user in circle_read:
                         # circle_read members can only retrieve
@@ -199,7 +199,7 @@ class EventViewSet(HistoryViewSet):
         elif self.action == 'list' or user.role.is_public:
             return EventPublicSerializer
         # for all other requests admins have access to all fields
-        elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        elif user.role.is_superadmin or user.role.is_admin:
             return EventAdminSerializer
         # all create requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -313,7 +313,7 @@ class EventOrganizationViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return EventOrganizationPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return EventOrganizationSerializer
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -373,7 +373,7 @@ class EventLocationViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return EventLocationPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return EventLocationSerializer
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -489,7 +489,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return LocationSpeciesPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return LocationSpeciesSerializer
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -569,7 +569,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return EventDiagnosisPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return EventDiagnosisSerializer
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -609,7 +609,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return SpeciesDiagnosisPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return SpeciesDiagnosisSerializer
         # for all non-admins, all post requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
@@ -729,14 +729,14 @@ class UserViewSet(HistoryViewSet):
             queryset = Contact.objects.all().filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
         # admins, superadmins, and superusers can see everything
-        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+        elif user.role.is_superadmin or user.role.is_admin:
             queryset = User.objects.all()
         # otherwise return nothing
         else:
             return Contact.objects.none()
 
         # never return the superuser(s)
-        queryset = queryset.exclude(is_superuser=True)
+        # queryset = queryset.exclude(is_superuser=True)
         # filter by username, exact
         username = self.request.query_params.get('username', None)
         if username is not None:
@@ -833,7 +833,7 @@ class OrganizationViewSet(HistoryViewSet):
         if self.action == 'list' or user.role.is_public:
             return OrganizationPublicSerializer
         # for all other requests admins have access to all fields
-        if user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        if user.role.is_superadmin or user.role.is_admin:
             return OrganizationSerializer
         # non-admins retrieve requests must use the public serializer
         if self.action == 'retrieve':
@@ -871,7 +871,7 @@ class OrganizationViewSet(HistoryViewSet):
                 queryset = Organization.objects.filter(id=pk)
                 obj = queryset[0]
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
-                                        or user.is_superuser or user.role.is_superadmin or user.role.is_admin):
+                                        or user.role.is_superadmin or user.role.is_admin):
                     return queryset
             return queryset.filter(do_not_publish=False)
         # all list requests, and all requests from public users, must only return published data
@@ -923,7 +923,7 @@ class ContactViewSet(HistoryViewSet):
             queryset = Contact.objects.all().filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
         # admins, superadmins, and superusers can see everything
-        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+        elif user.role.is_superadmin or user.role.is_admin:
             queryset = Contact.objects.all()
         # otherwise return nothing
         else:
@@ -993,10 +993,10 @@ class SearchViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
-        elif get_user_searches or not (user.role.is_admin or user.role.is_superadmin or user.is_superuser):
+        elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
             queryset = Search.objects.all().filter(created_by__exact=user)
         # admins, superadmins, and superusers can see everything
-        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+        elif user.role.is_superadmin or user.role.is_admin:
             queryset = Search.objects.all()
         # otherwise return nothing
         else:
@@ -1075,7 +1075,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         return self.get_paginated_response(serializer.data)
                     serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
         # admins have access to all fields
-        elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        elif user.role.is_superadmin or user.role.is_admin:
             if no_page:
                 serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
             else:
@@ -1149,7 +1149,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     circle_read = obj.circle_read if obj.circle_read is not None else []
                     circle_write = obj.circle_write if obj.circle_write is not None else []
                     # admins have full access to all fields
-                    if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                    if user.role.is_superadmin or user.role.is_admin:
                         return EventSummaryAdminSerializer
                     # owner and org members and shared circles have full access to non-admin fields
                     elif user == obj.created_by or (user.organization == obj.created_by.organization and (
@@ -1158,7 +1158,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
         # admins have access to all fields
-        elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        elif user.role.is_superadmin or user.role.is_admin:
             return EventSummaryAdminSerializer
         # everything else must use the public serializer
         else:
@@ -1206,7 +1206,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
                 #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
         # admins, superadmins, and superusers can see everything
-        elif user.role.is_admin or user.role.is_superadmin or user.is_superuser:
+        elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset
         # non-user-specific event requests can only return public data
         else:
@@ -1486,7 +1486,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                 circle_write = obj.circle_write if obj.circle_write is not None else []
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
                                         or user in circle_read or user in circle_write
-                                        or user.is_superuser or user.role.is_superadmin or user.role.is_admin):
+                                        or user.role.is_superadmin or user.role.is_admin):
                     return queryset
             return queryset.filter(public=True)
         # all list requests must only return public data
@@ -1507,7 +1507,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                     circle_read = obj.circle_read if obj.circle_read is not None else []
                     circle_write = obj.circle_write if obj.circle_write is not None else []
                     # admins have full access to all fields
-                    if user.is_superuser or user.role.is_superadmin or user.role.is_admin:
+                    if user.role.is_superadmin or user.role.is_admin:
                         return EventDetailAdminSerializer
                     # owner and org members and shared circles have full access to non-admin fields
                     elif user == obj.created_by or (user.organization == obj.created_by.organization and (
@@ -1516,7 +1516,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                         return EventDetailSerializer
             return EventDetailPublicSerializer
         # admins have access to all fields
-        elif user.is_superuser or user.role.is_admin or user.role.is_superadmin:
+        elif user.role.is_superadmin or user.role.is_admin:
             return EventDetailAdminSerializer
         # everything else must use the public serializer
         else:

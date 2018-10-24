@@ -533,9 +533,9 @@ class EventSerializer(serializers.ModelSerializer):
         if instance.complete:
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
-            if new_complete is None or new_complete and (
-                    user.role.is_superadmin or user == instance.created_by or (
-                    user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
+            if new_complete is None or (new_complete and (user == instance.created_by or (
+                    user.organization == instance.created_by.organization and (
+                    user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
@@ -544,9 +544,9 @@ class EventSerializer(serializers.ModelSerializer):
                 message += " unless first re-opened by the event owner or an administrator."
                 raise serializers.ValidationError(message)
 
-        if new_complete and not instance.complete and (
-                user.role.is_superadmin or user == instance.created_by or (
-                user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
+        if not instance.complete and new_complete and (user == instance.created_by or (
+                user.organization == instance.created_by.organization and (
+                user.role.is_partneradmin or user.role.is_partnermanager))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
@@ -1088,9 +1088,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message)
 
         # otherwise event is not yet complete
-        if not instance.complete and new_complete and (
-                user.role.is_superadmin or user == instance.created_by or (
-                user.organization == instance.created_by.organization and (user.role.name in UPDATER_ROLES))):
+        if not instance.complete and new_complete:
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
@@ -2588,7 +2586,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
-            if not (user.role.name in NWHC_ROLES):
+            if not (user.role.is_superadmin or user.role.is_admin):
                 raise serializers.ValidationError("You do not have permission to alter the request response.")
             else:
                 validated_data['response_by'] = user
@@ -2621,7 +2619,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             if not user:
                 raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
-            if not (user.role.name in NWHC_ROLES):
+            if not (user.role.is_superadmin or user.role.is_admin):
                 raise serializers.ValidationError("You do not have permission to alter the request response.")
             else:
                 instance.response_by = user
