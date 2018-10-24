@@ -2640,14 +2640,15 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
-    new_comments = serializers.ListField(write_only=True)
+    new_comments = serializers.ListField(write_only=True, required=False)
 
     def validate(self, data):
         if 'new_comments' in data and data['new_comments'] is not None:
-            if 'comment' not in data['new_comments']:
-                raise serializers.ValidationError("A comment must have comment text.")
-            elif 'comment_type' not in data['new_comments']:
-                raise serializers.ValidationError("A comment must have a comment type.")
+            for item in data['new_comments']:
+                if 'comment' not in item or not item['comment']:
+                    raise serializers.ValidationError("A comment must have comment text.")
+                elif 'comment_type' not in item or not item['comment_type']:
+                    raise serializers.ValidationError("A comment must have a comment type.")
 
         return data
 
@@ -3579,6 +3580,14 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'suspect', 'major', 'priority',)
 
 
+class ServiceRequestDetailSerializer(serializers.ModelSerializer):
+    comments = CommentSerializer(many=True)
+
+    class Meta:
+        model = ServiceRequest
+        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time', 'created_date', 'comments',)
+
+
 class EventDetailPublicSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
@@ -3630,6 +3639,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventdiagnoses = serializers.SerializerMethodField()
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
+    servicerequests = ServiceRequestDetailSerializer(many=True)
 
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
@@ -3678,7 +3688,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'public', 'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments',
-                  'permissions', 'permission_source',)
+                  'servicerequests', 'permissions', 'permission_source',)
 
 
 class EventDetailAdminSerializer(serializers.ModelSerializer):
@@ -3695,6 +3705,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventdiagnoses = serializers.SerializerMethodField()
     eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
+    servicerequests = ServiceRequestDetailSerializer(many=True)
 
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
@@ -3743,8 +3754,8 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'superevents', 'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments',
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'superevents',
+                  'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments', 'servicerequests',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
 
