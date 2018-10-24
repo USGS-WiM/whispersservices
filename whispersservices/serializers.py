@@ -169,6 +169,7 @@ class EventSerializer(serializers.ModelSerializer):
             #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
                 comments_is_valid = []
+                required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
                 min_location_species = False
                 min_species_count = False
@@ -178,13 +179,8 @@ class EventSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
-                    if 'new_comments' in item:
-                        for comment in item['new_comments']:
-                            if ('comment_type' in comment and comment['comment_type'] is not None
-                                    and comment['comment_type'] in [1, 2, 3, 4]):
-                                comments_is_valid.append(True)
-                            else:
-                                comments_is_valid.append(False)
+                    if [i for i in required_comment_types if i in item]:
+                        comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
                     if 'start_date' in item:
@@ -447,10 +443,9 @@ class EventSerializer(serializers.ModelSerializer):
                             location_contact['event_location'] = evt_location
 
                             # Convert ids to ForeignKey objects
-                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['contact']).first()
                             location_contact['contact_type'] = ContactType.objects.filter(
                                 pk=location_contact['contact_type']).first()
-                            del location_contact['id']
 
                             location_contact['created_by'] = user
                             location_contact['modified_by'] = user
@@ -709,6 +704,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
                 comments_is_valid = []
+                required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
                 min_location_species = False
                 min_species_count = False
@@ -718,13 +714,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
-                    if 'new_comments' in item:
-                        for comment in item['new_comments']:
-                            if ('comment_type' in comment and comment['comment_type'] is not None
-                                    and comment['comment_type'] in [1, 2, 3, 4]):
-                                comments_is_valid.append(True)
-                            else:
-                                comments_is_valid.append(False)
+                    if [i for i in required_comment_types if i in item]:
+                        comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
                     if 'start_date' in item:
@@ -885,10 +876,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out child superevents list from the request
         new_superevents = validated_data.pop('new_superevents', None)
 
-        event = Event.objects.create(**validated_data)
-
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
+
+        event = Event.objects.create(**validated_data)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -986,10 +977,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             location_contact['event_location'] = evt_location
 
                             # Convert ids to ForeignKey objects
-                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                            location_contact['contact'] = Contact.objects.filter(pk=location_contact['contact']).first()
                             location_contact['contact_type'] = ContactType.objects.filter(
                                 pk=location_contact['contact_type']).first()
-                            del location_contact['id']
 
                             location_contact['created_by'] = user
                             location_contact['modified_by'] = user
@@ -1452,6 +1442,11 @@ class EventLocationSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     new_location_contacts = serializers.ListField(write_only=True, required=False)
     new_location_species = serializers.ListField(write_only=True, required=False)
+    site_description = serializers.CharField(write_only=True, required=False)
+    history = serializers.CharField(write_only=True, required=False)
+    environmental_factors = serializers.CharField(write_only=True, required=False)
+    clinical_signs = serializers.CharField(write_only=True, required=False)
+    comment = serializers.CharField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -1467,6 +1462,90 @@ class EventLocationSerializer(serializers.ModelSerializer):
             elif self.context['request'].method in ['PUT', 'PATCH'] and self.instance.event.complete:
                 raise serializers.ValidationError(message_complete)
 
+        # 1. Not every location needs a start date at initiation, but at least one location must.
+        # 2. Not every location needs a species at initiation, but at least one location must.
+        # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+        # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #    and estimated_dead for at least one species in the event at the time of event initiation.
+        #    (sick + dead + estimated_sick + estimated_dead >= 1)
+        # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+        # 7. Every location needs at least one comment, which must be one of the following types:
+        #    Site description, History, Environmental factors, Clinical signs
+        comments_is_valid = []
+        required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
+        min_start_date = False
+        min_location_species = False
+        min_species_count = False
+        pop_is_valid = []
+        est_sick_is_valid = True
+        est_dead_is_valid = True
+        details = []
+        mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+
+        if [i for i in required_comment_types if i in data]:
+            comments_is_valid.append(True)
+        else:
+            comments_is_valid.append(False)
+        if 'start_date' in data:
+            min_start_date = True
+        if 'new_location_species' in data:
+            for spec in data['new_location_species']:
+                if 'species' in spec and spec['species'] is not None:
+                    min_location_species = True
+                if 'population_count' in spec and spec['population_count'] is not None:
+                    dead_count = 0
+                    sick_count = 0
+                    if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                        dead_count = max(spec.get('dead_count_estimated') or 0,
+                                         spec.get('dead_count') or 0)
+                    if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                        sick_count = max(spec.get('sick_count_estimated') or 0,
+                                         spec.get('sick_count') or 0)
+                    if spec['population_count'] >= dead_count + sick_count:
+                        pop_is_valid.append(True)
+                    else:
+                        pop_is_valid.append(False)
+                if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                        and 'sick_count' in spec and spec['sick_count'] is not None
+                        and not spec['sick_count_estimated'] > spec['sick_count']):
+                    est_sick_is_valid = False
+                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                        and 'dead_count' in spec and spec['dead_count'] is not None
+                        and not spec['dead_count_estimated'] > spec['dead_count']):
+                    est_dead_is_valid = False
+                if data['event'].event_type.id == mortality_morbidity.id:
+                    if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                        min_species_count = True
+                    elif 'dead_count' in spec and spec['dead_count'] > 0:
+                        min_species_count = True
+                    elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                        min_species_count = True
+                    elif 'sick_count' in spec and spec['sick_count'] > 0:
+                        min_species_count = True
+        if False in comments_is_valid:
+            message = "Each new_event_location requires at least one new_comment, which must be one of"
+            message += " the following types: Site description, History, Environmental factors, Clinical signs"
+            details.append(message)
+        if not min_start_date:
+            details.append("start_date is required for at least one new event_location.")
+        if not min_location_species:
+            details.append("Each new_event_location requires at least one new_location_species.")
+        if False in pop_is_valid:
+            message = "new_location_species population_count cannot be less than the sum of dead_count"
+            message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+            details.append(message)
+        if not min_species_count:
+            message = "At least one new_location_species requires at least one species count in any of the"
+            message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+            details.append(message)
+        if not est_sick_is_valid:
+            details.append("Estimated sick count must always be more than known sick count.")
+        if not est_dead_is_valid:
+            details.append("Estimated dead count must always be more than known dead count.")
+        if details:
+            raise serializers.ValidationError(details)
+
         return data
 
     def create(self, validated_data):
@@ -1480,7 +1559,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
-                         'general': 'General'}
+                         'other': 'Other'}
 
         # event = Event.objects.filter(pk=validated_data['event']).first()
         new_location_contacts = validated_data.pop('new_location_contacts', None)
@@ -1500,7 +1579,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     'history': validated_data.pop('history', None),
                     'environmental_factors': validated_data.pop('environmental_factors', None),
                     'clinical_signs': validated_data.pop('clinical_signs', None),
-                    'general': validated_data.pop('comment', None)}
+                    'other': validated_data.pop('comment', None)}
 
         # if the event_location has no name value but does have a gnis_name value,
         # then copy the value of gnis_name to name
@@ -1527,10 +1606,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_contact['event_location'] = evt_location
 
                 # Convert ids to ForeignKey objects
-                location_contact['contact'] = Contact.objects.filter(pk=location_contact['id']).first()
+                location_contact['contact'] = Contact.objects.filter(pk=location_contact['contact']).first()
                 location_contact['contact_type'] = ContactType.objects.filter(
                     pk=location_contact['contact_type']).first()
-                del location_contact['id']
 
                 location_contact['created_by'] = user
                 location_contact['modified_by'] = user
@@ -1739,6 +1817,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
                   'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
                   'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
+                  'site_description', 'history', 'environmental_factors', 'clinical_signs', 'comment',
                   'new_location_contacts', 'new_location_species', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
