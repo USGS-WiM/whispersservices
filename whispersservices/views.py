@@ -1,7 +1,7 @@
 import datetime as dtmod
 from datetime import datetime as dt
 from collections import OrderedDict
-from django.core.mail import send_mail, EmailMessage
+from django.core.mail import EmailMessage
 from django.utils import timezone
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -41,8 +41,30 @@ User = get_user_model()
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
-# TODO: replace this with a more permanent solution
-WHISPERS_EMAIL_ADDRESS = User.objects.filter(id=1).first().email
+
+def construct_email(serializer, user_email, message):
+    if serializer.is_valid():
+        # construct and send the request email
+        subject = "Assistance Request"
+        body = "A user  (" + user_email + ") has requested assistance:\r\n\r\n"
+        body += message + "\r\n\r\n{"
+        for key, value in serializer.validated_data.items():
+            body += "\r\n\t\"" + key + "\": " + "\"" + str(value) + "\","
+        body = body[:-1] + "\r\n}"
+        from_address = user_email
+        to_list = ['whispers@usgs.gov', ]
+        bcc_list = []
+        reply_to_list = [user_email, ]
+        headers = None  # {'Message-ID': 'foo'}
+        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+        try:
+            # TODO: uncomment next line when code is deployed on the production server
+            # email.send(fail_silently=False)
+            return Response({"status": "email sent"}, status=200)
+        except TypeError:
+            return Response({"status": "send email failed, please contact the administrator."}, status=500)
+    else:
+        return Response(serializer.errors, status=400)
 
 
 ######
@@ -422,7 +444,17 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
+    serializer_class_public = AdministrativeLevelTwoPublicSerializer
     serializer_class = AdministrativeLevelTwoSerializer
+
+    @action(detail=False, methods=['post'])
+    def request_new(self, request):
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied
+
+        serializer = self.serializer_class_public(data=request.data)
+        message = "Please add a new administrative level two:"
+        return construct_email(serializer, self.request.user.email, message)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
@@ -509,7 +541,17 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
+    serializer_class_public = SpeciesPublicSerializer
     serializer_class = SpeciesSerializer
+
+    @action(detail=False, methods=['post'])
+    def request_new(self, request):
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied
+
+        serializer = self.serializer_class_public(data=request.data)
+        message = "Please add a new species:"
+        return construct_email(serializer, self.request.user.email, message)
 
 
 class AgeBiasViewSet(HistoryViewSet):
@@ -530,7 +572,17 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
+    serializer_class_public = DiagnosisPublicSerializer
     serializer_class = DiagnosisSerializer
+
+    @action(detail=False, methods=['post'])
+    def request_new(self, request):
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied
+
+        serializer = self.serializer_class_public(data=request.data)
+        message = "Please add a new diagnosis:"
+        return construct_email(serializer, self.request.user.email, message)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
@@ -800,53 +852,34 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    # serializer_class = OrganizationSerializer
+    serializer_class_public = OrganizationPublicSerializer
+    serializer_class = OrganizationSerializer
 
-    # TODO: ensure only authenticated users can perform this action
     @action(detail=False, methods=['post'])
     def request_new(self, request):
-        other_nwhc_email_addresses = []
-        user_email_address = request.user.email
+        if not self.request.user.is_authenticated:
+            raise PermissionDenied
 
-        serializer = OrganizationPublicSerializer(data=request.data)
-        if serializer.is_valid():
-            # construct and send the request email
-            subject = "Request New Organization"
-            body = "A user has requested a new organization:\r\n\r\n{"
-            for key, value in serializer.validated_data.items():
-                body += "\r\n\t\"" + key + "\": " + "\"" + str(value) + "\","
-            body = body[:-1] + "\r\n}"
-            from_address = user_email_address
-            to_list = [WHISPERS_EMAIL_ADDRESS, ]
-            bcc_list = other_nwhc_email_addresses
-            reply_to_list = [user_email_address, ]
-            headers = None  # {'Message-ID': 'foo'}
-            email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list,
-                                 headers=headers)
-            try:
-                # TODO: uncomment next line when code is deployed on the production server
-                # email.send(fail_silently=False)
-                return Response({'status': 'email sent'}, status=200)
-            except TypeError:
-                return Response({'status': 'send email failed, please contact the administrator.'}, status=500)
-        else:
-            return Response(serializer.errors, status=400)
+        serializer = self.serializer_class_public(data=request.data)
+        message = "Please add a new organization:"
+        return construct_email(serializer, self.request.user.email, message)
+
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
         # all requests from anonymous users must use the public serializer
         if not user.is_authenticated:
-            return OrganizationPublicSerializer
+            return self.serializer_class_public
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
-            return OrganizationPublicSerializer
+            return self.serializer_class_public
         # for all other requests admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
-            return OrganizationSerializer
+            return self.serializer_class
         # non-admins retrieve requests must use the public serializer
         if self.action == 'retrieve':
-            return OrganizationPublicSerializer
+            return self.serializer_class_public
         # all other requests are rejected
         else:
             raise PermissionDenied

@@ -1,8 +1,10 @@
 from datetime import timedelta
+from django.core.mail import EmailMessage
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
@@ -391,6 +393,25 @@ class EventSerializer(serializers.ModelSerializer):
                             comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
+
+                # construct and send the request email
+                subject = "Service request for Event " + str(service_request.event.id)
+                body = "A user  (" + user.email + ") with " + user.organization.name + " has requested "
+                body += service_request.request_type.name + " for event " + str(
+                    service_request.event.id) + ".\r\n\r\n"
+                from_address = user.email
+                to_list = ['nwhc-epi@usgs.gov', ]
+                bcc_list = []
+                reply_to_list = [user.email, ]
+                headers = None  # {'Message-ID': 'foo'}
+                email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list,
+                                     headers=headers)
+                # TODO: uncomment next block when code is deployed on the production server
+                # try:
+                #     email.send(fail_silently=False)
+                # except TypeError:
+                #     message = "Service Request saved but send email failed, please contact the administrator."
+                #     raise serializers.ValidationError(message)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -1865,6 +1886,15 @@ class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+class AdministrativeLevelTwoPublicSerializer(serializers.ModelSerializer):
+    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
+
+    class Meta:
+        model = AdministrativeLevelTwo
+        fields = ('id', 'name', 'administrative_level_one', 'administrative_level_one_string', 'points',
+                  'centroid_latitude', 'centroid_longitude', 'fips_code',)
+
+
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2103,6 +2133,14 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                   'sick_count_estimated', 'dead_count_estimated', 'priority', 'captive', 'age_bias', 'sex_bias',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class SpeciesPublicSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Species
+        fields = ('id', 'name', 'class_name', 'order_name', 'family_name', 'sub_family_name', 'genus_name',
+                  'species_latin_name', 'subspecies_latin_name', 'tsn',)
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
@@ -2680,6 +2718,23 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
+
+        # construct and send the request email
+        subject = "Service request for Event " + str(service_request.event.id)
+        body = "A user  (" + user.email + ") with " + user.organization.name + " has requested "
+        body += service_request.request_type.name + " for event " + str(service_request.event.id) + ".\r\n\r\n"
+        from_address = user.email
+        to_list = ['nwhc-epi@usgs.gov', ]
+        bcc_list = []
+        reply_to_list = [user.email, ]
+        headers = None  # {'Message-ID': 'foo'}
+        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+        # TODO: uncomment next block when code is deployed on the production server
+        # try:
+        #     email.send(fail_silently=False)
+        # except TypeError:
+        #     message = "Service Request saved but send email failed, please contact the administrator."
+        #     raise serializers.ValidationError(message)
 
         return service_request
 
