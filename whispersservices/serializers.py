@@ -2899,12 +2899,15 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 
 class ContactSerializer(serializers.ModelSerializer):
+    def get_owner_organization_string(self, obj):
+        return Organization.objects.filter(id=obj.owner_organization).first().name
+
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     organization_string = serializers.StringRelatedField(source='organization')
-    owner_organization_string = serializers.StringRelatedField(source='owner_organization')
+    owner_organization_string = serializers.SerializerMethodField()
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
