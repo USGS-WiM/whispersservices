@@ -802,26 +802,34 @@ class CircleViewSet(HistoryViewSet):
 class OrganizationViewSet(HistoryViewSet):
     # serializer_class = OrganizationSerializer
 
-    @action(detail=False)
+    @action(detail=False, methods=['post'])
     def request_new(self, request):
         other_nwhc_email_addresses = []
         user_email_address = request.user.email
 
-        # construct and send the request email
-        subject = "Request New Organization"
-        body = "A user has requested a new organization:\r\n\r\n"
-        body += request.body
-        from_address = user_email_address
-        to_list = [WHISPERS_EMAIL_ADDRESS, ]
-        bcc_list = other_nwhc_email_addresses
-        reply_to_list = [user_email_address, ]
-        headers = None  # {'Message-ID': 'foo'}
-        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
-        try:
-            email.send(fail_silently=False)
-            return Response({'status': 'email sent'}, status=200)
-        except TypeError:
-            return Response({'status': 'send email failed, please contact the administrator.'}, status=500)
+        serializer = OrganizationPublicSerializer(data=request.data)
+        if serializer.is_valid():
+            # construct and send the request email
+            subject = "Request New Organization"
+            body = "A user has requested a new organization:\r\n\r\n{"
+            for key, value in serializer.validated_data.items():
+                body += "\r\n\t\"" + key + "\": " + "\"" + str(value) + "\","
+            body = body[:-1] + "\r\n}"
+            from_address = user_email_address
+            to_list = [WHISPERS_EMAIL_ADDRESS, ]
+            bcc_list = other_nwhc_email_addresses
+            reply_to_list = [user_email_address, ]
+            headers = None  # {'Message-ID': 'foo'}
+            email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list,
+                                 headers=headers)
+            try:
+                # TODO: uncomment next line when code is deployed on the production server
+                # email.send(fail_silently=False)
+                return Response({'status': 'email sent'}, status=200)
+            except TypeError:
+                return Response({'status': 'send email failed, please contact the administrator.'}, status=500)
+        else:
+            return Response(serializer.errors, status=400)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
