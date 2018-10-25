@@ -494,8 +494,8 @@ class AdministrativeLevelTwo(HistoryModel):
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.CASCADE, related_name='administrativeleveltwos')
     points = models.TextField(blank=True, default='')  # QUESTION: what is the purpose of this field?
-    centroid_latitude = models.DecimalField(max_digits=12, decimal_places=10, null=True, blank=True)
-    centroid_longitude = models.DecimalField(max_digits=13, decimal_places=10, null=True, blank=True)
+    centroid_latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
+    centroid_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     fips_code = models.CharField(max_length=128, blank=True, default='')
 
     def __str__(self):
