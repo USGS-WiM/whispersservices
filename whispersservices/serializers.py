@@ -3581,11 +3581,14 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestDetailSerializer(serializers.ModelSerializer):
+    request_type_string = serializers.StringRelatedField(source='request_type')
+    request_response_string = serializers.StringRelatedField(source='request_response')
     comments = CommentSerializer(many=True)
 
     class Meta:
         model = ServiceRequest
-        fields = ('id', 'request_type', 'request_response', 'response_by', 'created_time', 'created_date', 'comments',)
+        fields = ('id', 'request_type', 'request_type_string', 'request_response', 'request_response_string',
+                  'response_by', 'created_time', 'created_date', 'comments',)
 
 
 class EventDetailPublicSerializer(serializers.ModelSerializer):

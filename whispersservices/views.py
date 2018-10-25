@@ -802,6 +802,7 @@ class CircleViewSet(HistoryViewSet):
 class OrganizationViewSet(HistoryViewSet):
     # serializer_class = OrganizationSerializer
 
+    # TODO: ensure only authenticated users can perform this action
     @action(detail=False, methods=['post'])
     def request_new(self, request):
         other_nwhc_email_addresses = []
