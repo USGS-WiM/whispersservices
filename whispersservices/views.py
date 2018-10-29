@@ -854,6 +854,7 @@ class CircleViewSet(HistoryViewSet):
 class OrganizationViewSet(HistoryViewSet):
     serializer_class_public = OrganizationPublicSerializer
     serializer_class = OrganizationSerializer
+    serializer_class_admin = OrganizationAdminSerializer
 
     @action(detail=False, methods=['post'])
     def request_new(self, request):
@@ -864,22 +865,18 @@ class OrganizationViewSet(HistoryViewSet):
         message = "Please add a new organization:"
         return construct_email(serializer, self.request.user.email, message)
 
-
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
-        # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        # all requests from anonymous or public users must use the public serializer
+        if not user.is_authenticated or user.role.is_public:
             return self.serializer_class_public
-        # all list requests, and all requests from public users, must use the public serializer
-        if self.action == 'list' or user.role.is_public:
-            return self.serializer_class_public
-        # for all other requests admins have access to all fields
+        # admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
+            return self.serializer_class_admin
+        # partner requests only have access to a more limited list of fields
+        if user.role.is_partner or user.role.is_partner_manager or user.role.is_partneradmin:
             return self.serializer_class
-        # non-admins retrieve requests must use the public serializer
-        if self.action == 'retrieve':
-            return self.serializer_class_public
         # all other requests are rejected
         else:
             raise PermissionDenied

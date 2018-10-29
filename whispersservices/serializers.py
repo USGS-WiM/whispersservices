@@ -2938,10 +2938,18 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
-                  'country', 'phone', 'parent_organization', 'laboratory')
+                  'country', 'phone', 'parent_organization', 'laboratory',)
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Organization
+        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
+
+
+class OrganizationAdminSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
