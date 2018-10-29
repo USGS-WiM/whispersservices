@@ -1215,20 +1215,22 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # first get or create the search and increment its count
         if query_params:
-            ordered_query_params = OrderedDict(sorted(query_params.items()))
-            if not user.is_authenticated:
-                admin_user = User.objects.get(pk=1)
-                search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
-            else:
-                search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
-            if not search:
+            [query_params.remove(param) for param in query_params if param in ['no_page', 'page', 'format']]
+            if len(query_params) > 0:
+                ordered_query_params = OrderedDict(sorted(query_params.items()))
                 if not user.is_authenticated:
                     admin_user = User.objects.get(pk=1)
-                    search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
+                    search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
                 else:
-                    search = Search.objects.create(data=ordered_query_params, created_by=user)
-            search.count = F('count') + 1
-            search.save()
+                    search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
+                if not search:
+                    if not user.is_authenticated:
+                        admin_user = User.objects.get(pk=1)
+                        search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
+                    else:
+                        search = Search.objects.create(data=ordered_query_params, created_by=user)
+                search.count = F('count') + 1
+                search.save()
 
         # then proceed to build the queryset
         queryset = Event.objects.all()
