@@ -42,29 +42,24 @@ PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
 
-def construct_email(serializer, user_email, message):
-    if serializer.is_valid():
-        # construct and send the request email
-        subject = "Assistance Request"
-        body = "A user  (" + user_email + ") has requested assistance:\r\n\r\n"
-        body += message + "\r\n\r\n{"
-        for key, value in serializer.validated_data.items():
-            body += "\r\n\t\"" + key + "\": " + "\"" + str(value) + "\","
-        body = body[:-1] + "\r\n}"
-        from_address = user_email
-        to_list = ['whispers@usgs.gov', ]
-        bcc_list = []
-        reply_to_list = [user_email, ]
-        headers = None  # {'Message-ID': 'foo'}
-        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
-        try:
-            # TODO: uncomment next line when code is deployed on the production server
-            # email.send(fail_silently=False)
-            return Response({"status": "email sent"}, status=200)
-        except TypeError:
-            return Response({"status": "send email failed, please contact the administrator."}, status=500)
-    else:
-        return Response(serializer.errors, status=400)
+def construct_email(request_data, user_email, message):
+    # construct and send the request email
+    subject = "Assistance Request"
+    body = "A user  (" + user_email + ") has requested assistance:\r\n\r\n"
+    body += message + "\r\n\r\n"
+    body += request_data
+    from_address = user_email
+    to_list = ['whispers@usgs.gov', ]
+    bcc_list = []
+    reply_to_list = [user_email, ]
+    headers = None  # {'Message-ID': 'foo'}
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    try:
+        # TODO: uncomment next line when code is deployed on the production server
+        # email.send(fail_silently=False)
+        return Response({"status": "email sent"}, status=200)
+    except TypeError:
+        return Response({"status": "send email failed, please contact the administrator."}, status=500)
 
 
 ######
@@ -444,7 +439,6 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
-    serializer_class_public = AdministrativeLevelTwoPublicSerializer
     serializer_class = AdministrativeLevelTwoSerializer
 
     @action(detail=False, methods=['post'])
@@ -452,9 +446,8 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         if not self.request.user.is_authenticated:
             raise PermissionDenied
 
-        serializer = self.serializer_class_public(data=request.data)
         message = "Please add a new administrative level two:"
-        return construct_email(serializer, self.request.user.email, message)
+        return construct_email(request.data, self.request.user.email, message)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
@@ -541,7 +534,6 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
-    serializer_class_public = SpeciesPublicSerializer
     serializer_class = SpeciesSerializer
 
     @action(detail=False, methods=['post'])
@@ -549,9 +541,8 @@ class SpeciesViewSet(HistoryViewSet):
         if not self.request.user.is_authenticated:
             raise PermissionDenied
 
-        serializer = self.serializer_class_public(data=request.data)
         message = "Please add a new species:"
-        return construct_email(serializer, self.request.user.email, message)
+        return construct_email(request.data, self.request.user.email, message)
 
 
 class AgeBiasViewSet(HistoryViewSet):
@@ -572,7 +563,6 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
-    serializer_class_public = DiagnosisPublicSerializer
     serializer_class = DiagnosisSerializer
 
     @action(detail=False, methods=['post'])
@@ -580,9 +570,8 @@ class DiagnosisViewSet(HistoryViewSet):
         if not self.request.user.is_authenticated:
             raise PermissionDenied
 
-        serializer = self.serializer_class_public(data=request.data)
         message = "Please add a new diagnosis:"
-        return construct_email(serializer, self.request.user.email, message)
+        return construct_email(request.data, self.request.user.email, message)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
@@ -861,9 +850,8 @@ class OrganizationViewSet(HistoryViewSet):
         if not self.request.user.is_authenticated:
             raise PermissionDenied
 
-        serializer = self.serializer_class_public(data=request.data)
         message = "Please add a new organization:"
-        return construct_email(serializer, self.request.user.email, message)
+        return construct_email(request.data, self.request.user.email, message)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):

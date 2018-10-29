@@ -1886,15 +1886,6 @@ class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class AdministrativeLevelTwoPublicSerializer(serializers.ModelSerializer):
-    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
-
-    class Meta:
-        model = AdministrativeLevelTwo
-        fields = ('id', 'name', 'administrative_level_one', 'administrative_level_one_string', 'points',
-                  'centroid_latitude', 'centroid_longitude', 'fips_code',)
-
-
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2135,14 +2126,6 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class SpeciesPublicSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Species
-        fields = ('id', 'name', 'class_name', 'order_name', 'family_name', 'sub_family_name', 'genus_name',
-                  'species_latin_name', 'subspecies_latin_name', 'tsn',)
-
-
 class SpeciesSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2180,14 +2163,6 @@ class SexBiasSerializer(serializers.ModelSerializer):
 #  Diagnoses
 #
 ######
-
-
-class DiagnosisPublicSerializer(serializers.ModelSerializer):
-    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis_type')
-
-    class Meta:
-        model = Diagnosis
-        fields = ('name', 'diagnosis_type', 'diagnosis_type_string')
 
 
 class DiagnosisSerializer(serializers.ModelSerializer):
