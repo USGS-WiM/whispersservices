@@ -2785,10 +2785,33 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')
 
+    # currently only public users can be created through the API
     def create(self, validated_data):
+        requesting_user = self.context['request'].user
+
         created_by = validated_data.pop('created_by')
         modified_by = validated_data.pop('modified_by')
         password = validated_data['password']
+
+        # only admins can edit is_superuser, is_staff, and is_active fields
+        if not requesting_user.role.is_superadmin or requesting_user.role.is_admin:
+            validated_data['is_superuser'] = False
+            validated_data['is_staff'] = False
+            validated_data['is_active'] = True
+
+        # non-admins (SuperAdmin, Admin, and even PartnerAdmin) cannot create any kind of user other than public
+        if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
+                or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
+            validated_data['role'] = Role.objects.filter(name='Public').first()
+            validated_data['organization'] = Organization.objects.filter(name='Public').first()
+
+        # PartnerAdmins can only create users in their own org with equal or lower roles
+        if requesting_user.role.is_partneradmin:
+            if validated_data['role'].name in ['SuperAdmin', 'Admin']:
+                message = "You can only assign roles with equal or lower permissions to your own."
+                raise serializers.ValidationError(message)
+            validated_data['organization'] = requesting_user.organization
+
         user = User.objects.create(**validated_data)
 
         user.created_by = created_by
@@ -2799,18 +2822,39 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
-        instance.username = validated_data.get('username', instance.username)
-        instance.first_name = validated_data.get('first_name', instance.first_name)
-        instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.email = validated_data.get('email', instance.email)
-        instance.is_superuser = validated_data.get('is_superuser', instance.is_superuser)
-        instance.is_staff = validated_data.get('is_staff', instance.is_staff)
-        instance.is_active = validated_data.get('is_active', instance.is_active)
-        instance.role = validated_data.get('role', instance.role)
-        instance.organization = validated_data.get('organization', instance.organization)
-        instance.active_key = validated_data.get('active_key', instance.active_key)
-        instance.user_status = validated_data.get('user_status', instance.user_status)
-        instance.modified_by = self.context['request'].user
+        requesting_user = self.context['request'].user
+
+        # non-admins (SuperAdmin, Admin, and even PartnerAdmin) can only edit their first and last names and password
+        if not requesting_user.is_authenticated:
+            raise serializers.ValidationError("You cannot edit user data.")
+        if (requesting_user.role.is_public or requesting_user.role.is_affiliate
+                or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
+            if instance.id == requesting_user.id:
+                instance.first_name = validated_data.get('first_name', instance.first_name)
+                instance.last_name = validated_data.get('last_name', instance.last_name)
+            else:
+                raise serializers.ValidationError("You can only edit your own user information.")
+
+        if requesting_user.role.is_superadmin or requesting_user.role.is_admin or requesting_user.is_partneradmin:
+            instance.username = validated_data.get('username', instance.username)
+            instance.email = validated_data.get('email', instance.email)
+
+            if requesting_user.is_partneradmin:
+                if validated_data['role'].name in ['SuperAdmin', 'Admin']:
+                    message = "You can only assign roles with equal or lower permissions to your own."
+                    raise serializers.ValidationError(message)
+                instance.role = validated_data.get('role', instance.role)
+                instance.organization = requesting_user.organization
+            else:
+                instance.is_superuser = validated_data.get('is_superuser', instance.is_superuser)
+                instance.is_staff = validated_data.get('is_staff', instance.is_staff)
+                instance.is_active = validated_data.get('is_active', instance.is_active)
+                instance.role = validated_data.get('role', instance.role)
+                instance.organization = validated_data.get('organization', instance.organization)
+                instance.active_key = validated_data.get('active_key', instance.active_key)
+                instance.user_status = validated_data.get('user_status', instance.user_status)
+
+        instance.modified_by = requesting_user
 
         new_password = validated_data.get('password', None)
         if new_password is not None:

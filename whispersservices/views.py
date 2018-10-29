@@ -1203,9 +1203,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # first get or create the search and increment its count
         if query_params:
-            [query_params.remove(param) for param in query_params if param in ['no_page', 'page', 'format']]
-            if len(query_params) > 0:
-                ordered_query_params = OrderedDict(sorted(query_params.items()))
+            ordered_query_params = OrderedDict(sorted(query_params.items()))
+            not_search_params = ['no_page', 'page', 'format']
+            [ordered_query_params.popitem(param) for param in ordered_query_params if param in not_search_params]
+            if len(ordered_query_params) > 0:
                 if not user.is_authenticated:
                     admin_user = User.objects.get(pk=1)
                     search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
