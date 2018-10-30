@@ -1,13 +1,11 @@
-import datetime as dtmod
+import re
 from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
-from django.shortcuts import render
-from django.http import JsonResponse
-from django.db.models import Q, F, Sum, Count
+from django.db.models import Count
 from django.contrib.auth import get_user_model
-from rest_framework import views, viewsets, generics, permissions, authentication, status, filters
+from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, APIException
@@ -42,16 +40,16 @@ PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
 
-def construct_email(request_data, user_email, message):
+def construct_email(request_data, requester_email, message):
     # construct and send the request email
     subject = "Assistance Request"
-    body = "A user  (" + user_email + ") has requested assistance:\r\n\r\n"
+    body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
     body += message + "\r\n\r\n"
     body += request_data
-    from_address = user_email
-    to_list = ['whispers@usgs.gov', ]
+    from_address = settings.EMAIL_WHISPERS
+    to_list = [settings.EMAIL_WHISPERS, ]
     bcc_list = []
-    reply_to_list = [user_email, ]
+    reply_to_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
     email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
     try:
@@ -443,11 +441,11 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'])
     def request_new(self, request):
-        if not self.request.user.is_authenticated:
+        if not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new administrative level two:"
-        return construct_email(request.data, self.request.user.email, message)
+        return construct_email(request.data, request.user.email, message)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
@@ -538,11 +536,11 @@ class SpeciesViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'])
     def request_new(self, request):
-        if not self.request.user.is_authenticated:
+        if not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new species:"
-        return construct_email(request.data, self.request.user.email, message)
+        return construct_email(request.data, request.user.email, message)
 
 
 class AgeBiasViewSet(HistoryViewSet):
@@ -567,11 +565,11 @@ class DiagnosisViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'])
     def request_new(self, request):
-        if not self.request.user.is_authenticated:
+        if not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new diagnosis:"
-        return construct_email(request.data, self.request.user.email, message)
+        return construct_email(request.data, request.user.email, message)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
@@ -752,6 +750,22 @@ class ArtifactViewSet(HistoryViewSet):
 class UserViewSet(HistoryViewSet):
     serializer_class = UserSerializer
 
+    # anyone can request a new user, but an email address is required if the request comes from a non-user
+    @action(detail=False, methods=['post'])
+    def request_new(self, request):
+        if not request.user.is_authenticated:
+            words = request.data.split(" ")
+            email_addresses = [word for word in words if '@' in word]
+            if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
+                msg = "You must submit at least a valid email address to create a new user account."
+                raise serializers.ValidationError(msg)
+            user_email = email_addresses[0]
+        else:
+            user_email = request.user.email
+
+        message = "Please add a new user:"
+        return construct_email(request.data or '', user_email, message)
+
     #  override the default serializer_class to ensure the requester sees only permitted data
     # TODO: get_serializer_class(self):
 
@@ -847,11 +861,11 @@ class OrganizationViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'])
     def request_new(self, request):
-        if not self.request.user.is_authenticated:
+        if not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new organization:"
-        return construct_email(request.data, self.request.user.email, message)
+        return construct_email(request.data, request.user.email, message)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):

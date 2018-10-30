@@ -4,13 +4,34 @@ from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
 # TODO: implement required field validations for nested objects
 
 COMMENT_CONTENT_TYPES = ['event', 'superevent', 'eventlocation', 'servicerequest']
+
+
+def construct_service_request_email(event_id, requester_organization_name, request_type_name, requester_email):
+    # construct and send the request email
+    event_id_string = str(event_id)
+    url = settings.APP_WHISPERS_URL + 'event/' + event_id_string
+    subject = "Service request for Event " + event_id_string
+    body = "A user (" + requester_email + ") with organization " + requester_organization_name + " has requested "
+    body += "<strong>" + request_type_name + "</strong> for event "
+    body += event_id_string + ".\r\n\r\nEvent Details: <a href='" + url + "'>" + url + "</a>"
+    from_address = settings.EMAIL_WHISPERS
+    to_list = [settings.EMAIL_NWHC_EPI, ]
+    bcc_list = []
+    reply_to_list = [requester_email, ]
+    headers = None  # {'Message-ID': 'foo'}
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    # TODO: uncomment next block when code is deployed on the production server
+    # try:
+    #     email.send(fail_silently=False)
+    # except TypeError:
+    #     message = "Service Request saved but send email failed, please contact the administrator."
+    #     raise serializers.ValidationError(message)
 
 
 ######
@@ -395,23 +416,8 @@ class EventSerializer(serializers.ModelSerializer):
                                                    comment_type=comment_type, created_by=user, modified_by=user)
 
                 # construct and send the request email
-                subject = "Service request for Event " + str(service_request.event.id)
-                body = "A user  (" + user.email + ") with " + user.organization.name + " has requested "
-                body += service_request.request_type.name + " for event " + str(
-                    service_request.event.id) + ".\r\n\r\n"
-                from_address = user.email
-                to_list = ['nwhc-epi@usgs.gov', ]
-                bcc_list = []
-                reply_to_list = [user.email, ]
-                headers = None  # {'Message-ID': 'foo'}
-                email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list,
-                                     headers=headers)
-                # TODO: uncomment next block when code is deployed on the production server
-                # try:
-                #     email.send(fail_silently=False)
-                # except TypeError:
-                #     message = "Service Request saved but send email failed, please contact the administrator."
-                #     raise serializers.ValidationError(message)
+                construct_service_request_email(
+                    service_request.event.id, user.organization.name, service_request.request_type.name, user.email)
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -2695,21 +2701,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                            comment_type=comment_type, created_by=user, modified_by=user)
 
         # construct and send the request email
-        subject = "Service request for Event " + str(service_request.event.id)
-        body = "A user  (" + user.email + ") with " + user.organization.name + " has requested "
-        body += service_request.request_type.name + " for event " + str(service_request.event.id) + ".\r\n\r\n"
-        from_address = user.email
-        to_list = ['nwhc-epi@usgs.gov', ]
-        bcc_list = []
-        reply_to_list = [user.email, ]
-        headers = None  # {'Message-ID': 'foo'}
-        email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
-        # TODO: uncomment next block when code is deployed on the production server
-        # try:
-        #     email.send(fail_silently=False)
-        # except TypeError:
-        #     message = "Service Request saved but send email failed, please contact the administrator."
-        #     raise serializers.ValidationError(message)
+        construct_service_request_email(
+            service_request.event.id, user.organization.name, service_request.request_type.name, user.email)
 
         return service_request
 
@@ -2799,7 +2792,7 @@ class UserSerializer(serializers.ModelSerializer):
             validated_data['is_staff'] = False
             validated_data['is_active'] = True
 
-        # non-admins (SuperAdmin, Admin, and even PartnerAdmin) cannot create any kind of user other than public
+        # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
             validated_data['role'] = Role.objects.filter(name='Public').first()
@@ -2824,7 +2817,7 @@ class UserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         requesting_user = self.context['request'].user
 
-        # non-admins (SuperAdmin, Admin, and even PartnerAdmin) can only edit their first and last names and password
+        # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
             raise serializers.ValidationError("You cannot edit user data.")
         if (requesting_user.role.is_public or requesting_user.role.is_affiliate

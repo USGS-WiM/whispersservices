@@ -33,13 +33,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = CONFIG.get('security', 'SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-#DEBUG = CONFIG.get('general', 'DEBUG')
-DEBUG = True
+DEBUG = CONFIG.get('general', 'DEBUG')
 ADMIN_ENABLED = False
 
-#ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
-ALLOWED_HOSTS: ['127.0.0.1', 'localhost']
-
+# ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+APP_WHISPERS_URL = CONFIG.get('general', 'APP_WHISPERS_URL')
 
 # Application definition
 
@@ -98,6 +97,8 @@ EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
 DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
 # EMAIL_HOST = '127.0.0.1'
 # EMAIL_PORT = '25'
+EMAIL_WHISPERS = CONFIG.get('email', 'EMAIL_WHISPERS')
+EMAIL_NWHC_EPI = CONFIG.get('email', 'EMAIL_NWHC_EPI')
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
