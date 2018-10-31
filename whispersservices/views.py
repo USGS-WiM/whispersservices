@@ -66,7 +66,7 @@ def construct_email(request_data, requester_email, message):
     try:
         # TODO: uncomment next line when code is deployed on the production server
         # email.send(fail_silently=False)
-        return Response({"status": request_data}, status=200)
+        return Response({"status": 'email sent'}, status=200)
     except TypeError:
         return Response({"status": "send email failed, please contact the administrator."}, status=500)
 
