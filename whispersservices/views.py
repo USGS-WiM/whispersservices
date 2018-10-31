@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import BaseParser
 from rest_framework.exceptions import PermissionDenied, APIException
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
@@ -36,6 +37,16 @@ User = get_user_model()
 ########################################################################################################################
 
 
+class PlainTextParser(BaseParser):
+    media_type = 'text/plain'
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        text = stream.read().decode("utf-8")
+        if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+            text = text[1:-1]
+        return text
+
+
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
@@ -55,7 +66,7 @@ def construct_email(request_data, requester_email, message):
     try:
         # TODO: uncomment next line when code is deployed on the production server
         # email.send(fail_silently=False)
-        return Response({"status": "email sent"}, status=200)
+        return Response({"status": request_data}, status=200)
     except TypeError:
         return Response({"status": "send email failed, please contact the administrator."}, status=500)
 
@@ -439,7 +450,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
     serializer_class = AdministrativeLevelTwoSerializer
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         if not request.user.is_authenticated:
             raise PermissionDenied
@@ -534,7 +545,7 @@ class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
     serializer_class = SpeciesSerializer
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         if not request.user.is_authenticated:
             raise PermissionDenied
@@ -563,7 +574,7 @@ class SexBiasViewSet(HistoryViewSet):
 class DiagnosisViewSet(HistoryViewSet):
     serializer_class = DiagnosisSerializer
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         if not request.user.is_authenticated:
             raise PermissionDenied
@@ -751,7 +762,7 @@ class UserViewSet(HistoryViewSet):
     serializer_class = UserSerializer
 
     # anyone can request a new user, but an email address is required if the request comes from a non-user
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         if not request.user.is_authenticated:
             words = request.data.split(" ")
@@ -859,7 +870,7 @@ class OrganizationViewSet(HistoryViewSet):
     serializer_class = OrganizationSerializer
     serializer_class_admin = OrganizationAdminSerializer
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         if not request.user.is_authenticated:
             raise PermissionDenied

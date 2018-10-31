@@ -236,13 +236,17 @@ class EventSerializer(serializers.ModelSerializer):
                                     and not spec['dead_count_estimated'] > spec['dead_count']):
                                 est_dead_is_valid = False
                             if data['event_type'].id == mortality_morbidity.id:
-                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                        and spec['dead_count_estimated'] > 0):
                                     min_species_count = True
-                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                elif ('dead_count' in spec and spec['dead_count'] is not None
+                                        and spec['dead_count'] > 0):
                                     min_species_count = True
-                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                      and spec['sick_count_estimated'] > 0):
                                     min_species_count = True
-                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                elif ('sick_count' in spec and spec['sick_count'] is not None
+                                      and spec['sick_count'] > 0):
                                     min_species_count = True
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
@@ -775,13 +779,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     and not spec['dead_count_estimated'] > spec['dead_count']):
                                 est_dead_is_valid = False
                             if data['event_type'].id == mortality_morbidity.id:
-                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                        and spec['dead_count_estimated'] > 0):
                                     min_species_count = True
-                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                elif ('dead_count' in spec and spec['dead_count'] is not None
+                                        and spec['dead_count'] > 0):
                                     min_species_count = True
-                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                      and spec['sick_count_estimated'] > 0):
                                     min_species_count = True
-                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                elif ('sick_count' in spec and spec['sick_count'] is not None
+                                      and spec['sick_count'] > 0):
                                     min_species_count = True
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
@@ -1542,13 +1550,17 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         and not spec['dead_count_estimated'] > spec['dead_count']):
                     est_dead_is_valid = False
                 if data['event'].event_type.id == mortality_morbidity.id:
-                    if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                    if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                            and spec['dead_count_estimated'] > 0):
                         min_species_count = True
-                    elif 'dead_count' in spec and spec['dead_count'] > 0:
+                    elif ('dead_count' in spec and spec['dead_count'] is not None
+                          and spec['dead_count'] > 0):
                         min_species_count = True
-                    elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                    elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                          and spec['sick_count_estimated'] > 0):
                         min_species_count = True
-                    elif 'sick_count' in spec and spec['sick_count'] > 0:
+                    elif ('sick_count' in spec and spec['sick_count'] is not None
+                          and spec['sick_count'] > 0):
                         min_species_count = True
         if False in comments_is_valid:
             message = "Each new_event_location requires at least one new_comment, which must be one of"
