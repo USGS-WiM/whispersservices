@@ -227,6 +227,12 @@ class EventSerializer(serializers.ModelSerializer):
                                     pop_is_valid.append(True)
                                 else:
                                     pop_is_valid.append(False)
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None):
+                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -307,6 +313,12 @@ class EventSerializer(serializers.ModelSerializer):
                                     end_date_is_valid = False
                             else:
                                 end_date_is_valid = False
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None):
+                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -316,13 +328,17 @@ class EventSerializer(serializers.ModelSerializer):
                                     and not spec['dead_count_estimated'] > spec['dead_count']):
                                 est_dead_is_valid = False
                             if data['event_type'] == mortality_morbidity.id:
-                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                        and spec['dead_count_estimated'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                elif ('dead_count' in spec and spec['dead_count'] is not None
+                                      and spec['dead_count'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                      and spec['sick_count_estimated'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                elif ('sick_count' in spec and spec['sick_count'] is not None
+                                      and spec['sick_count'] > 0):
                                     species_count_is_valid.append(True)
                                 else:
                                     species_count_is_valid.append(False)
@@ -770,6 +786,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     pop_is_valid.append(True)
                                 else:
                                     pop_is_valid.append(False)
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None):
+                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -850,6 +872,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     end_date_is_valid = False
                             else:
                                 end_date_is_valid = False
+                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
+                                    and 'sick_count' in spec and spec['sick_count'] is not None):
+                                est_sick_is_valid = False
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
+                                    and 'dead_count' in spec and spec['dead_count'] is not None):
+                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -859,13 +887,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     and not spec['dead_count_estimated'] > spec['dead_count']):
                                 est_dead_is_valid = False
                             if data['event_type'] == mortality_morbidity.id:
-                                if 'dead_count_estimated' in spec and spec['dead_count_estimated'] > 0:
+                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                        and spec['dead_count_estimated'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'dead_count' in spec and spec['dead_count'] > 0:
+                                elif ('dead_count' in spec and spec['dead_count'] is not None
+                                      and spec['dead_count'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'sick_count_estimated' in spec and spec['sick_count_estimated'] > 0:
+                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                      and spec['sick_count_estimated'] > 0):
                                     species_count_is_valid.append(True)
-                                elif 'sick_count' in spec and spec['sick_count'] > 0:
+                                elif ('sick_count' in spec and spec['sick_count'] is not None
+                                      and spec['sick_count'] > 0):
                                     species_count_is_valid.append(True)
                                 else:
                                     species_count_is_valid.append(False)
@@ -1541,6 +1573,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         pop_is_valid.append(True)
                     else:
                         pop_is_valid.append(False)
+                if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
+                        and 'sick_count' in spec and spec['sick_count'] is not None):
+                    est_sick_is_valid = False
+                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
+                        and 'dead_count' in spec and spec['dead_count'] is not None):
+                    est_dead_is_valid = False
                 if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                         and 'sick_count' in spec and spec['sick_count'] is not None
                         and not spec['sick_count_estimated'] > spec['sick_count']):
