@@ -186,8 +186,8 @@ class EventSerializer(serializers.ModelSerializer):
             # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
             #    and estimated_dead for at least one species in the event at the time of event initiation.
             #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
             # 7. Every location needs at least one comment, which must be one of the following types:
             #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
@@ -227,12 +227,6 @@ class EventSerializer(serializers.ModelSerializer):
                                     pop_is_valid.append(True)
                                 else:
                                     pop_is_valid.append(False)
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None):
-                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -313,12 +307,6 @@ class EventSerializer(serializers.ModelSerializer):
                                     end_date_is_valid = False
                             else:
                                 end_date_is_valid = False
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None):
-                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -745,8 +733,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
             # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
             #    and estimated_dead for at least one species in the event at the time of event initiation.
             #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
             # 7. Every location needs at least one comment, which must be one of the following types:
             #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
@@ -786,12 +774,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     pop_is_valid.append(True)
                                 else:
                                     pop_is_valid.append(False)
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None):
-                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -872,12 +854,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     end_date_is_valid = False
                             else:
                                 end_date_is_valid = False
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None):
-                                est_dead_is_valid = False
                             if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                                     and 'sick_count' in spec and spec['sick_count'] is not None
                                     and not spec['sick_count_estimated'] > spec['sick_count']):
@@ -1535,8 +1511,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
         #    and estimated_dead for at least one species in the event at the time of event initiation.
         #    (sick + dead + estimated_sick + estimated_dead >= 1)
-        # 5. estimated_sick must be higher than known sick (estimated_sick > sick).
-        # 6. estimated dead must be higher than known dead (estimated_dead > dead).
+        # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
         # 7. Every location needs at least one comment, which must be one of the following types:
         #    Site description, History, Environmental factors, Clinical signs
         comments_is_valid = []
@@ -1573,12 +1549,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         pop_is_valid.append(True)
                     else:
                         pop_is_valid.append(False)
-                if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is None
-                        and 'sick_count' in spec and spec['sick_count'] is not None):
-                    est_sick_is_valid = False
-                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is None
-                        and 'dead_count' in spec and spec['dead_count'] is not None):
-                    est_dead_is_valid = False
                 if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
                         and 'sick_count' in spec and spec['sick_count'] is not None
                         and not spec['sick_count_estimated'] > spec['sick_count']):
