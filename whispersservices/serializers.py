@@ -34,6 +34,26 @@ def construct_service_request_email(event_id, requester_organization_name, reque
     #     raise serializers.ValidationError(message)
 
 
+def construct_user_request_email(requester_email, message):
+    # construct and send the request email
+    subject = "Assistance Request"
+    body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
+    body += "Please change the role for this user:" + "\r\n\r\n"
+    body += message
+    from_address = settings.EMAIL_WHISPERS
+    to_list = [settings.EMAIL_WHISPERS, ]
+    bcc_list = []
+    reply_to_list = [requester_email, ]
+    headers = None  # {'Message-ID': 'foo'}
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    # TODO: uncomment next line when code is deployed on the production server
+    # try:
+    #     email.send(fail_silently=False)
+    # except TypeError:
+    #     message = "User saved but send email failed, please contact the administrator."
+    #     raise serializers.ValidationError(message)
+
+
 ######
 #
 #  Misc
@@ -409,9 +429,10 @@ class EventSerializer(serializers.ModelSerializer):
 
         # Create the child service requests for this event
         if new_service_request is not None:
-            if new_service_request is not None and new_service_request in [1, 2]:
+            if ('request_type' in new_service_request and new_service_request['request_type'] is not None
+                    and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
+                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 created_by=user, modified_by=user)
 
@@ -955,9 +976,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         # Create the child service requests for this event
         if new_service_request is not None:
-            if new_service_request is not None and new_service_request in [1, 2]:
+            if ('request_type' in new_service_request and new_service_request['request_type'] is not None
+                    and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request).first()
+                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 created_by=user, modified_by=user)
 
@@ -2797,6 +2819,7 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')
+    message = serializers.CharField(write_only=True, required=False)
 
     # currently only public users can be created through the API
     def create(self, validated_data):
@@ -2805,6 +2828,7 @@ class UserSerializer(serializers.ModelSerializer):
         created_by = validated_data.pop('created_by')
         modified_by = validated_data.pop('modified_by')
         password = validated_data['password']
+        message = validated_data.pop('message')
 
         # only admins can edit is_superuser, is_staff, and is_active fields
         if not requesting_user.role.is_superadmin or requesting_user.role.is_admin:
@@ -2831,6 +2855,9 @@ class UserSerializer(serializers.ModelSerializer):
         user.modified_by = modified_by
         user.set_password(password)
         user.save()
+
+        if message is not None:
+            construct_user_request_email(user.email, message)
 
         return user
 
@@ -2880,7 +2907,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status',)
+                  'user_status', 'message',)
 
 
 class RoleSerializer(serializers.ModelSerializer):
