@@ -280,7 +280,7 @@ class EventSerializer(serializers.ModelSerializer):
                     message = "new_location_species population_count cannot be less than the sum of dead_count"
                     message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                     details.append(message)
-                if not min_species_count:
+                if data['event_type'].id == mortality_morbidity.id and not min_species_count:
                     message = "At least one new_location_species requires at least one species count in any of the"
                     message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
@@ -828,7 +828,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     message = "new_location_species population_count cannot be less than the sum of dead_count"
                     message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                     details.append(message)
-                if not min_species_count:
+                if data['event_type'].id == mortality_morbidity.id and not min_species_count:
                     message = "At least one new_location_species requires at least one species count in any of the"
                     message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
@@ -1604,7 +1604,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             message = "new_location_species population_count cannot be less than the sum of dead_count"
             message += " and sick_count (where those counts are the maximum of the estimated or known count)."
             details.append(message)
-        if not min_species_count:
+        if data['event'].event_type.id == mortality_morbidity.id and not min_species_count:
             message = "At least one new_location_species requires at least one species count in any of the"
             message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
             details.append(message)

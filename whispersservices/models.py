@@ -837,8 +837,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 loc_species_ids = [spec['id'] for spec in loc_species]
                 species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts)
+                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
+                event.affected_count = sum(positive_counts)
 
         event.save()
 
