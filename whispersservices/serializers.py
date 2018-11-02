@@ -2825,16 +2825,10 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         requesting_user = self.context['request'].user
 
-        created_by = validated_data.pop('created_by')
-        modified_by = validated_data.pop('modified_by')
+        created_by = validated_data.pop('created_by', None)
+        modified_by = validated_data.pop('modified_by', None)
         password = validated_data['password']
-        message = validated_data.pop('message')
-
-        # only admins can edit is_superuser, is_staff, and is_active fields
-        if not requesting_user.role.is_superadmin or requesting_user.role.is_admin:
-            validated_data['is_superuser'] = False
-            validated_data['is_staff'] = False
-            validated_data['is_active'] = True
+        message = validated_data.pop('message', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
@@ -2842,17 +2836,24 @@ class UserSerializer(serializers.ModelSerializer):
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
 
+        # only admins can edit is_superuser, is_staff, and is_active fields
+        if requesting_user.is_authenticated and (requesting_user.role.is_superadmin or requesting_user.role.is_admin):
+            validated_data['is_superuser'] = False
+            validated_data['is_staff'] = False
+            validated_data['is_active'] = True
+
         # PartnerAdmins can only create users in their own org with equal or lower roles
-        if requesting_user.role.is_partneradmin:
+        if requesting_user.is_authenticated and requesting_user.role.is_partneradmin:
             if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                 message = "You can only assign roles with equal or lower permissions to your own."
                 raise serializers.ValidationError(message)
             validated_data['organization'] = requesting_user.organization
 
         user = User.objects.create(**validated_data)
+        requesting_user = user if not requesting_user.is_authenticated else requesting_user
 
-        user.created_by = created_by
-        user.modified_by = modified_by
+        user.created_by = created_by or requesting_user
+        user.modified_by = modified_by or requesting_user
         user.set_password(password)
         user.save()
 
@@ -2879,7 +2880,7 @@ class UserSerializer(serializers.ModelSerializer):
             instance.username = validated_data.get('username', instance.username)
             instance.email = validated_data.get('email', instance.email)
 
-            if requesting_user.is_partneradmin:
+            if requesting_user.role.is_partneradmin:
                 if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
                     raise serializers.ValidationError(message)
