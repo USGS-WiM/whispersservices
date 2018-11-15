@@ -1707,12 +1707,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
             min_start_date = True
         if ('country' in data and data['country'] is not None and 'administrative_level_one' in data
                 and data['administrative_level_one'] is not None):
-            country = Country.objects.filter(id=data['country']).first()
-            adminl1 = AdministrativeLevelOne.objects.filter(id=data['administrative_level_one']).first()
+            country = data['country']
+            adminl1 = data['administrative_level_one']
             if country.id != adminl1.country.id:
                 country_admin_is_valid = False
             if 'administrative_level_two' in data and data['administrative_level_two'] is not None:
-                adminl2 = AdministrativeLevelTwo.objects.filter(id=data['administrative_level_two']).first()
+                adminl2 = data['administrative_level_two']
                 if adminl1.id != adminl2.administrative_level_one.id:
                     country_admin_is_valid = False
         if (('country' not in data or data['country'] is None or 'administrative_level_one' not in data
