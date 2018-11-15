@@ -117,6 +117,7 @@ DATABASES = {
 }
 
 AUTH_USER_MODEL = 'whispersservices.User'
+GEONAMES_USERNAME = CONFIG.get('geonames', 'USERNAME')
 
 # Password validation
 # https://docs.djangoproject.com/en/2.0/ref/settings/#auth-password-validators

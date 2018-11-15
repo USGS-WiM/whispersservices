@@ -1,3 +1,5 @@
+import re
+import requests
 from datetime import timedelta
 from django.core.mail import EmailMessage
 from django.db.models import F, Q, Sum
@@ -10,6 +12,8 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: implement required field validations for nested objects
 
 COMMENT_CONTENT_TYPES = ['event', 'superevent', 'eventlocation', 'servicerequest']
+GEONAMES_USERNAME = settings.GEONAMES_USERNAME
+GEONAMES_API = 'http://api.geonames.org/'
 
 
 def construct_service_request_email(event_id, requester_organization_name, request_type_name, requester_email):
@@ -210,7 +214,13 @@ class EventSerializer(serializers.ModelSerializer):
             # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
             # 7. Every location needs at least one comment, which must be one of the following types:
             #    Site description, History, Environmental factors, Clinical signs
+            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
             if 'new_event_locations' in data:
+                country_admin_is_valid = True
+                latlng_is_valid = True
                 comments_is_valid = []
                 required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
@@ -226,12 +236,42 @@ class EventSerializer(serializers.ModelSerializer):
                         comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
-                    if 'start_date' in item:
+                    if 'start_date' in item and item['start_date'] is not None:
                         try:
                             datetime.strptime(item['start_date'], '%Y-%m-%d').date()
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
+                    if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
+                            and item['administrative_level_one'] is not None):
+                        country = Country.objects.filter(id=item['country']).first()
+                        adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
+                        if country.id != adminl1.country.id:
+                            country_admin_is_valid = False
+                        if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
+                            adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
+                            if adminl1.id != adminl2.administrative_level_one.id:
+                                country_admin_is_valid = False
+                    if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
+                         or item['administrative_level_one'] is None)
+                            and ('latitude' not in item or item['latitude'] is None
+                                 or 'longitude' not in item and item['longitude'] is None)):
+                        message = "country and administrative_level_one are required if latitude or longitude is null."
+                        details.append(message)
+                    if ('latitude' in item and item['latitude'] is not None
+                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['latitude']))):
+                        latlng_is_valid = False
+                    if ('longitude' in item and item['longitude'] is not None
+                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['longitude']))):
+                        latlng_is_valid = False
+                    if ('latitude' in item and item['latitude'] is not None
+                            and 'longitude' in item and item['longitude'] is not None
+                            and ('country' not in item or 'administrative_level_one' not in item)):
+                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                                   'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        if 'address' not in r.json():
+                            latlng_is_valid = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
                             if 'species' in spec and spec['species'] is not None:
@@ -268,6 +308,13 @@ class EventSerializer(serializers.ModelSerializer):
                                 elif ('sick_count' in spec and spec['sick_count'] is not None
                                       and spec['sick_count'] > 0):
                                     min_species_count = True
+                if not country_admin_is_valid:
+                    message = "administrative_level_one must belong to the submitted country,"
+                    message += " and administrative_level_two must belong to the submitted administrative_level_one."
+                    details.append(message)
+                if not latlng_is_valid:
+                    message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+                    details.append(message)
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
                     message += " the following types: Site description, History, Environmental factors, Clinical signs"
@@ -483,6 +530,35 @@ class EventSerializer(serializers.ModelSerializer):
                     # this need only happen on creation since the two fields should maintain no durable relationship
                     if event_location['name'] == '' and event_location['gnis_name'] != '':
                         event_location['name'] = event_location['gnis_name']
+
+                    # if event_location has lat/lng but no country/adminlevelone/adminleveltwo, populate missing fields
+                    if ('country' not in event_location or event_location['country'] is None
+                            or 'administrative_level_one' not in event_location
+                            or event_location['administrative_level_one'] is None
+                            or 'administrative_level_two' not in event_location
+                            or event_location['administrative_level_two'] is None):
+                        payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
+                                   'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        address = r.json()['address']
+                        if 'country' not in event_location or event_location['country'] is None:
+                            country_code = address['countryCode']
+                            if len(country_code) == 2:
+                                payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                                alpha3 = r.json()['geonames'][0]['isoAlpha3']
+                                event_location['country'] = Country.objects.filter(abbreviation=alpha3).first()
+                            else:
+                                event_location['country'] = Country.objects.filter(abbreviation=country_code).first()
+                        if ('administrative_level_one' not in event_location
+                                or event_location['administrative_level_one'] is None):
+                            event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                                name=address['adminName1']).first()
+                        if ('administrative_level_two' not in event_location
+                                or event_location['administrative_level_two'] is None):
+                            event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                                name=address['adminName2']).first()
+
                     evt_location = EventLocation.objects.create(**event_location)
 
                     for key, value in comment_types.items():
@@ -759,6 +835,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
             # 7. Every location needs at least one comment, which must be one of the following types:
             #    Site description, History, Environmental factors, Clinical signs
             if 'new_event_locations' in data:
+                country_admin_is_valid = True
+                latlng_is_valid = True
                 comments_is_valid = []
                 required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
@@ -774,12 +852,42 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
-                    if 'start_date' in item:
+                    if 'start_date' in item and item['start_date'] is not None:
                         try:
                             datetime.strptime(item['start_date'], '%Y-%m-%d').date()
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
+                    if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
+                            and item['administrative_level_one'] is not None):
+                        country = Country.objects.filter(id=item['country']).first()
+                        adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
+                        if country.id != adminl1.country.id:
+                            country_admin_is_valid = False
+                        if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
+                            adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
+                            if adminl1.id != adminl2.administrative_level_one.id:
+                                country_admin_is_valid = False
+                    if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
+                         or item['administrative_level_one'] is None)
+                            and ('latitude' not in item or item['latitude'] is None
+                                 or 'longitude' not in item and item['longitude'] is None)):
+                        message = "country and administrative_level_one are required if latitude or longitude is null."
+                        details.append(message)
+                    if ('latitude' in item and item['latitude'] is not None
+                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['latitude']))):
+                        latlng_is_valid = False
+                    if ('longitude' in item and item['longitude'] is not None
+                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['longitude']))):
+                        latlng_is_valid = False
+                    if ('latitude' in item and item['latitude'] is not None
+                            and 'longitude' in item and item['longitude'] is not None
+                            and ('country' not in item or 'administrative_level_one' not in item)):
+                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                                   'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        if 'address' not in r.json():
+                            latlng_is_valid = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
                             if 'species' in spec and spec['species'] is not None:
@@ -816,6 +924,13 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 elif ('sick_count' in spec and spec['sick_count'] is not None
                                       and spec['sick_count'] > 0):
                                     min_species_count = True
+                if not country_admin_is_valid:
+                    message = "administrative_level_one must belong to the submitted country,"
+                    message += " and administrative_level_two must belong to the submitted administrative_level_one."
+                    details.append(message)
+                if not latlng_is_valid:
+                    message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+                    details.append(message)
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
                     message += " the following types: Site description, History, Environmental factors, Clinical signs"
@@ -1026,6 +1141,36 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     # this need only happen on creation since the two fields should maintain no durable relationship
                     if event_location['name'] == '' and event_location['gnis_name'] != '':
                         event_location['name'] = event_location['gnis_name']
+
+                    # if event_location has lat/lng but no country/adminlevelone/adminleveltwo, populate missing fields
+                    if ('country' not in event_location or event_location['country'] is None
+                            or 'administrative_level_one' not in event_location
+                            or event_location['administrative_level_one'] is None
+                            or 'administrative_level_two' not in event_location
+                            or event_location['administrative_level_two'] is None):
+                        payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
+                                   'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        address = r.json()['address']
+                        if 'country' not in event_location or event_location['country'] is None:
+                            country_code = address['countryCode']
+                            if len(country_code) == 2:
+                                payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                                alpha3 = r.json()['geonames'][0]['isoAlpha3']
+                                event_location['country'] = Country.objects.filter(abbreviation=alpha3).first()
+                            else:
+                                event_location['country'] = Country.objects.filter(
+                                    abbreviation=country_code).first()
+                        if ('administrative_level_one' not in event_location
+                                or event_location['administrative_level_one'] is None):
+                            event_location['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                                name=address['adminName1']).first()
+                        if ('administrative_level_two' not in event_location
+                                or event_location['administrative_level_two'] is None):
+                            event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                                name=address['adminName2']).first()
+
                     evt_location = EventLocation.objects.create(**event_location)
 
                     for key, value in comment_types.items():
@@ -1537,6 +1682,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
         # 7. Every location needs at least one comment, which must be one of the following types:
         #    Site description, History, Environmental factors, Clinical signs
+        # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+        #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+        #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+        # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+        country_admin_is_valid = True
+        latlng_is_valid = True
         comments_is_valid = []
         required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
         min_start_date = False
@@ -1554,6 +1705,36 @@ class EventLocationSerializer(serializers.ModelSerializer):
             comments_is_valid.append(False)
         if 'start_date' in data:
             min_start_date = True
+        if ('country' in data and data['country'] is not None and 'administrative_level_one' in data
+                and data['administrative_level_one'] is not None):
+            country = Country.objects.filter(id=data['country']).first()
+            adminl1 = AdministrativeLevelOne.objects.filter(id=data['administrative_level_one']).first()
+            if country.id != adminl1.country.id:
+                country_admin_is_valid = False
+            if 'administrative_level_two' in data and data['administrative_level_two'] is not None:
+                adminl2 = AdministrativeLevelTwo.objects.filter(id=data['administrative_level_two']).first()
+                if adminl1.id != adminl2.administrative_level_one.id:
+                    country_admin_is_valid = False
+        if (('country' not in data or data['country'] is None or 'administrative_level_one' not in data
+             or data['administrative_level_one'] is None)
+                and ('latitude' not in data or data['latitude'] is None
+                     or 'longitude' not in data and data['longitude'] is None)):
+            message = "country and administrative_level_one are required if latitude or longitude is null."
+            details.append(message)
+        if ('latitude' in data and data['latitude'] is not None
+                and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['latitude']))):
+            latlng_is_valid = False
+        if ('longitude' in data and data['longitude'] is not None
+                and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(data['longitude']))):
+            latlng_is_valid = False
+        if ('latitude' in data and data['latitude'] is not None
+                and 'longitude' in data and data['longitude'] is not None
+                and ('country' not in data or 'administrative_level_one' not in data)):
+            payload = {'lat': data['latitude'], 'lng': data['longitude'],
+                       'username': GEONAMES_USERNAME}
+            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+            if 'address' not in r.json():
+                latlng_is_valid = False
         if 'new_location_species' in data:
             for spec in data['new_location_species']:
                 if 'species' in spec and spec['species'] is not None:
@@ -1592,6 +1773,13 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     elif ('sick_count' in spec and spec['sick_count'] is not None
                           and spec['sick_count'] > 0):
                         min_species_count = True
+        if not country_admin_is_valid:
+            message = "administrative_level_one must belong to the submitted country,"
+            message += " and administrative_level_two must belong to the submitted administrative_level_one."
+            details.append(message)
+        if not latlng_is_valid:
+            message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+            details.append(message)
         if False in comments_is_valid:
             message = "Each new_event_location requires at least one new_comment, which must be one of"
             message += " the following types: Site description, History, Environmental factors, Clinical signs"
@@ -1656,6 +1844,34 @@ class EventLocationSerializer(serializers.ModelSerializer):
         if validated_data['name'] == '' and validated_data['gnis_name'] != '':
             validated_data['name'] = validated_data['gnis_name']
 
+        # if event_location has lat/lng but no country/adminlevelone/adminleveltwo, populate missing fields
+        if ('country' not in validated_data or validated_data['country'] is None
+                or 'administrative_level_one' not in validated_data
+                or validated_data['administrative_level_one'] is None
+                or 'administrative_level_two' not in validated_data
+                or validated_data['administrative_level_two'] is None):
+            payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
+                       'username': GEONAMES_USERNAME}
+            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+            address = r.json()['address']
+            if 'country' not in validated_data or validated_data['country'] is None:
+                country_code = address['countryCode']
+                if len(country_code) == 2:
+                    payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                    r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                    alpha3 = r.json()['geonames'][0]['isoAlpha3']
+                    validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
+                else:
+                    validated_data['country'] = Country.objects.filter(abbreviation=country_code).first()
+            if ('administrative_level_one' not in validated_data
+                    or validated_data['administrative_level_one'] is None):
+                validated_data['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                    name=address['adminName1']).first()
+            if ('administrative_level_two' not in validated_data
+                    or validated_data['administrative_level_two'] is None):
+                validated_data['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                    name=address['adminName2']).first()
+
         # create the event_location and return object for use in event_location_contacts object
         # validated_data['created_by'] = user
         # validated_data['modified_by'] = user
@@ -1696,16 +1912,16 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
                 location_spec['created_by'] = user
                 location_spec['modified_by'] = user
-                LocationSpecies.objects.create(**location_spec)
+                location_species = LocationSpecies.objects.create(**location_spec)
 
                 # create the child species diagnoses for this event
                 if new_species_diagnoses is not None:
-                    for diagnosis_id in new_species_diagnoses:
-                        if diagnosis_id is not None:
-                            diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
+                    for new_species_diagnosis in new_species_diagnoses:
+                        if new_species_diagnosis is not None:
+                            diagnosis = Diagnosis.objects.filter(pk=new_species_diagnosis['diagnosis']).first()
                             if diagnosis is not None:
                                 SpeciesDiagnosis.objects.create(
-                                    location_speccies=location_spec, diagnosis=diagnosis,
+                                    location_species=location_species, diagnosis=diagnosis,
                                     created_by=user, modified_by=user)
 
         # calculate the priority value:
@@ -1889,6 +2105,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                   'site_description', 'history', 'environmental_factors', 'clinical_signs', 'comment',
                   'new_location_contacts', 'new_location_species', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+        extra_kwargs = {
+            'country': {'required': False},
+            'administrative_level_one': {'required': False}
+        }
 
 
 class EventLocationContactSerializer(serializers.ModelSerializer):

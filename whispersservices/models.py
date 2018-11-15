@@ -423,7 +423,7 @@ class EventLocation(PermissionsHistoryModel):
                 species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts)
+                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
 
         event.save()
 
@@ -619,7 +619,7 @@ class LocationSpecies(PermissionsHistoryModel):
                 species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts)
+                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
 
         event.save()
 
