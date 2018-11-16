@@ -1,6 +1,6 @@
 import re
 import requests
-from datetime import timedelta
+from datetime import date, timedelta
 from django.core.mail import EmailMessage
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
@@ -218,12 +218,16 @@ class EventSerializer(serializers.ModelSerializer):
             #    if county is null.  Update state and country if state is null. If don't enter country, state, and
             #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
             # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+            # 10. Location start date must be after today if event type is Mortality/Morbidity
+            # 11. Location end date must be equal to or greater than start date.
             if 'new_event_locations' in data:
                 country_admin_is_valid = True
                 latlng_is_valid = True
                 comments_is_valid = []
                 required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
+                start_date_is_valid = True
+                end_date_is_valid = True
                 min_location_species = False
                 min_species_count = False
                 pop_is_valid = []
@@ -242,6 +246,13 @@ class EventSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
+                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] <= date.today:
+                            start_date_is_valid = False
+                        if ('end_date' in item and item['end_date'] is not None
+                                and item['end_date'] < item['start_date']):
+                            end_date_is_valid = False
+                    elif 'end_date' in item and item['end_date'] is not None:
+                        end_date_is_valid = False
                     if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
                             and item['administrative_level_one'] is not None):
                         country = Country.objects.filter(id=item['country']).first()
@@ -312,6 +323,12 @@ class EventSerializer(serializers.ModelSerializer):
                     message = "administrative_level_one must belong to the submitted country,"
                     message += " and administrative_level_two must belong to the submitted administrative_level_one."
                     details.append(message)
+                if not start_date_is_valid:
+                    message = "If event_type is 'Mortality/Morbidity'"
+                    message += " no start_date for a new event_location may be current date or earlier."
+                    details.append(message)
+                if not end_date_is_valid:
+                    details.append("end_date may not be before start_date.")
                 if not latlng_is_valid:
                     message = "latitude and longitude must be in decimal degrees and represent a point in a country."
                     details.append(message)
@@ -338,13 +355,13 @@ class EventSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
             #   and estimated_dead per species at the time of event completion.
             #   (sick + dead + estimated_sick + estimated_dead >= 1)
             if 'complete' in data and data['complete'] is True:
                 location_message = "The event may not be marked complete until all of its locations have an end date"
-                location_message += " and each location's end date is after that location's start date."
+                location_message += " and each location's end date is same as or after that location's start date."
                 if 'new_event_locations' not in data:
                     raise serializers.ValidationError(location_message)
                 else:
@@ -370,7 +387,7 @@ class EventSerializer(serializers.ModelSerializer):
                                     # use a fake date to prevent type comparison error in "if not start_date < end_date"
                                     end_date = datetime.now().date() + timedelta(days=1)
                                     details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                                if not start_date < end_date:
+                                if not start_date <= end_date:
                                     end_date_is_valid = False
                             else:
                                 end_date_is_valid = False
@@ -834,12 +851,20 @@ class EventAdminSerializer(serializers.ModelSerializer):
             # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
             # 7. Every location needs at least one comment, which must be one of the following types:
             #    Site description, History, Environmental factors, Clinical signs
+            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+            # 10. Location start date must be after today if event type is Mortality/Morbidity
+            # 11. Location end date must be equal to or greater than start date.
             if 'new_event_locations' in data:
                 country_admin_is_valid = True
                 latlng_is_valid = True
                 comments_is_valid = []
                 required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
                 min_start_date = False
+                start_date_is_valid = True
+                end_date_is_valid = True
                 min_location_species = False
                 min_species_count = False
                 pop_is_valid = []
@@ -858,6 +883,13 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
+                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] <= date.today:
+                            start_date_is_valid = False
+                        if ('end_date' in item and item['end_date'] is not None
+                                and item['end_date'] < item['start_date']):
+                            end_date_is_valid = False
+                    elif 'end_date' in item and item['end_date'] is not None:
+                        end_date_is_valid = False
                     if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
                             and item['administrative_level_one'] is not None):
                         country = Country.objects.filter(id=item['country']).first()
@@ -928,6 +960,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     message = "administrative_level_one must belong to the submitted country,"
                     message += " and administrative_level_two must belong to the submitted administrative_level_one."
                     details.append(message)
+                if not start_date_is_valid:
+                    message = "If event_type is 'Mortality/Morbidity'"
+                    message += " no start_date for a new event_location may be current date or earlier."
+                    details.append(message)
+                if not end_date_is_valid:
+                    details.append("end_date may not be before start_date.")
                 if not latlng_is_valid:
                     message = "latitude and longitude must be in decimal degrees and represent a point in a country."
                     details.append(message)
@@ -1686,11 +1724,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
         #    if county is null.  Update state and country if state is null. If don't enter country, state, and
         #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
         # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+        # 10. Location start date must be after today if event type is Mortality/Morbidity
+        # 11. Location end date must be equal to or greater than start date.
         country_admin_is_valid = True
         latlng_is_valid = True
         comments_is_valid = []
         required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
         min_start_date = False
+        start_date_is_valid = True
+        end_date_is_valid = True
         min_location_species = False
         min_species_count = False
         pop_is_valid = []
@@ -1703,8 +1745,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
             comments_is_valid.append(True)
         else:
             comments_is_valid.append(False)
-        if 'start_date' in data:
+        if 'start_date' in data and data['start_data'] is not None:
             min_start_date = True
+            if data['event'].event_type.id == mortality_morbidity.id and data['start_date'] <= date.today:
+                start_date_is_valid = False
+            if ('end_date' in data and data['end_date'] is not None
+                    and data['end_date'] < data['start_date']):
+                end_date_is_valid = False
+        elif 'end_date' in data and data['end_date'] is not None:
+            end_date_is_valid = False
         if ('country' in data and data['country'] is not None and 'administrative_level_one' in data
                 and data['administrative_level_one'] is not None):
             country = data['country']
@@ -1777,6 +1826,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
             message = "administrative_level_one must belong to the submitted country,"
             message += " and administrative_level_two must belong to the submitted administrative_level_one."
             details.append(message)
+        if not start_date_is_valid:
+            message = "If event_type is 'Mortality/Morbidity'"
+            message += " no start_date for a new event_location may be current date or earlier."
+            details.append(message)
+        if not end_date_is_valid:
+            details.append("end_date may not be before start_date.")
         if not latlng_is_valid:
             message = "latitude and longitude must be in decimal degrees and represent a point in a country."
             details.append(message)
