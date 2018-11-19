@@ -14,6 +14,8 @@ from dry_rest_permissions.generics import DRYPermissionsField
 COMMENT_CONTENT_TYPES = ['event', 'superevent', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
+FLYWAYS_API = 'https://services.arcgis.com/'
+FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
 
 
 def construct_service_request_email(event_id, requester_organization_name, request_type_name, requester_email):
@@ -531,6 +533,8 @@ class EventSerializer(serializers.ModelSerializer):
                     event_location['land_ownership'] = LandOwnership.objects.filter(
                         pk=event_location['land_ownership']).first()
 
+                    flyway = None
+
                     # create object for comment creation while removing unserialized fields for EventLocation
                     comments = {'site_description': event_location.pop('site_description', None),
                                 'history': event_location.pop('history', None),
@@ -576,7 +580,48 @@ class EventSerializer(serializers.ModelSerializer):
                             event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
                                 name=address['adminName2']).first()
 
+                    # auto-assign flyway for locations in the USA
+                    if event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id:
+                        payload = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false', 'outFields': 'NAME',
+                                   'f': 'json'}
+                        payload.update({'spatialRel': 'esriSpatialRelIntersects'})
+                        # if lat/lng is present, use it to get the intersecting flyway
+                        if ('latitude' in event_location and event_location['latitude'] is not None
+                                and 'longitude' in event_location and event_location['longitude'] is not None):
+                            payload.update({'geometry': event_location['longitude'] + ',' + event_location['latitude']})
+                        # otherwise if county is present, look up the county centroid,
+                        # then use it to get the intersecting flyway
+                        elif event_location['administrative_level_two']:
+                            geonames_payload = {'name': event_location['administrative_level_two'].name,
+                                                'featureCode': 'ADM2',
+                                                'maxRows': 1, 'username': GEONAMES_USERNAME}
+                            gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                            payload.update(
+                                {'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                        # MT, WY, CO, and NM straddle two flyways,
+                        # and without lat/lng or county info, flyway cannot be determined
+                        # otherwise look up the state centroid, then use it to get the intersecting flyway
+                        elif event_location['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM',
+                                                                                             'HI']:
+                            geonames_payload = {'adminCode1': event_location['administrative_level_one'], 'maxRows': 1,
+                                                'username': GEONAMES_USERNAME}
+                            gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                            payload.update(
+                                {'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                        # HI is not in a flyway, assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
+                        elif event_location['administrative_level_one'].abbreviation == 'HI':
+                            flyway = Flyway.objects.filter(name__contains='Pacific').first()
+
+                        if flyway is None and 'geometry' in payload:
+                            r = requests.get(FLYWAYS_API, params=payload)
+                            flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
+                            flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+
                     evt_location = EventLocation.objects.create(**event_location)
+
+                    if flyway is not None:
+                        EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
+                                                           created_by=user, modified_by=user)
 
                     for key, value in comment_types.items():
 
@@ -1163,6 +1208,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     event_location['land_ownership'] = LandOwnership.objects.filter(
                         pk=event_location['land_ownership']).first()
 
+                    flyway = None
+
                     # create object for comment creation while removing unserialized fields for EventLocation
                     comments = {'site_description': event_location.pop('site_description', None),
                                 'history': event_location.pop('history', None),
@@ -1209,7 +1256,48 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
                                 name=address['adminName2']).first()
 
+                    # auto-assign flyway for locations in the USA
+                    if event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id:
+                        payload = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false', 'outFields': 'NAME',
+                                   'f': 'json'}
+                        payload.update({'spatialRel': 'esriSpatialRelIntersects'})
+                        # if lat/lng is present, use it to get the intersecting flyway
+                        if ('latitude' in event_location and event_location['latitude'] is not None
+                                and 'longitude' in event_location and event_location['longitude'] is not None):
+                            payload.update({'geometry': event_location['longitude'] + ',' + event_location['latitude']})
+                        # otherwise if county is present, look up the county centroid,
+                        # then use it to get the intersecting flyway
+                        elif event_location['administrative_level_two']:
+                            geonames_payload = {'name': event_location['administrative_level_two'].name,
+                                                'featureCode': 'ADM2',
+                                                'maxRows': 1, 'username': GEONAMES_USERNAME}
+                            gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                            payload.update(
+                                {'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                        # MT, WY, CO, and NM straddle two flyways,
+                        # and without lat/lng or county info, flyway cannot be determined
+                        # otherwise look up the state centroid, then use it to get the intersecting flyway
+                        elif event_location['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM',
+                                                                                             'HI']:
+                            geonames_payload = {'adminCode1': event_location['administrative_level_one'], 'maxRows': 1,
+                                                'username': GEONAMES_USERNAME}
+                            gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                            payload.update(
+                                {'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                        # HI is not in a flyway, assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
+                        elif event_location['administrative_level_one'].abbreviation == 'HI':
+                            flyway = Flyway.objects.filter(name__contains='Pacific').first()
+
+                        if flyway is None and 'geometry' in payload:
+                            r = requests.get(FLYWAYS_API, params=payload)
+                            flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
+                            flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+
                     evt_location = EventLocation.objects.create(**event_location)
+
+                    if flyway is not None:
+                        EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
+                                                           created_by=user, modified_by=user)
 
                     for key, value in comment_types.items():
 
@@ -1745,7 +1833,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             comments_is_valid.append(True)
         else:
             comments_is_valid.append(False)
-        if 'start_date' in data and data['start_data'] is not None:
+        if 'start_date' in data and data['start_date'] is not None:
             min_start_date = True
             if data['event'].event_type.id == mortality_morbidity.id and data['start_date'] <= date.today:
                 start_date_is_valid = False
@@ -1869,6 +1957,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
+        flyway = None
+
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
                          'other': 'Other'}
@@ -1927,10 +2017,44 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 validated_data['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
                     name=address['adminName2']).first()
 
+        # auto-assign flyway for locations in the USA
+        if validated_data['country'].id == Country.objects.filter(abbreviation='USA').first().id:
+            payload = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false', 'outFields': 'NAME', 'f': 'json'}
+            payload.update({'spatialRel': 'esriSpatialRelIntersects'})
+            # if lat/lng is present, use it to get the intersecting flyway
+            if ('latitude' in validated_data and validated_data['latitude'] is not None
+                    and 'longitude' in validated_data and validated_data['longitude'] is not None):
+                payload.update({'geometry': validated_data['longitude'] + ',' + validated_data['latitude']})
+            # otherwise if county is present, look up the county centroid, then use it to get the intersecting flyway
+            elif validated_data['administrative_level_two']:
+                geonames_payload = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2',
+                                    'maxRows': 1, 'username': GEONAMES_USERNAME}
+                gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                payload.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+            # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info, flyway cannot be determined
+            # otherwise look up the state centroid, then use it to get the intersecting flyway
+            elif validated_data['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']:
+                geonames_payload = {'adminCode1': validated_data['administrative_level_one'], 'maxRows': 1,
+                                    'username': GEONAMES_USERNAME}
+                gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
+                payload.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+            # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
+            elif validated_data['administrative_level_one'].abbreviation == 'HI':
+                flyway = Flyway.objects.filter(name__contains='Pacific').first()
+
+            if flyway is None and 'geometry' in payload:
+                r = requests.get(FLYWAYS_API, params=payload)
+                flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
+                flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+
         # create the event_location and return object for use in event_location_contacts object
         # validated_data['created_by'] = user
         # validated_data['modified_by'] = user
         evt_location = EventLocation.objects.create(**validated_data)
+
+        if flyway is not None:
+            EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
+                                               created_by=user, modified_by=user)
 
         for key, value in comment_types.items():
 
