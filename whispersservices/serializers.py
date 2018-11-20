@@ -248,7 +248,8 @@ class EventSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
-                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] > date.today():
+                        if (data['event_type'].id == mortality_morbidity.id
+                                and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
                             start_date_is_valid = False
                         if ('end_date' in item and item['end_date'] is not None
                                 and item['end_date'] < item['start_date']):
@@ -928,7 +929,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
-                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] > date.today():
+                        if (data['event_type'].id == mortality_morbidity.id
+                                and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
                             start_date_is_valid = False
                         if ('end_date' in item and item['end_date'] is not None
                                 and item['end_date'] < item['start_date']):
