@@ -284,7 +284,7 @@ class EventSerializer(serializers.ModelSerializer):
                         payload = {'lat': item['latitude'], 'lng': item['longitude'],
                                    'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        if 'address' not in r.json():
+                        if 'address' not in r.json() or 'geonames' not in r.json():
                             latlng_is_valid = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
@@ -562,7 +562,14 @@ class EventSerializer(serializers.ModelSerializer):
                         payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
                                    'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        address = r.json()['address']
+                        geonames_object_list = r.json()
+                        if 'address' in geonames_object_list:
+                            address = geonames_object_list['address']
+                            address['adminName2'] = address['name']
+                        else:
+                            geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
+                                                     item['fcode'] == 'ADM2']
+                            address = geonames_objects_adm2[0]
                         if 'country' not in event_location or event_location['country'] is None:
                             country_code = address['countryCode']
                             if len(country_code) == 2:
@@ -578,8 +585,9 @@ class EventSerializer(serializers.ModelSerializer):
                                 name=address['adminName1']).first()
                         if ('administrative_level_two' not in event_location
                                 or event_location['administrative_level_two'] is None):
+                            admin2 = address['adminName2'] if 'adminName2' in address else address['name']
                             event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
-                                name=address['adminName2']).first()
+                                name=admin2).first()
 
                     # auto-assign flyway for locations in the USA
                     if event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id:
@@ -965,7 +973,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         payload = {'lat': item['latitude'], 'lng': item['longitude'],
                                    'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        if 'address' not in r.json():
+                        if 'address' not in r.json() or 'geonames' not in r.json():
                             latlng_is_valid = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
@@ -1238,7 +1246,14 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
                                    'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        address = r.json()['address']
+                        geonames_object_list = r.json()
+                        if 'address' in geonames_object_list:
+                            address = geonames_object_list['address']
+                            address['adminName2'] = address['name']
+                        else:
+                            geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
+                                                     item['fcode'] == 'ADM2']
+                            address = geonames_objects_adm2[0]
                         if 'country' not in event_location or event_location['country'] is None:
                             country_code = address['countryCode']
                             if len(country_code) == 2:
@@ -1255,8 +1270,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 name=address['adminName1']).first()
                         if ('administrative_level_two' not in event_location
                                 or event_location['administrative_level_two'] is None):
+                            admin2 = address['adminName2'] if 'adminName2' in address else address['name']
                             event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
-                                name=address['adminName2']).first()
+                                name=admin2).first()
 
                     # auto-assign flyway for locations in the USA
                     if event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id:
@@ -1872,7 +1888,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             payload = {'lat': data['latitude'], 'lng': data['longitude'],
                        'username': GEONAMES_USERNAME}
             r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-            if 'address' not in r.json():
+            if 'address' not in r.json() or 'geonames' not in r.json():
                 latlng_is_valid = False
         if 'new_location_species' in data:
             for spec in data['new_location_species']:
@@ -2000,7 +2016,13 @@ class EventLocationSerializer(serializers.ModelSerializer):
             payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
                        'username': GEONAMES_USERNAME}
             r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-            address = r.json()['address']
+            geonames_object_list = r.json()
+            if 'address' in geonames_object_list:
+                address = geonames_object_list['address']
+                address['adminName2'] = address['name']
+            else:
+                geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if item['fcode'] == 'ADM2']
+                address = geonames_objects_adm2[0]
             if 'country' not in validated_data or validated_data['country'] is None:
                 country_code = address['countryCode']
                 if len(country_code) == 2:
@@ -2016,8 +2038,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     name=address['adminName1']).first()
             if ('administrative_level_two' not in validated_data
                     or validated_data['administrative_level_two'] is None):
+                admin2 = address['adminName2'] if 'adminName2' in address else address['name']
                 validated_data['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
-                    name=address['adminName2']).first()
+                    name=admin2).first()
 
         # auto-assign flyway for locations in the USA
         if validated_data['country'].id == Country.objects.filter(abbreviation='USA').first().id:
