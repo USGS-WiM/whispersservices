@@ -2792,6 +2792,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_species_diagnosis_organizations = serializers.ListField(write_only=True)
+    basis_string = serializers.StringRelatedField(source='basis')
 
     def validate(self, data):
 
@@ -2840,8 +2841,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message)
         # Within each species diagnosis, number_with_diagnosis =< number_tested.
         # here, tested_count was not submitted, so if diagnosis_count was submitted and is not null, raise an error
-        elif 'diagnosis_count' in data and data['diagnosis_count'] is not None:
-            raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
+        # elif 'diagnosis_count' in data and data['diagnosis_count'] is not None:
+        #     raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
 
         # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
         # else diagnosis is suspect (suspect=True) and so number_positive must be zero
@@ -3056,8 +3057,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
-                  'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled',
-                  'organizations', 'new_species_diagnosis_organizations',
+                  'basis_string', 'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count',
+                  'suspect_count', 'pooled', 'organizations', 'new_species_diagnosis_organizations',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4031,12 +4032,13 @@ class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
     organizations_string = serializers.StringRelatedField(many=True, source='organizations')
+    basis_string = serializers.StringRelatedField(source='basis')
 
     class Meta:
         model = SpeciesDiagnosis
         fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
-                  'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count', 'suspect_count', 'pooled',
-                  'organizations', 'organizations_string',)
+                  'basis_string', 'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count',
+                  'suspect_count', 'pooled', 'organizations', 'organizations_string',)
 
 
 class LocationSpeciesDetailPublicSerializer(serializers.ModelSerializer):
