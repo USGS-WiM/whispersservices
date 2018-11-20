@@ -273,10 +273,10 @@ class EventSerializer(serializers.ModelSerializer):
                         message = "country and administrative_level_one are required if latitude or longitude is null."
                         details.append(message)
                     if ('latitude' in item and item['latitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['latitude']))):
+                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
                         latlng_is_valid = False
                     if ('longitude' in item and item['longitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['longitude']))):
+                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
                         latlng_is_valid = False
                     if ('latitude' in item and item['latitude'] is not None
                             and 'longitude' in item and item['longitude'] is not None
@@ -954,10 +954,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         message = "country and administrative_level_one are required if latitude or longitude is null."
                         details.append(message)
                     if ('latitude' in item and item['latitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['latitude']))):
+                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
                         latlng_is_valid = False
                     if ('longitude' in item and item['longitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['longitude']))):
+                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
                         latlng_is_valid = False
                     if ('latitude' in item and item['latitude'] is not None
                             and 'longitude' in item and item['longitude'] is not None
@@ -1861,10 +1861,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
             message = "country and administrative_level_one are required if latitude or longitude is null."
             details.append(message)
         if ('latitude' in data and data['latitude'] is not None
-                and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['latitude']))):
+                and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(data['latitude']))):
             latlng_is_valid = False
         if ('longitude' in data and data['longitude'] is not None
-                and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(data['longitude']))):
+                and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['longitude']))):
             latlng_is_valid = False
         if ('latitude' in data and data['latitude'] is not None
                 and 'longitude' in data and data['longitude'] is not None
