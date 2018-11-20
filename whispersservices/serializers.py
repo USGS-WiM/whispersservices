@@ -220,7 +220,7 @@ class EventSerializer(serializers.ModelSerializer):
             #    if county is null.  Update state and country if state is null. If don't enter country, state, and
             #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
             # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date must be after today if event type is Mortality/Morbidity
+            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
             # 11. Location end date must be equal to or greater than start date.
             if 'new_event_locations' in data:
                 country_admin_is_valid = True
@@ -248,7 +248,7 @@ class EventSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
-                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] <= date.today:
+                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] > date.today():
                             start_date_is_valid = False
                         if ('end_date' in item and item['end_date'] is not None
                                 and item['end_date'] < item['start_date']):
@@ -327,7 +327,7 @@ class EventSerializer(serializers.ModelSerializer):
                     details.append(message)
                 if not start_date_is_valid:
                     message = "If event_type is 'Mortality/Morbidity'"
-                    message += " no start_date for a new event_location may be current date or earlier."
+                    message += " start_date for a new event_location must be current date or earlier."
                     details.append(message)
                 if not end_date_is_valid:
                     details.append("end_date may not be before start_date.")
@@ -900,7 +900,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             #    if county is null.  Update state and country if state is null. If don't enter country, state, and
             #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
             # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date must be after today if event type is Mortality/Morbidity
+            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
             # 11. Location end date must be equal to or greater than start date.
             if 'new_event_locations' in data:
                 country_admin_is_valid = True
@@ -928,7 +928,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         except ValueError:
                             details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
                         min_start_date = True
-                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] <= date.today:
+                        if data['event_type'].id == mortality_morbidity.id and item['start_date'] > date.today():
                             start_date_is_valid = False
                         if ('end_date' in item and item['end_date'] is not None
                                 and item['end_date'] < item['start_date']):
@@ -1007,7 +1007,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     details.append(message)
                 if not start_date_is_valid:
                     message = "If event_type is 'Mortality/Morbidity'"
-                    message += " no start_date for a new event_location may be current date or earlier."
+                    message += " start_date for a new event_location must be current date or earlier."
                     details.append(message)
                 if not end_date_is_valid:
                     details.append("end_date may not be before start_date.")
@@ -1812,7 +1812,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         #    if county is null.  Update state and country if state is null. If don't enter country, state, and
         #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
         # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-        # 10. Location start date must be after today if event type is Mortality/Morbidity
+        # 10. Location start date cannot be after today if event type is Mortality/Morbidity
         # 11. Location end date must be equal to or greater than start date.
         country_admin_is_valid = True
         latlng_is_valid = True
@@ -1835,7 +1835,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             comments_is_valid.append(False)
         if 'start_date' in data and data['start_date'] is not None:
             min_start_date = True
-            if data['event'].event_type.id == mortality_morbidity.id and data['start_date'] <= date.today:
+            if data['event'].event_type.id == mortality_morbidity.id and data['start_date'] > date.today():
                 start_date_is_valid = False
             if ('end_date' in data and data['end_date'] is not None
                     and data['end_date'] < data['start_date']):
@@ -1916,7 +1916,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             details.append(message)
         if not start_date_is_valid:
             message = "If event_type is 'Mortality/Morbidity'"
-            message += " no start_date for a new event_location may be current date or earlier."
+            message += " start_date for a new event_location must be current date or earlier."
             details.append(message)
         if not end_date_is_valid:
             details.append("end_date may not be before start_date.")
