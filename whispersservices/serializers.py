@@ -73,6 +73,10 @@ class CommentSerializer(serializers.ModelSerializer):
 
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
+    created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
+    created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
+    created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
     content_type_string = serializers.SerializerMethodField()
     new_content_type = serializers.CharField(write_only=True, required=False)
 
@@ -113,7 +117,8 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ('id', 'comment', 'comment_type', 'object_id', 'content_type_string', 'new_content_type',
-                  'created_date', 'created_by', 'created_by_string',
+                  'created_date', 'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
+                  'created_by_organization', 'created_by_organization_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
         extra_kwargs = {'object_id': {'required': False}}
 
