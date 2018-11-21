@@ -725,8 +725,9 @@ class EventSerializer(serializers.ModelSerializer):
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
-                    if event_diagnosis in valid_diagnosis_ids:
-                        diagnosis = Diagnosis.objects.filter(pk=event_diagnosis['diagnosis']).first()
+                    diagnosis_id = event_diagnosis.pop('diagnosis', None)
+                    if diagnosis_id in valid_diagnosis_ids:
+                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
                         EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
@@ -1421,8 +1422,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
-                    if event_diagnosis in valid_diagnosis_ids:
-                        diagnosis = Diagnosis.objects.filter(pk=event_diagnosis['diagnosis']).first()
+                    diagnosis_id = event_diagnosis.pop('diagnosis', None)
+                    if diagnosis_id in valid_diagnosis_ids:
+                        diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
                         EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
