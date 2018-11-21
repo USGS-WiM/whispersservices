@@ -391,7 +391,7 @@ class EventSerializer(serializers.ModelSerializer):
                     details = []
                     mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                     for item in data['new_event_locations']:
-                        for spec in item['location_species']:
+                        for spec in item['new_location_species']:
                             if ('start_date' in item and item['start_date'] is not None
                                     and 'end_date' in item and item['end_date'] is not None):
                                 try:
@@ -1091,7 +1091,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     details = []
                     mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                     for item in data['new_event_locations']:
-                        for spec in item['location_species']:
+                        for spec in item['new_location_species']:
                             if ('start_date' in item and item['start_date'] is not None
                                     and 'end_date' in item and item['end_date'] is not None):
                                 try:
@@ -1158,7 +1158,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
-                         'general': 'General'}
+                         'other': 'Other'}
 
         # pull out child event diagnoses list from the request
         new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
@@ -1252,7 +1252,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 'history': event_location.pop('history', None),
                                 'environmental_factors': event_location.pop('environmental_factors', None),
                                 'clinical_signs': event_location.pop('clinical_signs', None),
-                                'general': event_location.pop('comment', None)}
+                                'other': event_location.pop('comment', None)}
 
                     # create the event_location and return object for use in event_location_contacts object
                     event_location['created_by'] = user
@@ -1348,7 +1348,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
                         comment_type = CommentType.objects.filter(name=value).first()
 
-                        if comments[key] is not None and len(comments[key]) > 0:
+                        if comments[key] is not None and len(comments[key]) > 0 and comments[key] != '':
                             Comment.objects.create(content_object=evt_location, comment=comments[key],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
 
