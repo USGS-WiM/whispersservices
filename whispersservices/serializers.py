@@ -243,7 +243,7 @@ class EventSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
-                    if [i for i in required_comment_types if i in item]:
+                    if [i for i in required_comment_types if i in item and item[i]]:
                         comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
@@ -944,7 +944,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for item in data['new_event_locations']:
-                    if [i for i in required_comment_types if i in item]:
+                    if [i for i in required_comment_types if i in item and item[i]]:
                         comments_is_valid.append(True)
                     else:
                         comments_is_valid.append(False)
@@ -1873,8 +1873,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             est_dead_is_valid = True
             details = []
             mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-
-            if [i for i in required_comment_types if i in data]:
+            if [i for i in required_comment_types if i in data and data[i]]:
                 comments_is_valid.append(True)
             else:
                 comments_is_valid.append(False)
