@@ -1319,7 +1319,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         # then use it to get the intersecting flyway
                         elif event_location['administrative_level_two']:
                             geonames_payload = {'name': event_location['administrative_level_two'].name,
-                                                'featureCode': 'ADM2',
+                                                'featureCode': 'ADM2', 'country': 'US',
                                                 'maxRows': 1, 'username': GEONAMES_USERNAME}
                             gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
                             payload.update(
