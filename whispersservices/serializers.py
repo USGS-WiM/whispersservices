@@ -3749,8 +3749,12 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
                 al2_id = eventlocation.get('administrative_level_two_id')
                 if al2_id is not None and al2_id not in unique_l2_ids:
                     unique_l2_ids.append(al2_id)
-                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    unique_l2s.append(model_to_dict(al2))
+                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    al2_dict = model_to_dict(al2_model)
+                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+                    unique_l2s.append(al2_dict)
         return unique_l2s
 
     def get_species(self, obj):
@@ -3867,8 +3871,12 @@ class EventSummarySerializer(serializers.ModelSerializer):
                 al2_id = eventlocation.get('administrative_level_two_id')
                 if al2_id is not None and al2_id not in unique_l2_ids:
                     unique_l2_ids.append(al2_id)
-                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    unique_l2s.append(model_to_dict(al2))
+                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    al2_dict = model_to_dict(al2_model)
+                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+                    unique_l2s.append(al2_dict)
         return unique_l2s
 
     def get_species(self, obj):
@@ -3988,8 +3996,12 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                 al2_id = eventlocation.get('administrative_level_two_id')
                 if al2_id is not None and al2_id not in unique_l2_ids:
                     unique_l2_ids.append(al2_id)
-                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    unique_l2s.append(model_to_dict(al2))
+                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    al2_dict = model_to_dict(al2_model)
+                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+                    unique_l2s.append(al2_dict)
         return unique_l2s
 
     def get_species(self, obj):

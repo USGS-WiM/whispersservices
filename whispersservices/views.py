@@ -1293,7 +1293,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 if and_params is not None and 'diagnosis' in and_params:
                     # first, count the species for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(count_diagnosies=Count(
+                    queryset = queryset.annotate(count_diagnoses=Count(
                         'eventdiagnoses__diagnosis', distinct=True)).filter(
                         count_diagnoses__gte=len(diagnosis_list))
                     diagnosis_list_ints = [int(i) for i in diagnosis_list]
