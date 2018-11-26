@@ -374,77 +374,78 @@ class EventSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            if 'complete' in data and data['complete'] is True:
-                location_message = "The event may not be marked complete until all of its locations have an end date"
-                location_message += " and each location's end date is same as or after that location's start date."
-                if 'new_event_locations' not in data:
-                    raise serializers.ValidationError(location_message)
-                else:
-                    end_date_is_valid = True
-                    species_count_is_valid = []
-                    est_sick_is_valid = True
-                    est_dead_is_valid = True
-                    details = []
-                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                    for item in data['new_event_locations']:
-                        for spec in item['new_location_species']:
-                            if ('start_date' in item and item['start_date'] is not None
-                                    and 'end_date' in item and item['end_date'] is not None):
-                                try:
-                                    start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                                except ValueError:
-                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                                    start_date = datetime.now().date
-                                    details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
-                                try:
-                                    end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
-                                except ValueError:
-                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                                    end_date = datetime.now().date() + timedelta(days=1)
-                                    details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                                if not start_date <= end_date:
-                                    end_date_is_valid = False
-                            else:
+        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
+        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #   and estimated_dead per species at the time of event completion.
+        #   (sick + dead + estimated_sick + estimated_dead >= 1)
+        if 'complete' in data and data['complete'] is True:
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is same as or after that location's start date."
+            if 'new_event_locations' not in data:
+                raise serializers.ValidationError(location_message)
+            else:
+                end_date_is_valid = True
+                species_count_is_valid = []
+                est_sick_is_valid = True
+                est_dead_is_valid = True
+                details = []
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                for item in data['new_event_locations']:
+                    for spec in item['new_location_species']:
+                        if ('start_date' in item and item['start_date'] is not None
+                                and 'end_date' in item and item['end_date'] is not None):
+                            try:
+                                start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                            except ValueError:
+                                # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                start_date = datetime.now().date
+                                details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                            try:
+                                end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                            except ValueError:
+                                # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                end_date = datetime.now().date() + timedelta(days=1)
+                                details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                            if not start_date <= end_date:
                                 end_date_is_valid = False
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_sick_is_valid = False
+                        else:
+                            end_date_is_valid = False
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
+                        if data['event_type'] == mortality_morbidity.id:
                             if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_dead_is_valid = False
-                            if data['event_type'] == mortality_morbidity.id:
-                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                        and spec['dead_count_estimated'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('dead_count' in spec and spec['dead_count'] is not None
-                                      and spec['dead_count'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                      and spec['sick_count_estimated'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('sick_count' in spec and spec['sick_count'] is not None
-                                      and spec['sick_count'] > 0):
-                                    species_count_is_valid.append(True)
-                                else:
-                                    species_count_is_valid.append(False)
-                    if not end_date_is_valid:
-                        details.append(location_message)
-                    if False in species_count_is_valid:
-                        message = "Each new_location_species requires at least one species count in any of these"
-                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                        details.append(message)
-                    if not est_sick_is_valid:
-                        details.append("Estimated sick count must always be more than known sick count.")
-                    if not est_dead_is_valid:
-                        details.append("Estimated dead count must always be more than known dead count.")
-                    if details:
-                        raise serializers.ValidationError(details)
+                                    and spec['dead_count_estimated'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('dead_count' in spec and spec['dead_count'] is not None
+                                  and spec['dead_count'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                  and spec['sick_count_estimated'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('sick_count' in spec and spec['sick_count'] is not None
+                                  and spec['sick_count'] > 0):
+                                species_count_is_valid.append(True)
+                            else:
+                                species_count_is_valid.append(False)
+                if not end_date_is_valid:
+                    details.append(location_message)
+                if False in species_count_is_valid:
+                    message = "Each new_location_species requires at least one species count in any of these"
+                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_sick_is_valid:
+                    details.append("Estimated sick count must always be more than known sick count.")
+                if not est_dead_is_valid:
+                    details.append("Estimated dead count must always be more than known dead count.")
+                if details:
+                    raise serializers.ValidationError(details)
+
         return data
 
     def create(self, validated_data):
@@ -1075,77 +1076,78 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            if 'complete' in data and data['complete'] is True:
-                location_message = "The event may not be marked complete until all of its locations have an end date"
-                location_message += " and each location's end date is after that location's start date."
-                if 'new_event_locations' not in data:
-                    raise serializers.ValidationError(location_message)
-                else:
-                    end_date_is_valid = True
-                    species_count_is_valid = []
-                    est_sick_is_valid = True
-                    est_dead_is_valid = True
-                    details = []
-                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                    for item in data['new_event_locations']:
-                        for spec in item['new_location_species']:
-                            if ('start_date' in item and item['start_date'] is not None
-                                    and 'end_date' in item and item['end_date'] is not None):
-                                try:
-                                    start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                                except ValueError:
-                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                                    start_date = datetime.now().date
-                                    details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
-                                try:
-                                    end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
-                                except ValueError:
-                                    # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                                    end_date = datetime.now().date() + timedelta(days=1)
-                                    details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                                if not start_date < end_date:
-                                    end_date_is_valid = False
-                            else:
+        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be after Start Date.
+        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #   and estimated_dead per species at the time of event completion.
+        #   (sick + dead + estimated_sick + estimated_dead >= 1)
+        if 'complete' in data and data['complete'] is True:
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is after that location's start date."
+            if 'new_event_locations' not in data:
+                raise serializers.ValidationError(location_message)
+            else:
+                end_date_is_valid = True
+                species_count_is_valid = []
+                est_sick_is_valid = True
+                est_dead_is_valid = True
+                details = []
+                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                for item in data['new_event_locations']:
+                    for spec in item['new_location_species']:
+                        if ('start_date' in item and item['start_date'] is not None
+                                and 'end_date' in item and item['end_date'] is not None):
+                            try:
+                                start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                            except ValueError:
+                                # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                start_date = datetime.now().date
+                                details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                            try:
+                                end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                            except ValueError:
+                                # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                                end_date = datetime.now().date() + timedelta(days=1)
+                                details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                            if not start_date < end_date:
                                 end_date_is_valid = False
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_sick_is_valid = False
+                        else:
+                            end_date_is_valid = False
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
+                        if data['event_type'] == mortality_morbidity.id:
                             if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_dead_is_valid = False
-                            if data['event_type'] == mortality_morbidity.id:
-                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                        and spec['dead_count_estimated'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('dead_count' in spec and spec['dead_count'] is not None
-                                      and spec['dead_count'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                      and spec['sick_count_estimated'] > 0):
-                                    species_count_is_valid.append(True)
-                                elif ('sick_count' in spec and spec['sick_count'] is not None
-                                      and spec['sick_count'] > 0):
-                                    species_count_is_valid.append(True)
-                                else:
-                                    species_count_is_valid.append(False)
-                    if not end_date_is_valid:
-                        details.append(location_message)
-                    if False in species_count_is_valid:
-                        message = "Each new_location_species requires at least one species count in any of these"
-                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                        details.append(message)
-                    if not est_sick_is_valid:
-                        details.append("Estimated sick count must always be more than known sick count.")
-                    if not est_dead_is_valid:
-                        details.append("Estimated dead count must always be more than known dead count.")
-                    if details:
-                        raise serializers.ValidationError(details)
+                                    and spec['dead_count_estimated'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('dead_count' in spec and spec['dead_count'] is not None
+                                  and spec['dead_count'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                  and spec['sick_count_estimated'] > 0):
+                                species_count_is_valid.append(True)
+                            elif ('sick_count' in spec and spec['sick_count'] is not None
+                                  and spec['sick_count'] > 0):
+                                species_count_is_valid.append(True)
+                            else:
+                                species_count_is_valid.append(False)
+                if not end_date_is_valid:
+                    details.append(location_message)
+                if False in species_count_is_valid:
+                    message = "Each new_location_species requires at least one species count in any of these"
+                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_sick_is_valid:
+                    details.append("Estimated sick count must always be more than known sick count.")
+                if not est_dead_is_valid:
+                    details.append("Estimated dead count must always be more than known dead count.")
+                if details:
+                    raise serializers.ValidationError(details)
+
         return data
 
     def create(self, validated_data):
@@ -1302,8 +1304,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             event_location['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
                                 name=admin2).first()
 
-                    # auto-assign flyway for locations in the USA
-                    if event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id:
+                    # auto-assign flyway for states in the USA (exclude territories and minor outlying islands)
+                    if (event_location['country'].id == Country.objects.filter(abbreviation='USA').first().id
+                            and event_location['administrative_level_one'].abbreviation not in
+                            ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']):
                         payload = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false', 'outFields': 'NAME',
                                    'f': 'json'}
                         payload.update({'spatialRel': 'esriSpatialRelIntersects'})
@@ -1321,10 +1325,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             payload.update(
                                 {'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
                         # MT, WY, CO, and NM straddle two flyways,
-                        # and without lat/lng or county info, flyway cannot be determined
-                        # otherwise look up the state centroid, then use it to get the intersecting flyway
-                        elif event_location['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM',
-                                                                                             'HI']:
+                        # and without lat/lng or county info, flyway cannot be determined,
+                        # but otherwise look up the state centroid, then use it to get the intersecting flyway
+                        elif (event_location['administrative_level_one'].abbreviation not in
+                              ['MT', 'WY', 'CO', 'NM', 'HI']):
                             geonames_payload = {'adminCode1': event_location['administrative_level_one'], 'maxRows': 1,
                                                 'username': GEONAMES_USERNAME}
                             gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
@@ -3752,7 +3756,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
                     al2_dict = model_to_dict(al2_model)
                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
                     unique_l2s.append(al2_dict)
         return unique_l2s
@@ -3874,7 +3878,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
                     al2_dict = model_to_dict(al2_model)
                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
                     unique_l2s.append(al2_dict)
         return unique_l2s
@@ -3999,7 +4003,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
                     al2_dict = model_to_dict(al2_model)
                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
                     unique_l2s.append(al2_dict)
         return unique_l2s
