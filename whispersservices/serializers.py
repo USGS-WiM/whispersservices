@@ -715,7 +715,7 @@ class EventSerializer(serializers.ModelSerializer):
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
         [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
 
-        if new_event_diagnoses is not None:
+        if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
@@ -1413,7 +1413,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
         [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
 
-        if new_event_diagnoses is not None:
+        if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
@@ -3810,7 +3810,8 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         eventlocations = obj.eventlocations.values()
         if eventlocations is not None:
             for eventlocation in eventlocations:
-                flyway_ids = eventlocation.get('flyway_ids')
+                flyway_ids = list(EventLocationFlyway.objects.filter(
+                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
                 if flyway_ids is not None:
                     for flyway_id in flyway_ids:
                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
@@ -3932,7 +3933,8 @@ class EventSummarySerializer(serializers.ModelSerializer):
         eventlocations = obj.eventlocations.values()
         if eventlocations is not None:
             for eventlocation in eventlocations:
-                flyway_ids = eventlocation.get('flyway_ids')
+                flyway_ids = list(EventLocationFlyway.objects.filter(
+                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
                 if flyway_ids is not None:
                     for flyway_id in flyway_ids:
                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
@@ -3999,7 +4001,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
                                            "priority": event_diagnosis.priority,
-                                           "created_by_string": created_by_string,
+                                           "created_by": created_by, "created_by_string": created_by_string,
                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
                                            "modified_by_string": modified_by_string}
                 eventdiagnoses.append(altered_event_diagnosis)
@@ -4057,7 +4059,8 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         eventlocations = obj.eventlocations.values()
         if eventlocations is not None:
             for eventlocation in eventlocations:
-                flyway_ids = eventlocation.get('flyway_ids')
+                flyway_ids = list(EventLocationFlyway.objects.filter(
+                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
                 if flyway_ids is not None:
                     for flyway_id in flyway_ids:
                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
@@ -4176,6 +4179,11 @@ class EventLocationDetailPublicSerializer(serializers.ModelSerializer):
     administrative_level_two_points = serializers.CharField(source='administrative_level_two.points', default='')
     country_string = serializers.StringRelatedField(source='country')
     locationspecies = LocationSpeciesDetailPublicSerializer(many=True)
+    flyways = serializers.SerializerMethodField()
+
+    def get_flyways(self, obj):
+        flyway_ids = [flyway['id'] for flyway in obj.flyways.values()]
+        return list(Flyway.objects.filter(id__in=flyway_ids).values('id', 'name'))
 
     class Meta:
         model = EventLocation
@@ -4192,6 +4200,11 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
     locationspecies = LocationSpeciesDetailSerializer(many=True)
     comments = CommentSerializer(many=True)
     eventlocationcontacts = EventLocationContactDetailSerializer(source='eventlocationcontact_set', many=True)
+    flyways = serializers.SerializerMethodField()
+
+    def get_flyways(self, obj):
+        flyway_ids = [flyway['id'] for flyway in obj.flyways.values()]
+        return list(Flyway.objects.filter(id__in=flyway_ids).values('id', 'name'))
 
     class Meta:
         model = EventLocation
