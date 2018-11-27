@@ -5,7 +5,7 @@ from django.core.mail import EmailMessage
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
-from rest_framework import serializers
+from rest_framework import serializers, validators
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
@@ -561,8 +561,6 @@ class EventSerializer(serializers.ModelSerializer):
                                 'other': event_location.pop('comment', None)}
 
                     # create the event_location and return object for use in event_location_contacts object
-                    event_location['created_by'] = user
-                    event_location['modified_by'] = user
 
                     # if the event_location has no name value but does have a gnis_name value,
                     # then copy the value of gnis_name to name
@@ -643,7 +641,7 @@ class EventSerializer(serializers.ModelSerializer):
                             flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                             flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
-                    evt_location = EventLocation.objects.create(**event_location)
+                    evt_location = EventLocation.objects.create(created_by=user, modified_by=user, **event_location)
 
                     if flyway is not None:
                         EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
@@ -669,7 +667,7 @@ class EventSerializer(serializers.ModelSerializer):
 
                             location_contact['created_by'] = user
                             location_contact['modified_by'] = user
-                            EventLocationContact.objects.create(**location_contact)
+                            EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
                     # Create EventLocationSpecies
                     if new_location_species is not None:
@@ -684,7 +682,8 @@ class EventSerializer(serializers.ModelSerializer):
 
                             location_spec['created_by'] = user
                             location_spec['modified_by'] = user
-                            location_species = LocationSpecies.objects.create(**location_spec)
+                            location_species = LocationSpecies.objects.create(created_by=user, modified_by=user,
+                                                                              **location_spec)
 
                             # create the child species diagnoses for this event
                             if new_species_diagnoses is not None:
@@ -699,7 +698,9 @@ class EventSerializer(serializers.ModelSerializer):
                                             pk=spec_diag['cause']).first()
                                         spec_diag['basis'] = DiagnosisBasis.objects.filter(
                                             pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(**spec_diag)
+                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                            modified_by=user,
+                                                                                            **spec_diag)
 
                                         # create the child organizations for this species diagnosis
                                         if new_species_diagnosis_organizations is not None:
@@ -729,7 +730,8 @@ class EventSerializer(serializers.ModelSerializer):
                     diagnosis_id = event_diagnosis.pop('diagnosis', None)
                     if diagnosis_id in valid_diagnosis_ids:
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis,
+                                                      created_by=user, modified_by=user, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
@@ -1258,8 +1260,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 'other': event_location.pop('comment', None)}
 
                     # create the event_location and return object for use in event_location_contacts object
-                    event_location['created_by'] = user
-                    event_location['modified_by'] = user
 
                     # if the event_location has no name value but does have a gnis_name value,
                     # then copy the value of gnis_name to name
@@ -1343,7 +1343,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                             flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
-                    evt_location = EventLocation.objects.create(**event_location)
+                    evt_location = EventLocation.objects.create(created_by=user, modified_by=user, **event_location)
 
                     if flyway is not None:
                         EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
@@ -1369,7 +1369,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
                             location_contact['created_by'] = user
                             location_contact['modified_by'] = user
-                            EventLocationContact.objects.create(**location_contact)
+                            EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
                     # Create EventLocationSpecies
                     if new_location_species is not None:
@@ -1384,7 +1384,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
                             location_spec['created_by'] = user
                             location_spec['modified_by'] = user
-                            location_species = LocationSpecies.objects.create(**location_spec)
+                            location_species = LocationSpecies.objects.create(created_by=user, modified_by=user,
+                                                                              **location_spec)
 
                             # create the child species diagnoses for this event
                             if new_species_diagnoses is not None:
@@ -1399,7 +1400,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                             pk=spec_diag['cause']).first()
                                         spec_diag['basis'] = DiagnosisBasis.objects.filter(
                                             pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(**spec_diag)
+                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                            modified_by=user,
+                                                                                            **spec_diag)
 
                                         # create the child organizations for this species diagnosis
                                         if new_species_diagnosis_organizations is not None:
@@ -1420,16 +1423,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         if new_event_diagnoses is not None:
             # Can only use diagnoses that are already used by this event's species diagnoses
-            valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
+            valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct()
+            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
-                    diagnosis_id = event_diagnosis.pop('diagnosis', None)
+                    diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
                     if diagnosis_id in valid_diagnosis_ids:
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, **event_diagnosis)
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis,
+                                                      created_by=user, modified_by=user, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
@@ -2146,7 +2150,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
                 location_contact['created_by'] = user
                 location_contact['modified_by'] = user
-                EventLocationContact.objects.create(**location_contact)
+                EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
         # Create EventLocationSpecies
         if new_location_species is not None:
@@ -2161,7 +2165,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
                 location_spec['created_by'] = user
                 location_spec['modified_by'] = user
-                location_species = LocationSpecies.objects.create(**location_spec)
+                location_species = LocationSpecies.objects.create(created_by=user, modified_by=user, **location_spec)
 
                 # create the child species diagnoses for this event
                 if new_species_diagnoses is not None:
@@ -2721,13 +2725,33 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if data['event'].complete:
-            message = "Diagnosis from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
+        message_complete = "Diagnosis from a complete event may not be changed"
+        message_complete += " unless the event is first re-opened by the event owner or an administrator."
+        event_specdiags = []
 
-        event_specdiags = SpeciesDiagnosis.objects.filter(
-            location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
+        # if this is a new EventDiagnosis check if the Event is complete
+        if 'request' in self.context and self.context['request'].method == 'POST':
+
+            if data['event'].complete:
+                raise serializers.ValidationError(message_complete)
+
+            event_specdiags = SpeciesDiagnosis.objects.filter(
+                location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
+
+        # else this is an existing EventDiagnosis so check if this is an update and if parent Event is complete
+        elif self.context['request'].method in ['PUT', 'PATCH']:
+
+            if self.instance.event.complete:
+                raise serializers.ValidationError(message_complete)
+
+            event_specdiags = SpeciesDiagnosis.objects.filter(
+                location_species__event_location__event=self.instance.event.id).values_list(
+                'diagnosis', flat=True).distinct()
+
+            if 'diagnosis' not in data or data['diagnosis'] is None:
+                data['diagnosis'] = self.instance.event.diagnosis
+
+        # check that submitted diagnoses are also in this event's species diagnoses
         diagnosis = Diagnosis.objects.filter(id=data['diagnosis'].id).first()
         if diagnosis is not None and (not event_specdiags or diagnosis.id not in event_specdiags
                                       or diagnosis.name in ['Pending', 'Undetermined']):
@@ -2836,7 +2860,7 @@ class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
-    new_species_diagnosis_organizations = serializers.ListField(write_only=True)
+    new_species_diagnosis_organizations = serializers.ListField(write_only=True, required=False)
     basis_string = serializers.StringRelatedField(source='basis')
 
     def validate(self, data):
@@ -2993,14 +3017,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             user = None
 
         # get the old (current) org ID list for this Species Diagnosis
-        old_org_ids = SpeciesDiagnosisOrganization.objects.filter(
-            species_diagnosis=instance.id).values_list('id', flat=True)
+        old_org_ids = list(SpeciesDiagnosisOrganization.objects.filter(
+            species_diagnosis=instance.id).values_list('organization_id', flat=True))
 
         # pull out org ID list from the request
+        new_org_ids = []
         if 'new_species_diagnosis_organizations' in self.initial_data:
             new_org_ids = self.initial_data['new_species_diagnosis_organizations']
-        else:
-            new_org_ids = []
+        if new_org_ids is not None:
+            new_org_ids = [int(org_id) for org_id in new_org_ids]
 
         # for positive_count, only allowed to enter >0 if provide laboratory name.
         if ('positive_count' in validated_data and validated_data['positive_count'] is not None
@@ -3083,7 +3108,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         instance.priority = instance.priority if self_priority_updated else priority
         instance.save()
 
-        # identify and delete relates where sample IDs are present in old list but not new list
+        # identify and delete relates where org IDs are present in old list but not new list
         delete_org_ids = list(set(old_org_ids) - set(new_org_ids))
         for org_id in delete_org_ids:
             delete_org = SpeciesDiagnosisOrganization.objects.filter(species_diagnosis=instance.id, organization=org_id)
@@ -3106,6 +3131,12 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                   'suspect_count', 'pooled', 'organizations', 'new_species_diagnosis_organizations',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+        validators = [
+            validators.UniqueTogetherValidator(
+                queryset=SpeciesDiagnosis.objects.all(),
+                fields=('location_species', 'diagnosis')
+            )
+        ]
 
 
 class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
@@ -3140,6 +3171,12 @@ class SpeciesDiagnosisOrganizationSerializer(serializers.ModelSerializer):
         fields = ('id', 'species_diagnosis', 'organization',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+        validators = [
+            validators.UniqueTogetherValidator(
+                queryset=SpeciesDiagnosisOrganization.objects.all(),
+                fields=('species_diagnosis', 'organization')
+            )
+        ]
 
 
 class DiagnosisBasisSerializer(serializers.ModelSerializer):

@@ -881,7 +881,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_speciesdiagnosis"
         verbose_name_plural = "speciesdiagnoses"
-        unique_together = ("location_species", "diagnosis")
+        # unique_together = ("location_species", "diagnosis")
         ordering = ['location_species', 'priority']
 
 
@@ -898,7 +898,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
 
     class Meta:
         db_table = "whispers_speciesdiagnosisorganization"
-        unique_together = ("species_diagnosis", "organization")
+        # unique_together = ("species_diagnosis", "organization")
         ordering = ['id']
 
 
