@@ -665,8 +665,6 @@ class EventSerializer(serializers.ModelSerializer):
                             location_contact['contact_type'] = ContactType.objects.filter(
                                 pk=location_contact['contact_type']).first()
 
-                            location_contact['created_by'] = user
-                            location_contact['modified_by'] = user
                             EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
                     # Create EventLocationSpecies
@@ -1365,8 +1363,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             location_contact['contact_type'] = ContactType.objects.filter(
                                 pk=location_contact['contact_type']).first()
 
-                            location_contact['created_by'] = user
-                            location_contact['modified_by'] = user
                             EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
                     # Create EventLocationSpecies
@@ -2144,8 +2140,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_contact['contact_type'] = ContactType.objects.filter(
                     pk=location_contact['contact_type']).first()
 
-                location_contact['created_by'] = user
-                location_contact['modified_by'] = user
                 EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
         # Create EventLocationSpecies
