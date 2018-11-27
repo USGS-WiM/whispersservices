@@ -777,7 +777,7 @@ class EventSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
-                    if not location.end_date or not location.start_date or not location.end_date > location.start_date:
+                    if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
                         raise serializers.ValidationError(location_message)
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
@@ -1106,7 +1106,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 # use a fake date to prevent type comparison error in "if not start_date < end_date"
                                 end_date = datetime.now().date() + timedelta(days=1)
                                 details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                            if not start_date < end_date:
+                            if not start_date <= end_date:
                                 end_date_is_valid = False
                         else:
                             end_date_is_valid = False
@@ -1478,7 +1478,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 details = []
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
-                    if not location.end_date or not location.start_date or not location.end_date > location.start_date:
+                    if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
                         raise serializers.ValidationError(location_message)
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
