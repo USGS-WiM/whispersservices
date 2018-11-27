@@ -680,8 +680,6 @@ class EventSerializer(serializers.ModelSerializer):
                             location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
                             location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
 
-                            location_spec['created_by'] = user
-                            location_spec['modified_by'] = user
                             location_species = LocationSpecies.objects.create(created_by=user, modified_by=user,
                                                                               **location_spec)
 
@@ -1382,8 +1380,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
                             location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
 
-                            location_spec['created_by'] = user
-                            location_spec['modified_by'] = user
                             location_species = LocationSpecies.objects.create(created_by=user, modified_by=user,
                                                                               **location_spec)
 
@@ -2163,8 +2159,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_spec['age_bias'] = AgeBias.objects.filter(pk=location_spec['age_bias']).first()
                 location_spec['sex_bias'] = SexBias.objects.filter(pk=location_spec['sex_bias']).first()
 
-                location_spec['created_by'] = user
-                location_spec['modified_by'] = user
                 location_species = LocationSpecies.objects.create(created_by=user, modified_by=user, **location_spec)
 
                 # create the child species diagnoses for this event
