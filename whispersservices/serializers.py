@@ -2886,16 +2886,17 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             if ('diagnosis_count' in data and data['diagnosis_count'] is not None
                     and not data['diagnosis_count'] <= tested_count):
                 raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
+            # TODO: temporarily disabling the following three rule per instructions from cooperator (November 2018)
             # Within each species diagnosis, number_positive+number_suspect =< number_tested
-            if pos_count and suspect_count and not (pos_count + suspect_count <= tested_count):
-                message = "The positive count and suspect count together cannot be more than the diagnosed count."
-                raise serializers.ValidationError(message)
-            elif pos_count and not (pos_count <= tested_count):
-                message = "The positive count cannot be more than the diagnosed count."
-                raise serializers.ValidationError(message)
-            elif suspect_count and not (suspect_count <= tested_count):
-                message = "The suspect count together cannot be more than the diagnosed count."
-                raise serializers.ValidationError(message)
+            # if pos_count and suspect_count and not (pos_count + suspect_count <= tested_count):
+            #     message = "The positive count and suspect count together cannot be more than the diagnosed count."
+            #     raise serializers.ValidationError(message)
+            # elif pos_count and not (pos_count <= tested_count):
+            #     message = "The positive count cannot be more than the diagnosed count."
+            #     raise serializers.ValidationError(message)
+            # elif suspect_count and not (suspect_count <= tested_count):
+            #     message = "The suspect count together cannot be more than the diagnosed count."
+            #     raise serializers.ValidationError(message)
         # Within each species diagnosis, number_with_diagnosis =< number_tested.
         # here, tested_count was not submitted, so if diagnosis_count was submitted and is not null, raise an error
         # elif 'diagnosis_count' in data and data['diagnosis_count'] is not None:
@@ -2905,11 +2906,12 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # else diagnosis is suspect (suspect=True) and so number_positive must be zero
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # Only allowed to enter >0 if provide laboratory name.
-        if not suspect and (not pos_count or pos_count > 0):
-            raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
+        # if not suspect and (not pos_count or pos_count > 0):
+        #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
 
-        if 'pooled' in data and data['pooled'] and tested_count <= 1:
-            raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
+        # TODO: temporarily disabling this r
+        # if 'pooled' in data and data['pooled'] and tested_count <= 1:
+        #     raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
 
         return data
 
