@@ -441,7 +441,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
         countries = self.request.query_params.get('country', None)
-        if countries is not None:
+        if countries is not None and countries != '':
             countries_list = countries.split(',')
             queryset = queryset.filter(country__in=countries_list)
         return queryset
@@ -461,7 +461,7 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
         administrative_level_one = self.request.query_params.get('administrativelevelone', None)
-        if administrative_level_one is not None:
+        if administrative_level_one is not None and administrative_level_one != '':
             administrative_level_one_list = administrative_level_one.split(',')
             queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
         return queryset
@@ -586,7 +586,7 @@ class DiagnosisViewSet(HistoryViewSet):
     def get_queryset(self):
         queryset = Diagnosis.objects.all()
         diagnosis_type = self.request.query_params.get('diagnosis_type', None)
-        if diagnosis_type is not None:
+        if diagnosis_type is not None and diagnosis_type != '':
             diagnosis_type_list = diagnosis_type.split(',')
             queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
         return queryset
@@ -902,11 +902,11 @@ class OrganizationViewSet(HistoryViewSet):
         queryset = Organization.objects.all()
 
         users = self.request.query_params.get('users', None)
-        if users is not None:
+        if users is not None and users != '':
             users_list = users.split(',')
             queryset = queryset.filter(users__in=users_list)
         contacts = self.request.query_params.get('contacts', None)
-        if contacts is not None:
+        if contacts is not None and contacts != '':
             contacts_list = contacts.split(',')
             queryset = queryset.filter(contacts__in=contacts_list)
         laboratory = self.request.query_params.get('laboratory', None)
@@ -982,11 +982,11 @@ class ContactViewSet(HistoryViewSet):
             return Contact.objects.none()
 
         orgs = query_params.get('org', None)
-        if orgs is not None:
+        if orgs is not None and orgs != '':
             orgs_list = orgs.split(',')
             queryset = queryset.filter(organization__in=orgs_list)
         owner_orgs = query_params.get('ownerorg', None)
-        if owner_orgs is not None:
+        if owner_orgs is not None and owner_orgs != '':
             owner_orgs_list = owner_orgs.split(',')
             queryset = queryset.filter(owner_organization__in=owner_orgs_list)
         return queryset
@@ -1055,7 +1055,7 @@ class SearchViewSet(viewsets.ModelViewSet):
             return Search.objects.none()
 
         owners = query_params.get('owner', None)
-        if owners is not None:
+        if owners is not None and owners != '':
             owners_list = owners.split(',')
             queryset = queryset.filter(created_by__in=owners_list)
         return queryset
@@ -1277,7 +1277,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.filter(complete__exact=complete)
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
-        if event_type is not None:
+        if event_type is not None and event_type != '':
             if LIST_DELIMETER in event_type:
                 event_type_list = event_type.split(',')
                 queryset = queryset.filter(event_type__in=event_type_list)
@@ -1285,7 +1285,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(event_type__exact=event_type)
         # filter by diagnosis ID, exact list
         diagnosis = query_params.get('diagnosis', None)
-        if diagnosis is not None:
+        if diagnosis is not None and diagnosis != '':
             if LIST_DELIMETER in diagnosis:
                 diagnosis_list = diagnosis.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses').filter(
@@ -1307,7 +1307,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis).distinct()
         # filter by diagnosistype ID, exact list
         diagnosis_type = query_params.get('diagnosis_type', None)
-        if diagnosis_type is not None:
+        if diagnosis_type is not None and diagnosis_type != '':
             if LIST_DELIMETER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
@@ -1329,7 +1329,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventdiagnoses__diagnosis__diagnosis_type__exact=diagnosis_type).distinct()
         # filter by species ID, exact list
         species = query_params.get('species', None)
-        if species is not None:
+        if species is not None and species != '':
             if LIST_DELIMETER in species:
                 species_list = species.split(',')
                 queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
@@ -1351,7 +1351,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__locationspecies__species__exact=species).distinct()
         # filter by administrative_level_one, exact list
         administrative_level_one = query_params.get('administrative_level_one', None)
-        if administrative_level_one is not None:
+        if administrative_level_one is not None and administrative_level_one != '':
             if LIST_DELIMETER in administrative_level_one:
                 admin_level_one_list = administrative_level_one.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
@@ -1378,7 +1378,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     eventlocations__administrative_level_one__exact=administrative_level_one).distinct()
         # filter by administrative_level_two, exact list
         administrative_level_two = query_params.get('administrative_level_two', None)
-        if administrative_level_two is not None:
+        if administrative_level_two is not None and administrative_level_two != '':
             if LIST_DELIMETER in administrative_level_two:
                 admin_level_two_list = administrative_level_two.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
@@ -1400,7 +1400,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     eventlocations__administrative_level_two__exact=administrative_level_two).distinct()
         # filter by flyway, exact list
         flyway = query_params.get('flyway', None)
-        if flyway is not None:
+        if flyway is not None and flyway != '':
             queryset = queryset.prefetch_related('eventlocations__flyway')
             if LIST_DELIMETER in flyway:
                 flyway_list = flyway.split(',')
@@ -1409,7 +1409,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__flyway__exact=flyway).distinct()
         # filter by country, exact list
         country = query_params.get('country', None)
-        if country is not None:
+        if country is not None and country != '':
             queryset = queryset.prefetch_related('eventlocations__country')
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
@@ -1418,7 +1418,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(eventlocations__country__exact=country).distinct()
         # filter by gnis_id, exact list
         gnis_id = query_params.get('gnis_id', None)
-        if gnis_id is not None:
+        if gnis_id is not None and gnis_id != '':
             queryset = queryset.prefetch_related('eventlocations__gnis_id')
             if LIST_DELIMETER in gnis_id:
                 gnis_id_list = country.split(',')

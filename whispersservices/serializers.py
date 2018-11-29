@@ -2732,19 +2732,19 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             if self.instance.event.complete:
                 raise serializers.ValidationError(message_complete)
 
-            event_specdiags = SpeciesDiagnosis.objects.filter(
+            event_specdiags = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=self.instance.event.id).values_list(
-                'diagnosis', flat=True).distinct()
+                'diagnosis', flat=True).distinct())
 
             if 'diagnosis' not in data or data['diagnosis'] is None:
-                data['diagnosis'] = self.instance.event.diagnosis
+                data['diagnosis'] = self.instance.diagnosis
 
         # check that submitted diagnoses are also in this event's species diagnoses
         diagnosis = Diagnosis.objects.filter(id=data['diagnosis'].id).first()
-        if diagnosis is not None and (not event_specdiags or diagnosis.id not in event_specdiags
-                                      or diagnosis.name in ['Pending', 'Undetermined']):
-            message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
-            raise serializers.ValidationError(message)
+        if diagnosis is not None and ((not event_specdiags or diagnosis.id not in event_specdiags)
+                                      and diagnosis.name not in ['Pending', 'Undetermined']):
+                message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
+                raise serializers.ValidationError(message)
 
         return data
 
