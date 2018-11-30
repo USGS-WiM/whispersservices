@@ -1244,7 +1244,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
                     else:
                         search = Search.objects.create(data=ordered_query_params, created_by=user)
-                search.count = F('count') + 1
+                search.count += 1
                 search.save()
 
         # then proceed to build the queryset
