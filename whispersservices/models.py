@@ -33,7 +33,7 @@ class HistoryModel(models.Model):
     modified_date = models.DateField(auto_now=True, null=True, blank=True)
     modified_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='%(class)s_modifier')
-    history = HistoricalRecords()
+    history = HistoricalRecords(inherit=True)
 
     class Meta:
         abstract = True
@@ -947,7 +947,7 @@ class ServiceRequest(HistoryModel):
                                          related_name='servicerequests')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='servicerequests_responder')
-    created_time = models.TimeField(default=datetime.now().time(), null=True, blank=True)
+    created_time = models.TimeField(auto_now_add=True)
     comments = GenericRelation('Comment', related_name='servicerequests')
 
     def __str__(self):
@@ -1061,6 +1061,8 @@ class User(AbstractUser):
         'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users')
     active_key = models.TextField(blank=True, default='')
     user_status = models.CharField(max_length=128, blank=True, default='')
+
+    history = HistoricalRecords()
 
     def __str__(self):
         return self.username
@@ -1184,7 +1186,7 @@ class Contact(HistoryModel):
     last_name = models.CharField(max_length=128, blank=True, default='')
     email = models.CharField(max_length=128, blank=True, default='')
     phone = models.TextField(blank=True, default='')
-    affiliation = models.TextField(blank=True)
+    affiliation = models.TextField(blank=True, default='')
     title = models.CharField(max_length=128, blank=True, default='')
     position = models.CharField(max_length=128, blank=True, default='')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
