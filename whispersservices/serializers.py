@@ -728,7 +728,11 @@ class EventSerializer(serializers.ModelSerializer):
                     diagnosis_id = event_diagnosis.pop('diagnosis', None)
                     if diagnosis_id in valid_diagnosis_ids:
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis,
+                        matching_specdiag_suspect = SpeciesDiagnosis.objects.filter(
+                            location_species__event_location__event=event.id, diagnosis=diagnosis_id
+                        ).values_list('suspect', flat=True).first()
+                        suspect = matching_specdiag_suspect if matching_specdiag_suspect is not None else True
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=suspect,
                                                       created_by=user, modified_by=user, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
@@ -1427,7 +1431,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
                     if diagnosis_id in valid_diagnosis_ids:
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis,
+                        matching_specdiag_suspect = SpeciesDiagnosis.objects.filter(
+                            location_species__event_location__event=event.id, diagnosis=diagnosis_id
+                        ).values_list('suspect', flat=True).first()
+                        suspect = matching_specdiag_suspect if matching_specdiag_suspect is not None else True
+                        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=suspect,
                                                       created_by=user, modified_by=user, **event_diagnosis)
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
