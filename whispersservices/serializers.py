@@ -2395,6 +2395,13 @@ class AdministrativeLevelOneSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+class AdministrativeLevelOneSlimSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = AdministrativeLevelOne
+        fields = ('id', 'name',)
+
+
 class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2406,6 +2413,13 @@ class AdministrativeLevelTwoSerializer(serializers.ModelSerializer):
                   'centroid_latitude', 'centroid_longitude', 'fips_code',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class AdministrativeLevelTwoSlimSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = AdministrativeLevelTwo
+        fields = ('id', 'name',)
 
 
 class AdministrativeLevelLocalitySerializer(serializers.ModelSerializer):
@@ -2645,6 +2659,13 @@ class SpeciesSerializer(serializers.ModelSerializer):
                   'species_latin_name', 'subspecies_latin_name', 'tsn',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class SpeciesSlimSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Species
+        fields = ('id', 'name',)
 
 
 class AgeBiasSerializer(serializers.ModelSerializer):
@@ -3518,6 +3539,20 @@ class OrganizationAdminSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+class OrganizationPublicSlimSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Organization
+        fields = ('id', 'name', 'laboratory',)
+
+
+class OrganizationSlimSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Organization
+        fields = ('id', 'name', 'private_name', 'laboratory',)
+
+
 class ContactSerializer(serializers.ModelSerializer):
     def get_owner_organization_string(self, obj):
         return Organization.objects.filter(id=obj.owner_organization).first().name
@@ -3547,6 +3582,14 @@ class ContactSerializer(serializers.ModelSerializer):
                   'organization_string', 'owner_organization', 'owner_organization_string',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+
+
+class ContactSlimSerializer(serializers.ModelSerializer):
+    organization_string = serializers.StringRelatedField(source='organization')
+
+    class Meta:
+        model = Contact
+        fields = ('id', 'first_name', 'last_name', 'organization_string', )
 
 
 class ContactTypeSerializer(serializers.ModelSerializer):

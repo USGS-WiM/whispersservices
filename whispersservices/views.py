@@ -436,7 +436,7 @@ class CountryViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
-    serializer_class = AdministrativeLevelOneSerializer
+    # serializer_class = AdministrativeLevelOneSerializer
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
@@ -446,9 +446,15 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
             queryset = queryset.filter(country__in=countries_list)
         return queryset
 
+    def get_serializer_class(self):
+        if 'slim' in self.request.query_params:
+            return AdministrativeLevelOneSlimSerializer
+        else:
+            return AdministrativeLevelOneSerializer
+
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
-    serializer_class = AdministrativeLevelTwoSerializer
+    # serializer_class = AdministrativeLevelTwoSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -465,6 +471,12 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
             administrative_level_one_list = administrative_level_one.split(',')
             queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
         return queryset
+
+    def get_serializer_class(self):
+        if 'slim' in self.request.query_params:
+            return AdministrativeLevelTwoSlimSerializer
+        else:
+            return AdministrativeLevelTwoSerializer
 
 
 class AdministrativeLevelLocalityViewSet(HistoryViewSet):
@@ -543,7 +555,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
-    serializer_class = SpeciesSerializer
+    # serializer_class = SpeciesSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -552,6 +564,12 @@ class SpeciesViewSet(HistoryViewSet):
 
         message = "Please add a new species:"
         return construct_email(request.data, request.user.email, message)
+
+    def get_serializer_class(self):
+        if 'slim' in self.request.query_params:
+            return SpeciesSlimSerializer
+        else:
+            return SpeciesSerializer
 
 
 class AgeBiasViewSet(HistoryViewSet):
@@ -866,9 +884,7 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    serializer_class_public = OrganizationPublicSerializer
-    serializer_class = OrganizationSerializer
-    serializer_class_admin = OrganizationAdminSerializer
+    # serializer_class = OrganizationSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -881,15 +897,18 @@ class OrganizationViewSet(HistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = self.request.user
+        slim = False
+        if 'slim' in self.request.query_params:
+            slim = True
         # all requests from anonymous or public users must use the public serializer
         if not user.is_authenticated or user.role.is_public:
-            return self.serializer_class_public
+            return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
         # admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
-            return self.serializer_class_admin
+            return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
         # partner requests only have access to a more limited list of fields
         if user.role.is_partner or user.role.is_partner_manager or user.role.is_partneradmin:
-            return self.serializer_class
+            return OrganizationSerializer if not slim else OrganizationSlimSerializer
         # all other requests are rejected
         else:
             raise PermissionDenied
@@ -935,7 +954,7 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
-    serializer_class = ContactSerializer
+    # serializer_class = ContactSerializer
 
     @action(detail=False)
     def user_contacts(self, request):
@@ -990,6 +1009,12 @@ class ContactViewSet(HistoryViewSet):
             owner_orgs_list = owner_orgs.split(',')
             queryset = queryset.filter(owner_organization__in=owner_orgs_list)
         return queryset
+
+    def get_serializer_class(self):
+        if 'slim' in self.request.query_params:
+            return ContactSlimSerializer
+        else:
+            return ContactSerializer
 
 
 class ContactTypeViewSet(HistoryViewSet):
