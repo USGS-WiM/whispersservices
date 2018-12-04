@@ -1265,7 +1265,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if query_params:
             ordered_query_params = OrderedDict(sorted(query_params.items()))
             ordered_query_params_static = ordered_query_params.copy()
-            not_search_params = ['no_page', 'page', 'format']
+            not_search_params = ['no_page', 'page', 'format', 'slim']
             [ordered_query_params.popitem(param) for param in ordered_query_params_static if param in not_search_params]
             if len(ordered_query_params) > 0:
                 if not user.is_authenticated:
