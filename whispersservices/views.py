@@ -961,16 +961,26 @@ class ContactViewSet(HistoryViewSet):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params
         queryset = self.build_queryset(query_params, get_user_contacts=True).order_by('id')
+        slim = True if 'slim' in self.request.query_params else False
 
         if 'no_page' in self.request.query_params:
-            serializer = ContactSerializer(queryset, many=True, context={'request': request})
+            if slim:
+                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+            else:
+                serializer = ContactSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
         else:
             page = self.paginate_queryset(queryset)
             if page is not None:
-                serializer = ContactSerializer(page, many=True, context={'request': request})
+                if slim:
+                    serializer = ContactSlimSerializer(page, many=True, context={'request': request})
+                else:
+                    serializer = ContactSerializer(page, many=True, context={'request': request})
                 return self.get_paginated_response(serializer.data)
-            serializer = ContactSerializer(queryset, many=True, context={'request': request})
+            if slim:
+                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+            else:
+                serializer = ContactSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
 
     # override the default queryset to allow filtering by URL arguments
