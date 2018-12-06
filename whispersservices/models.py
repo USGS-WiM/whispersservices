@@ -59,16 +59,16 @@ class PermissionsHistoryModel(HistoryModel):
 
     @staticmethod
     def has_read_permission(request):
-        # Everyone can read (list and retrieve) all events, but some fields may be private
+        # Everyone can read (list and retrieve), but some fields may be private
         return True
 
     def has_object_read_permission(self, request):
-        # Everyone can read (list and retrieve) all events, but some fields may be private
+        # Everyone can read (list and retrieve), but some fields may be private
         return True
 
     @staticmethod
     def has_write_permission(request):
-        # Only users with specific roles can 'write' an event
+        # Only users with specific roles can 'write'
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
         # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
         # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
@@ -79,7 +79,7 @@ class PermissionsHistoryModel(HistoryModel):
                     or request.user.role.is_partnermanager or request.user.role.is_partner)
 
     def has_object_update_permission(self, request):
-        # Only admins or the creator or a manager/admin member of the creator's organization can update an event
+        # Only admins or the creator or a manager/admin member of the creator's organization can update
         if not request.user.is_authenticated:
             return False
         else:
@@ -88,13 +88,68 @@ class PermissionsHistoryModel(HistoryModel):
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     def has_object_destroy_permission(self, request):
-        # Only superadmins or the creator or a manager/admin member of the creator's organization can delete an event
+        # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
         if not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
                     or (request.user.organization == self.created_by.organization
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
+
+    class Meta:
+        abstract = True
+
+
+class PermissionsHistoryNameModel(PermissionsHistoryModel):
+    """
+    An abstract base class model for common permissions with the common name field.
+    """
+
+    name = models.CharField(max_length=128, unique=True)
+
+    class Meta:
+        abstract = True
+
+
+class AdminPermissionsHistoryModel(HistoryModel):
+    """
+    An abstract base class model for administrator-only permissions.
+    """
+
+    @staticmethod
+    def has_read_permission(request):
+        # Everyone can read (list and retrieve), but some fields may be private
+        return True
+
+    def has_object_read_permission(self, request):
+        # Everyone can read (list and retrieve), but some fields may be private
+        return True
+
+    @staticmethod
+    def has_write_permission(request):
+        # Only superadmins or admins can write (create, update, delete)
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.is_superadmin or request.user.role.is_admin
+
+    def has_object_write_permission(self, request):
+        # Only superadmins or admins can write (create, update, delete)
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.is_superadmin or request.user.role.is_admin
+
+    class Meta:
+        abstract = True
+
+
+class AdminPermissionsHistoryNameModel(AdminPermissionsHistoryModel):
+    """
+    An abstract base class model for administrator-only permissions with the common name field.
+    """
+
+    name = models.CharField(max_length=128, unique=True)
 
     class Meta:
         abstract = True
@@ -174,7 +229,7 @@ class Event(PermissionsHistoryModel):
         # TODO: 'unique together' fields
 
 
-class EventSuperEvent(HistoryModel):
+class EventSuperEvent(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Events and Super Events.
     """
@@ -190,7 +245,7 @@ class EventSuperEvent(HistoryModel):
         ordering = ['id']
 
 
-class SuperEvent(HistoryModel):
+class SuperEvent(PermissionsHistoryModel):
     """
     Super Event
     """
@@ -206,7 +261,7 @@ class SuperEvent(HistoryModel):
         ordering = ['id']
 
 
-class EventType(HistoryNameModel):
+class EventType(AdminPermissionsHistoryNameModel):
     """
     Event Type
     """
@@ -219,7 +274,7 @@ class EventType(HistoryNameModel):
         ordering = ['id']
 
 
-class Staff(HistoryModel):
+class Staff(AdminPermissionsHistoryModel):
     """
     Staff
     """
@@ -237,7 +292,7 @@ class Staff(HistoryModel):
         ordering = ['id']
 
 
-class LegalStatus(HistoryNameModel):
+class LegalStatus(AdminPermissionsHistoryNameModel):
     """
     Legal Status
     """
@@ -250,7 +305,7 @@ class LegalStatus(HistoryNameModel):
         ordering = ['id']
 
 
-class EventStatus(HistoryNameModel):
+class EventStatus(AdminPermissionsHistoryNameModel):
     """
     Event Status
     """
@@ -264,7 +319,7 @@ class EventStatus(HistoryNameModel):
         ordering = ['id']
 
 
-class EventAbstract(HistoryModel):
+class EventAbstract(PermissionsHistoryModel):
     """
     Event Abstract
     """
@@ -281,7 +336,7 @@ class EventAbstract(HistoryModel):
         ordering = ['id']
 
 
-class EventCase(HistoryModel):
+class EventCase(PermissionsHistoryModel):
     """
     Event Case
     """
@@ -297,7 +352,7 @@ class EventCase(HistoryModel):
         ordering = ['id']
 
 
-class EventLabsite(HistoryModel):
+class EventLabsite(PermissionsHistoryModel):
     """
     Event Labsite
     """
@@ -435,7 +490,7 @@ class EventLocation(PermissionsHistoryModel):
         ordering = ['event', 'priority']
 
 
-class EventLocationContact(HistoryModel):
+class EventLocationContact(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Event Locations and Contacts.
     """
@@ -452,7 +507,7 @@ class EventLocationContact(HistoryModel):
         ordering = ['id']
 
 
-class Country(HistoryNameModel):
+class Country(AdminPermissionsHistoryNameModel):
     """
     Country
     """
@@ -469,7 +524,7 @@ class Country(HistoryNameModel):
         ordering = ['id']
 
 
-class AdministrativeLevelOne(HistoryNameModel):
+class AdministrativeLevelOne(AdminPermissionsHistoryNameModel):
     """
     Administrative Level One (ex. in US it is State)
     """
@@ -485,7 +540,7 @@ class AdministrativeLevelOne(HistoryNameModel):
         ordering = ['id']
 
 
-class AdministrativeLevelTwo(HistoryModel):
+class AdministrativeLevelTwo(AdminPermissionsHistoryModel):
     """
     Administrative Level Two (ex. in US it is counties)
     """
@@ -507,7 +562,7 @@ class AdministrativeLevelTwo(HistoryModel):
         ordering = ['id']
 
 
-class AdministrativeLevelLocality(HistoryNameModel):
+class AdministrativeLevelLocality(AdminPermissionsHistoryModel):
     """
     Table for looking up local names for adminstrative levels based on country
     """
@@ -524,7 +579,7 @@ class AdministrativeLevelLocality(HistoryNameModel):
         ordering = ['id']
 
 
-class LandOwnership(HistoryNameModel):
+class LandOwnership(AdminPermissionsHistoryNameModel):
     """
     Land Ownership
     """
@@ -537,7 +592,7 @@ class LandOwnership(HistoryNameModel):
         ordering = ['id']
 
 
-class EventLocationFlyway(HistoryModel):
+class EventLocationFlyway(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Event Locations and Flyways.
     """
@@ -553,7 +608,7 @@ class EventLocationFlyway(HistoryModel):
         ordering = ['id']
 
 
-class Flyway(HistoryNameModel):
+class Flyway(AdminPermissionsHistoryNameModel):
     """
     Flyway
     """
@@ -632,7 +687,7 @@ class LocationSpecies(PermissionsHistoryModel):
         ordering = ['event_location', 'priority']
 
 
-class Species(HistoryModel):
+class Species(AdminPermissionsHistoryModel):
     """
     Species
     """
@@ -656,7 +711,7 @@ class Species(HistoryModel):
         ordering = ['id']
 
 
-class AgeBias(HistoryNameModel):
+class AgeBias(AdminPermissionsHistoryNameModel):
     """
     Age Bias
     """
@@ -670,7 +725,7 @@ class AgeBias(HistoryNameModel):
         ordering = ['id']
 
 
-class SexBias(HistoryNameModel):
+class SexBias(AdminPermissionsHistoryNameModel):
     """
     Sex Bias
     """
@@ -691,7 +746,7 @@ class SexBias(HistoryNameModel):
 ######
 
 
-class Diagnosis(HistoryNameModel):
+class Diagnosis(AdminPermissionsHistoryNameModel):
     """
     Diagnosis
     """
@@ -707,7 +762,7 @@ class Diagnosis(HistoryNameModel):
         ordering = ['id']
 
 
-class DiagnosisType(HistoryNameModel):
+class DiagnosisType(AdminPermissionsHistoryNameModel):
     """
     Diagnosis Type
     """
@@ -885,7 +940,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         ordering = ['location_species', 'priority']
 
 
-class SpeciesDiagnosisOrganization(HistoryModel):
+class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between SpeciesDiagnosis and Organizations.
     """
@@ -902,7 +957,7 @@ class SpeciesDiagnosisOrganization(HistoryModel):
         ordering = ['id']
 
 
-class DiagnosisBasis(HistoryNameModel):
+class DiagnosisBasis(AdminPermissionsHistoryNameModel):
     """
     Diagnosis Basis
     """
@@ -916,7 +971,7 @@ class DiagnosisBasis(HistoryNameModel):
         ordering = ['id']
 
 
-class DiagnosisCause(HistoryNameModel):
+class DiagnosisCause(AdminPermissionsHistoryNameModel):
     """
     Diagnosis Cause
     """
@@ -936,7 +991,7 @@ class DiagnosisCause(HistoryNameModel):
 ######
 
 
-class ServiceRequest(HistoryModel):
+class ServiceRequest(PermissionsHistoryModel):
     """
     Service Submission Request
     """
@@ -958,7 +1013,7 @@ class ServiceRequest(HistoryModel):
         ordering = ['id']
 
 
-class ServiceRequestType(HistoryNameModel):
+class ServiceRequestType(AdminPermissionsHistoryNameModel):
     """
     Service Submission Request Type
     """
@@ -971,7 +1026,7 @@ class ServiceRequestType(HistoryNameModel):
         ordering = ['id']
 
 
-class ServiceRequestResponse(HistoryNameModel):
+class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
     """
     Service Request Response
     """
@@ -991,7 +1046,7 @@ class ServiceRequestResponse(HistoryNameModel):
 ######
 
 
-class Comment(HistoryModel):  # TODO: implement relates to other models that use comments
+class Comment(PermissionsHistoryModel):
     """
     Comment
     """
@@ -1012,7 +1067,7 @@ class Comment(HistoryModel):  # TODO: implement relates to other models that use
         ordering = ['id']
 
 
-class CommentType(HistoryNameModel):
+class CommentType(AdminPermissionsHistoryNameModel):
     """
     Comment Type
     """
@@ -1025,7 +1080,7 @@ class CommentType(HistoryNameModel):
         ordering = ['id']
 
 
-class Artifact(HistoryModel):  # TODO: implement file fields
+class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
     """
     Artifact
     """
@@ -1072,7 +1127,7 @@ class User(AbstractUser):
         ordering = ['id']
 
 
-class Role(HistoryNameModel):
+class Role(AdminPermissionsHistoryNameModel):
     """
     User Role
     """
@@ -1113,7 +1168,7 @@ class Role(HistoryNameModel):
         ordering = ['id']
 
 
-class Circle(HistoryNameModel):
+class Circle(PermissionsHistoryNameModel):
     """
     Circle of Trust
     """
@@ -1128,7 +1183,7 @@ class Circle(HistoryNameModel):
         ordering = ['id']
 
 
-class CircleUser(HistoryModel):
+class CircleUser(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Circles and Users.
     """
@@ -1144,8 +1199,7 @@ class CircleUser(HistoryModel):
         ordering = ['id']
 
 
-# TODO: apply permissions to this model such that only admins and up can write (create/update/delete)
-class Organization(HistoryNameModel):
+class Organization(AdminPermissionsHistoryNameModel):
     """
     Organization
     """
@@ -1172,7 +1226,7 @@ class Organization(HistoryNameModel):
         ordering = ['id']
 
 
-class Contact(HistoryModel):
+class Contact(PermissionsHistoryModel):
     """
     Contact
     """
@@ -1200,7 +1254,7 @@ class Contact(HistoryModel):
         ordering = ['id']
 
 
-class ContactType(HistoryModel):
+class ContactType(AdminPermissionsHistoryModel):
     """
     Contact Type
     """
