@@ -208,257 +208,6 @@ class EventSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    # TODO: properly validate child objects too rather than naively trust submitted data
-    def validate(self, data):
-        if 'request' in self.context and self.context['request'].method == 'POST':
-            if 'new_event_locations' not in data:
-                raise serializers.ValidationError("new_event_locations is a required field")
-            # 1. Not every location needs a start date at initiation, but at least one location must.
-            # 2. Not every location needs a species at initiation, but at least one location must.
-            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
-            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #    and estimated_dead for at least one species in the event at the time of event initiation.
-            #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
-            # 7. Every location needs at least one comment, which must be one of the following types:
-            #    Site description, History, Environmental factors, Clinical signs
-            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
-            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
-            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
-            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
-            # 11. Location end date must be equal to or greater than start date.
-            if 'new_event_locations' in data:
-                country_admin_is_valid = True
-                latlng_is_valid = True
-                comments_is_valid = []
-                required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
-                min_start_date = False
-                start_date_is_valid = True
-                end_date_is_valid = True
-                min_location_species = False
-                min_species_count = False
-                pop_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if [i for i in required_comment_types if i in item and item[i]]:
-                        comments_is_valid.append(True)
-                    else:
-                        comments_is_valid.append(False)
-                    if 'start_date' in item and item['start_date'] is not None:
-                        try:
-                            datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
-                        min_start_date = True
-                        if (data['event_type'].id == mortality_morbidity.id
-                                and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
-                            start_date_is_valid = False
-                        if ('end_date' in item and item['end_date'] is not None
-                                and item['end_date'] < item['start_date']):
-                            end_date_is_valid = False
-                    elif 'end_date' in item and item['end_date'] is not None:
-                        end_date_is_valid = False
-                    if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
-                            and item['administrative_level_one'] is not None):
-                        country = Country.objects.filter(id=item['country']).first()
-                        adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
-                        if country.id != adminl1.country.id:
-                            country_admin_is_valid = False
-                        if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
-                            adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
-                            if adminl1.id != adminl2.administrative_level_one.id:
-                                country_admin_is_valid = False
-                    if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
-                         or item['administrative_level_one'] is None)
-                            and ('latitude' not in item or item['latitude'] is None
-                                 or 'longitude' not in item and item['longitude'] is None)):
-                        message = "country and administrative_level_one are required if latitude or longitude is null."
-                        details.append(message)
-                    if ('latitude' in item and item['latitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
-                        latlng_is_valid = False
-                    if ('longitude' in item and item['longitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
-                        latlng_is_valid = False
-                    if ('latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None
-                            and ('country' not in item or 'administrative_level_one' not in item)):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                                   'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        if 'address' not in r.json() or 'geonames' not in r.json():
-                            latlng_is_valid = False
-                    if 'new_location_species' in item:
-                        for spec in item['new_location_species']:
-                            if 'species' in spec and spec['species'] is not None:
-                                if Species.objects.filter(id=spec['species']).first() is None:
-                                    message = "A submitted species ID (" + str(spec['species'])
-                                    message += ") in new_location_species was not found in the database."
-                                    details.append(message)
-                                else:
-                                    min_location_species = True
-                            if 'population_count' in spec and spec['population_count'] is not None:
-                                dead_count = 0
-                                sick_count = 0
-                                if 'dead_count_estimated' in spec or 'dead_count' in spec:
-                                    dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                if 'sick_count_estimated' in spec or 'sick_count' in spec:
-                                    sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                if spec['population_count'] >= dead_count + sick_count:
-                                    pop_is_valid.append(True)
-                                else:
-                                    pop_is_valid.append(False)
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_dead_is_valid = False
-                            if data['event_type'].id == mortality_morbidity.id:
-                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                        and spec['dead_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('dead_count' in spec and spec['dead_count'] is not None
-                                        and spec['dead_count'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                      and spec['sick_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count' in spec and spec['sick_count'] is not None
-                                      and spec['sick_count'] > 0):
-                                    min_species_count = True
-                    if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
-                        for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
-                                message = "A submitted contact ID (" + str(loc_contact['contact'])
-                                message += ") in new_location_contacts was not found in the database."
-                                details.append(message)
-                if not country_admin_is_valid:
-                    message = "administrative_level_one must belong to the submitted country,"
-                    message += " and administrative_level_two must belong to the submitted administrative_level_one."
-                    details.append(message)
-                if not start_date_is_valid:
-                    message = "If event_type is 'Mortality/Morbidity'"
-                    message += " start_date for a new event_location must be current date or earlier."
-                    details.append(message)
-                if not end_date_is_valid:
-                    details.append("end_date may not be before start_date.")
-                if not latlng_is_valid:
-                    message = "latitude and longitude must be in decimal degrees and represent a point in a country."
-                    details.append(message)
-                if False in comments_is_valid:
-                    message = "Each new_event_location requires at least one new_comment, which must be one of"
-                    message += " the following types: Site description, History, Environmental factors, Clinical signs"
-                    details.append(message)
-                if not min_start_date:
-                    details.append("start_date is required for at least one new event_location.")
-                if not min_location_species:
-                    details.append("Each new_event_location requires at least one new_location_species.")
-                if False in pop_is_valid:
-                    message = "new_location_species population_count cannot be less than the sum of dead_count"
-                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
-                    details.append(message)
-                if data['event_type'].id == mortality_morbidity.id and not min_species_count:
-                    message = "At least one new_location_species requires at least one species count in any of the"
-                    message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if details:
-                    raise serializers.ValidationError(details)
-
-        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same as or after Start Date.
-        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-        #   and estimated_dead per species at the time of event completion.
-        #   (sick + dead + estimated_sick + estimated_dead >= 1)
-        if 'complete' in data and data['complete'] is True:
-            location_message = "The event may not be marked complete until all of its locations have an end date"
-            location_message += " and each location's end date is same as or after that location's start date."
-            if 'new_event_locations' not in data:
-                end_date_is_valid = True
-                if self.context['request'].method in ['PUT', 'PATCH']:
-                    evtlocs = EventLocation.objects.filter(event=self.instance.id)
-                    for item in evtlocs:
-                        if not item.end_date or item.end_date < item.start_date:
-                            end_date_is_valid = False
-                    if not end_date_is_valid:
-                        raise serializers.ValidationError(location_message)
-                else:
-                    raise serializers.ValidationError(location_message)
-            else:
-                end_date_is_valid = True
-                species_count_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if ('start_date' in item and item['start_date'] is not None
-                            and 'end_date' in item and item['end_date'] is not None):
-                        try:
-                            start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            start_date = datetime.now().date
-                            details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        try:
-                            end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            end_date = datetime.now().date() + timedelta(days=1)
-                            details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        if not start_date <= end_date:
-                            end_date_is_valid = False
-                    else:
-                        end_date_is_valid = False
-                    for spec in item['new_location_species']:
-                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                and 'sick_count' in spec and spec['sick_count'] is not None
-                                and not spec['sick_count_estimated'] > spec['sick_count']):
-                            est_sick_is_valid = False
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and 'dead_count' in spec and spec['dead_count'] is not None
-                                and not spec['dead_count_estimated'] > spec['dead_count']):
-                            est_dead_is_valid = False
-                        if data['event_type'] == mortality_morbidity.id:
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and spec['dead_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('dead_count' in spec and spec['dead_count'] is not None
-                                  and spec['dead_count'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                  and spec['sick_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count' in spec and spec['sick_count'] is not None
-                                  and spec['sick_count'] > 0):
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                if not end_date_is_valid:
-                    details.append(location_message)
-                if False in species_count_is_valid:
-                    message = "Each new_location_species requires at least one species count in any of these"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if details:
-                    raise serializers.ValidationError(details)
-
-        return data
-
     def create(self, validated_data):
         # TODO: figure out if this logic is necessary, see: https://www.django-rest-framework.org/api-guide/requests/#user
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
@@ -468,6 +217,275 @@ class EventSerializer(serializers.ModelSerializer):
 
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
+        if 'new_event_locations' not in validated_data:
+            raise serializers.ValidationError("new_event_locations is a required field")
+        # 1. Not every location needs a start date at initiation, but at least one location must.
+        # 2. Not every location needs a species at initiation, but at least one location must.
+        # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+        # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #    and estimated_dead for at least one species in the event at the time of event initiation.
+        #    (sick + dead + estimated_sick + estimated_dead >= 1)
+        # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
+        # 7. Every location needs at least one comment, which must be one of the following types:
+        #    Site description, History, Environmental factors, Clinical signs
+        # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+        #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+        #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+        # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+        # 10. Location start date cannot be after today if event type is Mortality/Morbidity
+        # 11. Location end date must be equal to or greater than start date.
+        # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        if 'new_event_locations' in validated_data:
+            country_admin_is_valid = True
+            latlng_is_valid = True
+            comments_is_valid = []
+            required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
+            min_start_date = False
+            start_date_is_valid = True
+            end_date_is_valid = True
+            min_location_species = False
+            min_species_count = False
+            pop_is_valid = []
+            est_sick_is_valid = True
+            est_dead_is_valid = True
+            specdiag_nonsuspect_basis_is_valid = True
+            details = []
+            mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+            for item in validated_data['new_event_locations']:
+                if [i for i in required_comment_types if i in item and item[i]]:
+                    comments_is_valid.append(True)
+                else:
+                    comments_is_valid.append(False)
+                if 'start_date' in item and item['start_date'] is not None:
+                    try:
+                        datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
+                    min_start_date = True
+                    if (validated_data['event_type'].id == mortality_morbidity.id
+                            and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
+                        start_date_is_valid = False
+                    if ('end_date' in item and item['end_date'] is not None
+                            and item['end_date'] < item['start_date']):
+                        end_date_is_valid = False
+                elif 'end_date' in item and item['end_date'] is not None:
+                    end_date_is_valid = False
+                if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
+                        and item['administrative_level_one'] is not None):
+                    country = Country.objects.filter(id=item['country']).first()
+                    adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
+                    if country.id != adminl1.country.id:
+                        country_admin_is_valid = False
+                    if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
+                        adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
+                        if adminl1.id != adminl2.administrative_level_one.id:
+                            country_admin_is_valid = False
+                if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
+                     or item['administrative_level_one'] is None)
+                        and ('latitude' not in item or item['latitude'] is None
+                             or 'longitude' not in item and item['longitude'] is None)):
+                    message = "country and administrative_level_one are required if latitude or longitude is null."
+                    details.append(message)
+                if ('latitude' in item and item['latitude'] is not None
+                        and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
+                    latlng_is_valid = False
+                if ('longitude' in item and item['longitude'] is not None
+                        and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
+                    latlng_is_valid = False
+                if ('latitude' in item and item['latitude'] is not None
+                        and 'longitude' in item and item['longitude'] is not None
+                        and ('country' not in item or 'administrative_level_one' not in item)):
+                    payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                               'username': GEONAMES_USERNAME}
+                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                    if 'address' not in r.json() or 'geonames' not in r.json():
+                        latlng_is_valid = False
+                if 'new_location_species' in item:
+                    for spec in item['new_location_species']:
+                        if 'species' in spec and spec['species'] is not None:
+                            if Species.objects.filter(id=spec['species']).first() is None:
+                                message = "A submitted species ID (" + str(spec['species'])
+                                message += ") in new_location_species was not found in the database."
+                                details.append(message)
+                            else:
+                                min_location_species = True
+                        if 'population_count' in spec and spec['population_count'] is not None:
+                            dead_count = 0
+                            sick_count = 0
+                            if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                                dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                            if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                                sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                            if spec['population_count'] >= dead_count + sick_count:
+                                pop_is_valid.append(True)
+                            else:
+                                pop_is_valid.append(False)
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
+                        if validated_data['event_type'].id == mortality_morbidity.id:
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and spec['dead_count_estimated'] > 0):
+                                min_species_count = True
+                            elif ('dead_count' in spec and spec['dead_count'] is not None
+                                  and spec['dead_count'] > 0):
+                                min_species_count = True
+                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                  and spec['sick_count_estimated'] > 0):
+                                min_species_count = True
+                            elif ('sick_count' in spec and spec['sick_count'] is not None
+                                  and spec['sick_count'] > 0):
+                                min_species_count = True
+                        if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                            for specdiag in spec['new_species_diagnoses']:
+                                if not specdiag['suspect']:
+                                    if specdiag['basis'] in [1, 2, 4]:
+                                        specdiag_nonsuspect_basis_is_valid = False
+                                    elif specdiag['basis'] == 3:
+                                        if ('new_species_diagnosis_organizations' in specdiag
+                                                and specdiag['new_species_diagnosis_organizations'] is not None):
+                                            org = Organization.objects.filter(
+                                                id=specdiag['new_species_diagnosis_organizations']).first()
+                                            if not org or not org.laboratory:
+                                                specdiag_nonsuspect_basis_is_valid = False
+                if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
+                    for loc_contact in item['new_location_contacts']:
+                        if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            message = "A submitted contact ID (" + str(loc_contact['contact'])
+                            message += ") in new_location_contacts was not found in the database."
+                            details.append(message)
+            if not country_admin_is_valid:
+                message = "administrative_level_one must belong to the submitted country,"
+                message += " and administrative_level_two must belong to the submitted administrative_level_one."
+                details.append(message)
+            if not start_date_is_valid:
+                message = "If event_type is 'Mortality/Morbidity'"
+                message += " start_date for a new event_location must be current date or earlier."
+                details.append(message)
+            if not end_date_is_valid:
+                details.append("end_date may not be before start_date.")
+            if not latlng_is_valid:
+                message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+                details.append(message)
+            if False in comments_is_valid:
+                message = "Each new_event_location requires at least one new_comment, which must be one of"
+                message += " the following types: Site description, History, Environmental factors, Clinical signs"
+                details.append(message)
+            if not min_start_date:
+                details.append("start_date is required for at least one new event_location.")
+            if not min_location_species:
+                details.append("Each new_event_location requires at least one new_location_species.")
+            if False in pop_is_valid:
+                message = "new_location_species population_count cannot be less than the sum of dead_count"
+                message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+                details.append(message)
+            if validated_data['event_type'].id == mortality_morbidity.id and not min_species_count:
+                message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
+                message += " count in any of the following fields:"
+                message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                details.append(message)
+            if not est_sick_is_valid:
+                details.append("Estimated sick count must always be more than known sick count.")
+            if not est_dead_is_valid:
+                details.append("Estimated dead count must always be more than known dead count.")
+            if not specdiag_nonsuspect_basis_is_valid:
+                message = "A non-suspect diagnosis can only have a basis of"
+                message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
+                message += " and only if that diagnosis has a related laboratory"
+                details.append(message)
+            if details:
+                raise serializers.ValidationError(details)
+
+        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
+        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #   and estimated_dead per species at the time of event completion.
+        #   (sick + dead + estimated_sick + estimated_dead >= 1)
+        if 'complete' in validated_data and validated_data['complete'] is True:
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is same as or after that location's start date."
+            end_date_is_valid = True
+            species_count_is_valid = []
+            est_sick_is_valid = True
+            est_dead_is_valid = True
+            specdiag_basis_is_valid = True
+            specdiag_cause_is_valid = True
+            details = []
+            mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+            for item in validated_data['new_event_locations']:
+                if ('start_date' in item and item['start_date'] is not None
+                        and 'end_date' in item and item['end_date'] is not None):
+                    try:
+                        start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                        start_date = datetime.now().date
+                        details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                    try:
+                        end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                        end_date = datetime.now().date() + timedelta(days=1)
+                        details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                    if not start_date <= end_date:
+                        end_date_is_valid = False
+                else:
+                    end_date_is_valid = False
+                for spec in item['new_location_species']:
+                    if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                            and 'sick_count' in spec and spec['sick_count'] is not None
+                            and not spec['sick_count_estimated'] > spec['sick_count']):
+                        est_sick_is_valid = False
+                    if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                            and 'dead_count' in spec and spec['dead_count'] is not None
+                            and not spec['dead_count_estimated'] > spec['dead_count']):
+                        est_dead_is_valid = False
+                    if validated_data['event_type'] == mortality_morbidity.id:
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and spec['dead_count_estimated'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('dead_count' in spec and spec['dead_count'] is not None
+                              and spec['dead_count'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                              and spec['sick_count_estimated'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('sick_count' in spec and spec['sick_count'] is not None
+                              and spec['sick_count'] > 0):
+                            species_count_is_valid.append(True)
+                        else:
+                            species_count_is_valid.append(False)
+                    if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                        for specdiag in spec['new_species_diagnoses']:
+                            if 'basis' not in specdiag or specdiag['basis'] is None:
+                                specdiag_basis_is_valid = False
+                            if 'cause' not in specdiag or specdiag['cause'] is None:
+                                specdiag_cause_is_valid = False
+                    else:
+                        specdiag_basis_is_valid = False
+                        specdiag_cause_is_valid = False
+            if not end_date_is_valid:
+                details.append(location_message)
+            if False in species_count_is_valid:
+                message = "Each new_location_species requires at least one species count in any of these"
+                message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                details.append(message)
+            if not est_sick_is_valid:
+                details.append("Estimated sick count must always be more than known sick count.")
+            if not est_dead_is_valid:
+                details.append("Estimated dead count must always be more than known dead count.")
+            if not specdiag_basis_is_valid:
+                details.append("Each new_location_species requires a basis of diagnosis")
+            if not specdiag_cause_is_valid:
+                details.append("Each new_location_species requires a significance of diagnosis for species (cause)")
+            if details:
+                raise serializers.ValidationError(details)
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
@@ -781,6 +799,7 @@ class EventSerializer(serializers.ModelSerializer):
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
             #   and estimated_dead per species at the time of event completion.
             #   (sick + dead + estimated_sick + estimated_dead >= 1)
+            # 3. All child species diagnoses must have a basis and a cause
             locations = EventLocation.objects.filter(event=instance.id)
             location_message = "The event may not be marked complete until all of its locations have an end date"
             location_message += " and each location's end date is after that location's start date."
@@ -922,257 +941,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
             permission_source = ''
         return permission_source
 
-    # TODO: properly validate child objects too rather than naively trust submitted data
-    def validate(self, data):
-        if 'request' in self.context and self.context['request'].method == 'POST':
-            if 'new_event_locations' not in data:
-                raise serializers.ValidationError("new_event_locations is a required field")
-            # 1. Not every location needs a start date at initiation, but at least one location must.
-            # 2. Not every location needs a species at initiation, but at least one location must.
-            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
-            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #    and estimated_dead for at least one species in the event at the time of event initiation.
-            #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
-            # 7. Every location needs at least one comment, which must be one of the following types:
-            #    Site description, History, Environmental factors, Clinical signs
-            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
-            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
-            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
-            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
-            # 11. Location end date must be equal to or greater than start date.
-            if 'new_event_locations' in data:
-                country_admin_is_valid = True
-                latlng_is_valid = True
-                comments_is_valid = []
-                required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
-                min_start_date = False
-                start_date_is_valid = True
-                end_date_is_valid = True
-                min_location_species = False
-                min_species_count = False
-                pop_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if [i for i in required_comment_types if i in item and item[i]]:
-                        comments_is_valid.append(True)
-                    else:
-                        comments_is_valid.append(False)
-                    if 'start_date' in item and item['start_date'] is not None:
-                        try:
-                            datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
-                        min_start_date = True
-                        if (data['event_type'].id == mortality_morbidity.id
-                                and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
-                            start_date_is_valid = False
-                        if ('end_date' in item and item['end_date'] is not None
-                                and item['end_date'] < item['start_date']):
-                            end_date_is_valid = False
-                    elif 'end_date' in item and item['end_date'] is not None:
-                        end_date_is_valid = False
-                    if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
-                            and item['administrative_level_one'] is not None):
-                        country = Country.objects.filter(id=item['country']).first()
-                        adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
-                        if country.id != adminl1.country.id:
-                            country_admin_is_valid = False
-                        if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
-                            adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
-                            if adminl1.id != adminl2.administrative_level_one.id:
-                                country_admin_is_valid = False
-                    if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
-                         or item['administrative_level_one'] is None)
-                            and ('latitude' not in item or item['latitude'] is None
-                                 or 'longitude' not in item and item['longitude'] is None)):
-                        message = "country and administrative_level_one are required if latitude or longitude is null."
-                        details.append(message)
-                    if ('latitude' in item and item['latitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
-                        latlng_is_valid = False
-                    if ('longitude' in item and item['longitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
-                        latlng_is_valid = False
-                    if ('latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None
-                            and ('country' not in item or 'administrative_level_one' not in item)):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                                   'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                        if 'address' not in r.json() or 'geonames' not in r.json():
-                            latlng_is_valid = False
-                    if 'new_location_species' in item:
-                        for spec in item['new_location_species']:
-                            if 'species' in spec and spec['species'] is not None:
-                                if Species.objects.filter(id=spec['species']).first() is None:
-                                    message = "A submitted species ID (" + str(spec['species'])
-                                    message += ") in new_location_species was not found in the database."
-                                    details.append(message)
-                                else:
-                                    min_location_species = True
-                            if 'population_count' in spec and spec['population_count'] is not None:
-                                dead_count = 0
-                                sick_count = 0
-                                if 'dead_count_estimated' in spec or 'dead_count' in spec:
-                                    dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                if 'sick_count_estimated' in spec or 'sick_count' in spec:
-                                    sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                if spec['population_count'] >= dead_count + sick_count:
-                                    pop_is_valid.append(True)
-                                else:
-                                    pop_is_valid.append(False)
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_dead_is_valid = False
-                            if data['event_type'].id == mortality_morbidity.id:
-                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                        and spec['dead_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('dead_count' in spec and spec['dead_count'] is not None
-                                        and spec['dead_count'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                      and spec['sick_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count' in spec and spec['sick_count'] is not None
-                                      and spec['sick_count'] > 0):
-                                    min_species_count = True
-                    if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
-                        for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
-                                message = "A submitted contact ID (" + str(loc_contact['contact'])
-                                message += ") in new_location_contacts was not found in the database."
-                                details.append(message)
-                if not country_admin_is_valid:
-                    message = "administrative_level_one must belong to the submitted country,"
-                    message += " and administrative_level_two must belong to the submitted administrative_level_one."
-                    details.append(message)
-                if not start_date_is_valid:
-                    message = "If event_type is 'Mortality/Morbidity'"
-                    message += " start_date for a new event_location must be current date or earlier."
-                    details.append(message)
-                if not end_date_is_valid:
-                    details.append("end_date may not be before start_date.")
-                if not latlng_is_valid:
-                    message = "latitude and longitude must be in decimal degrees and represent a point in a country."
-                    details.append(message)
-                if False in comments_is_valid:
-                    message = "Each new_event_location requires at least one new_comment, which must be one of"
-                    message += " the following types: Site description, History, Environmental factors, Clinical signs"
-                    details.append(message)
-                if not min_start_date:
-                    details.append("start_date is required for at least one new event_location.")
-                if not min_location_species:
-                    details.append("Each new_event_location requires at least one new_location_species.")
-                if False in pop_is_valid:
-                    message = "new_location_species population_count cannot be less than the sum of dead_count"
-                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
-                    details.append(message)
-                if data['event_type'].id == mortality_morbidity.id and not min_species_count:
-                    message = "At least one new_location_species requires at least one species count in any of the"
-                    message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if details:
-                    raise serializers.ValidationError(details)
-
-        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same as or after Start Date.
-        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-        #   and estimated_dead per species at the time of event completion.
-        #   (sick + dead + estimated_sick + estimated_dead >= 1)
-        if 'complete' in data and data['complete'] is True:
-            location_message = "The event may not be marked complete until all of its locations have an end date"
-            location_message += " and each location's end date is after that location's start date."
-            if 'new_event_locations' not in data:
-                end_date_is_valid = True
-                if self.context['request'].method in ['PUT', 'PATCH']:
-                    evtlocs = EventLocation.objects.filter(event=self.instance.id)
-                    for item in evtlocs:
-                        if not item.end_date or item.end_date < item.start_date:
-                            end_date_is_valid = False
-                    if not end_date_is_valid:
-                        raise serializers.ValidationError(location_message)
-                else:
-                    raise serializers.ValidationError(location_message)
-            else:
-                end_date_is_valid = True
-                species_count_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if ('start_date' in item and item['start_date'] is not None
-                            and 'end_date' in item and item['end_date'] is not None):
-                        try:
-                            start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            start_date = datetime.now().date
-                            details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        try:
-                            end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            end_date = datetime.now().date() + timedelta(days=1)
-                            details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        if not start_date <= end_date:
-                            end_date_is_valid = False
-                    else:
-                        end_date_is_valid = False
-                    for spec in item['new_location_species']:
-                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                and 'sick_count' in spec and spec['sick_count'] is not None
-                                and not spec['sick_count_estimated'] > spec['sick_count']):
-                            est_sick_is_valid = False
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and 'dead_count' in spec and spec['dead_count'] is not None
-                                and not spec['dead_count_estimated'] > spec['dead_count']):
-                            est_dead_is_valid = False
-                        if data['event_type'] == mortality_morbidity.id:
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and spec['dead_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('dead_count' in spec and spec['dead_count'] is not None
-                                  and spec['dead_count'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                  and spec['sick_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count' in spec and spec['sick_count'] is not None
-                                  and spec['sick_count'] > 0):
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                if not end_date_is_valid:
-                    details.append(location_message)
-                if False in species_count_is_valid:
-                    message = "Each new_location_species requires at least one species count in any of these"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if details:
-                    raise serializers.ValidationError(details)
-
-        return data
-
     def create(self, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
@@ -1181,6 +949,275 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
+        if 'new_event_locations' not in validated_data:
+            raise serializers.ValidationError("new_event_locations is a required field")
+        # 1. Not every location needs a start date at initiation, but at least one location must.
+        # 2. Not every location needs a species at initiation, but at least one location must.
+        # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+        # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #    and estimated_dead for at least one species in the event at the time of event initiation.
+        #    (sick + dead + estimated_sick + estimated_dead >= 1)
+        # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
+        # 7. Every location needs at least one comment, which must be one of the following types:
+        #    Site description, History, Environmental factors, Clinical signs
+        # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+        #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+        #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+        # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+        # 10. Location start date cannot be after today if event type is Mortality/Morbidity
+        # 11. Location end date must be equal to or greater than start date.
+        # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        if 'new_event_locations' in validated_data:
+            country_admin_is_valid = True
+            latlng_is_valid = True
+            comments_is_valid = []
+            required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
+            min_start_date = False
+            start_date_is_valid = True
+            end_date_is_valid = True
+            min_location_species = False
+            min_species_count = False
+            pop_is_valid = []
+            est_sick_is_valid = True
+            est_dead_is_valid = True
+            specdiag_nonsuspect_basis_is_valid = True
+            details = []
+            mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+            for item in validated_data['new_event_locations']:
+                if [i for i in required_comment_types if i in item and item[i]]:
+                    comments_is_valid.append(True)
+                else:
+                    comments_is_valid.append(False)
+                if 'start_date' in item and item['start_date'] is not None:
+                    try:
+                        datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
+                    min_start_date = True
+                    if (validated_data['event_type'].id == mortality_morbidity.id
+                            and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
+                        start_date_is_valid = False
+                    if ('end_date' in item and item['end_date'] is not None
+                            and item['end_date'] < item['start_date']):
+                        end_date_is_valid = False
+                elif 'end_date' in item and item['end_date'] is not None:
+                    end_date_is_valid = False
+                if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
+                        and item['administrative_level_one'] is not None):
+                    country = Country.objects.filter(id=item['country']).first()
+                    adminl1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
+                    if country.id != adminl1.country.id:
+                        country_admin_is_valid = False
+                    if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
+                        adminl2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
+                        if adminl1.id != adminl2.administrative_level_one.id:
+                            country_admin_is_valid = False
+                if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
+                     or item['administrative_level_one'] is None)
+                        and ('latitude' not in item or item['latitude'] is None
+                             or 'longitude' not in item and item['longitude'] is None)):
+                    message = "country and administrative_level_one are required if latitude or longitude is null."
+                    details.append(message)
+                if ('latitude' in item and item['latitude'] is not None
+                        and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
+                    latlng_is_valid = False
+                if ('longitude' in item and item['longitude'] is not None
+                        and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
+                    latlng_is_valid = False
+                if ('latitude' in item and item['latitude'] is not None
+                        and 'longitude' in item and item['longitude'] is not None
+                        and ('country' not in item or 'administrative_level_one' not in item)):
+                    payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                               'username': GEONAMES_USERNAME}
+                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                    if 'address' not in r.json() or 'geonames' not in r.json():
+                        latlng_is_valid = False
+                if 'new_location_species' in item:
+                    for spec in item['new_location_species']:
+                        if 'species' in spec and spec['species'] is not None:
+                            if Species.objects.filter(id=spec['species']).first() is None:
+                                message = "A submitted species ID (" + str(spec['species'])
+                                message += ") in new_location_species was not found in the database."
+                                details.append(message)
+                            else:
+                                min_location_species = True
+                        if 'population_count' in spec and spec['population_count'] is not None:
+                            dead_count = 0
+                            sick_count = 0
+                            if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                                dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                            if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                                sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                            if spec['population_count'] >= dead_count + sick_count:
+                                pop_is_valid.append(True)
+                            else:
+                                pop_is_valid.append(False)
+                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                and 'sick_count' in spec and spec['sick_count'] is not None
+                                and not spec['sick_count_estimated'] > spec['sick_count']):
+                            est_sick_is_valid = False
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and 'dead_count' in spec and spec['dead_count'] is not None
+                                and not spec['dead_count_estimated'] > spec['dead_count']):
+                            est_dead_is_valid = False
+                        if validated_data['event_type'].id == mortality_morbidity.id:
+                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                    and spec['dead_count_estimated'] > 0):
+                                min_species_count = True
+                            elif ('dead_count' in spec and spec['dead_count'] is not None
+                                    and spec['dead_count'] > 0):
+                                min_species_count = True
+                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                                  and spec['sick_count_estimated'] > 0):
+                                min_species_count = True
+                            elif ('sick_count' in spec and spec['sick_count'] is not None
+                                  and spec['sick_count'] > 0):
+                                min_species_count = True
+                        if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                            for specdiag in spec['new_species_diagnoses']:
+                                if not specdiag['suspect']:
+                                    if specdiag['basis'] in [1, 2, 4]:
+                                        specdiag_nonsuspect_basis_is_valid = False
+                                    elif specdiag['basis'] == 3:
+                                        if ('new_species_diagnosis_organizations' in specdiag
+                                                and specdiag['new_species_diagnosis_organizations'] is not None):
+                                            org = Organization.objects.filter(
+                                                id=specdiag['new_species_diagnosis_organizations']).first()
+                                            if not org or not org.laboratory:
+                                                specdiag_nonsuspect_basis_is_valid = False
+                if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
+                    for loc_contact in item['new_location_contacts']:
+                        if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            message = "A submitted contact ID (" + str(loc_contact['contact'])
+                            message += ") in new_location_contacts was not found in the database."
+                            details.append(message)
+            if not country_admin_is_valid:
+                message = "administrative_level_one must belong to the submitted country,"
+                message += " and administrative_level_two must belong to the submitted administrative_level_one."
+                details.append(message)
+            if not start_date_is_valid:
+                message = "If event_type is 'Mortality/Morbidity'"
+                message += " start_date for a new event_location must be current date or earlier."
+                details.append(message)
+            if not end_date_is_valid:
+                details.append("end_date may not be before start_date.")
+            if not latlng_is_valid:
+                message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+                details.append(message)
+            if False in comments_is_valid:
+                message = "Each new_event_location requires at least one new_comment, which must be one of"
+                message += " the following types: Site description, History, Environmental factors, Clinical signs"
+                details.append(message)
+            if not min_start_date:
+                details.append("start_date is required for at least one new event_location.")
+            if not min_location_species:
+                details.append("Each new_event_location requires at least one new_location_species.")
+            if False in pop_is_valid:
+                message = "new_location_species population_count cannot be less than the sum of dead_count"
+                message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+                details.append(message)
+            if validated_data['event_type'].id == mortality_morbidity.id and not min_species_count:
+                message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
+                message += " count in any of the following fields:"
+                message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                details.append(message)
+            if not est_sick_is_valid:
+                details.append("Estimated sick count must always be more than known sick count.")
+            if not est_dead_is_valid:
+                details.append("Estimated dead count must always be more than known dead count.")
+            if not specdiag_nonsuspect_basis_is_valid:
+                message = "A non-suspect diagnosis can only have a basis of"
+                message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
+                message += " and only if that diagnosis has a related laboratory"
+                details.append(message)
+            if details:
+                raise serializers.ValidationError(details)
+
+        # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
+        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #   and estimated_dead per species at the time of event completion.
+        #   (sick + dead + estimated_sick + estimated_dead >= 1)
+        if 'complete' in validated_data and validated_data['complete'] is True:
+            location_message = "The event may not be marked complete until all of its locations have an end date"
+            location_message += " and each location's end date is after that location's start date."
+            end_date_is_valid = True
+            species_count_is_valid = []
+            est_sick_is_valid = True
+            est_dead_is_valid = True
+            specdiag_basis_is_valid = True
+            specdiag_cause_is_valid = True
+            details = []
+            mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+            for item in validated_data['new_event_locations']:
+                if ('start_date' in item and item['start_date'] is not None
+                        and 'end_date' in item and item['end_date'] is not None):
+                    try:
+                        start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                        start_date = datetime.now().date
+                        details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
+                    try:
+                        end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
+                    except ValueError:
+                        # use a fake date to prevent type comparison error in "if not start_date < end_date"
+                        end_date = datetime.now().date() + timedelta(days=1)
+                        details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
+                    if not start_date <= end_date:
+                        end_date_is_valid = False
+                else:
+                    end_date_is_valid = False
+                for spec in item['new_location_species']:
+                    if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                            and 'sick_count' in spec and spec['sick_count'] is not None
+                            and not spec['sick_count_estimated'] > spec['sick_count']):
+                        est_sick_is_valid = False
+                    if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                            and 'dead_count' in spec and spec['dead_count'] is not None
+                            and not spec['dead_count_estimated'] > spec['dead_count']):
+                        est_dead_is_valid = False
+                    if validated_data['event_type'] == mortality_morbidity.id:
+                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                                and spec['dead_count_estimated'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('dead_count' in spec and spec['dead_count'] is not None
+                              and spec['dead_count'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                              and spec['sick_count_estimated'] > 0):
+                            species_count_is_valid.append(True)
+                        elif ('sick_count' in spec and spec['sick_count'] is not None
+                              and spec['sick_count'] > 0):
+                            species_count_is_valid.append(True)
+                        else:
+                            species_count_is_valid.append(False)
+                    if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                        for specdiag in spec['new_species_diagnoses']:
+                            if 'basis' not in specdiag or specdiag['basis'] is None:
+                                specdiag_basis_is_valid = False
+                            if 'cause' not in specdiag or specdiag['cause'] is None:
+                                specdiag_cause_is_valid = False
+                    else:
+                        specdiag_basis_is_valid = False
+                        specdiag_cause_is_valid = False
+            if not end_date_is_valid:
+                details.append(location_message)
+            if False in species_count_is_valid:
+                message = "Each new_location_species requires at least one species count in any of these"
+                message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                details.append(message)
+            if not est_sick_is_valid:
+                details.append("Estimated sick count must always be more than known sick count.")
+            if not est_dead_is_valid:
+                details.append("Estimated dead count must always be more than known dead count.")
+            if not specdiag_basis_is_valid:
+                details.append("Each new_location_species requires a basis of diagnosis")
+            if not specdiag_cause_is_valid:
+                details.append("Each new_location_species requires a significance of diagnosis for species (cause)")
+            if details:
+                raise serializers.ValidationError(details)
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
                          'environmental_factors': 'Environmental factors', 'clinical_signs': 'Clinical signs',
@@ -1462,7 +1499,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         return event
 
-    # TODO: properly validate child objects too rather than naively trust submitted data
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
@@ -1496,6 +1532,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
             #   and estimated_dead per species at the time of event completion.
             #   (sick + dead + estimated_sick + estimated_dead >= 1)
+            # 3. All child species diagnoses must have a basis and a cause
             locations = EventLocation.objects.filter(event=instance.id)
             location_message = "The event may not be marked complete until all of its locations have an end date"
             location_message += " and each location's end date is after that location's start date."
@@ -1865,170 +1902,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
         message_complete = "Locations from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
-        # TODO: repeat this code block on all event.complete checks
-        if 'request' in self.context and self.context['request'].method == 'POST':
-
-            # if this is a new EventLocation check if the Event is complete
-            if data['event'].complete:
-                raise serializers.ValidationError(message_complete)
-
-            # 1. Not every location needs a start date at initiation, but at least one location must.
-            # 2. Not every location needs a species at initiation, but at least one location must.
-            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
-            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #    and estimated_dead for at least one species in the event at the time of event initiation.
-            #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
-            # 7. Every location needs at least one comment, which must be one of the following types:
-            #    Site description, History, Environmental factors, Clinical signs
-            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
-            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
-            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
-            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
-            # 11. Location end date must be equal to or greater than start date.
-            country_admin_is_valid = True
-            latlng_is_valid = True
-            comments_is_valid = []
-            required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
-            min_start_date = False
-            start_date_is_valid = True
-            end_date_is_valid = True
-            min_location_species = False
-            min_species_count = False
-            pop_is_valid = []
-            est_sick_is_valid = True
-            est_dead_is_valid = True
-            details = []
-            mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-            if [i for i in required_comment_types if i in data and data[i]]:
-                comments_is_valid.append(True)
-            else:
-                comments_is_valid.append(False)
-            if 'start_date' in data and data['start_date'] is not None:
-                min_start_date = True
-                if data['event'].event_type.id == mortality_morbidity.id and data['start_date'] > date.today():
-                    start_date_is_valid = False
-                if ('end_date' in data and data['end_date'] is not None
-                        and data['end_date'] < data['start_date']):
-                    end_date_is_valid = False
-            elif 'end_date' in data and data['end_date'] is not None:
-                end_date_is_valid = False
-            if ('country' in data and data['country'] is not None and 'administrative_level_one' in data
-                    and data['administrative_level_one'] is not None):
-                country = data['country']
-                adminl1 = data['administrative_level_one']
-                if country.id != adminl1.country.id:
-                    country_admin_is_valid = False
-                if 'administrative_level_two' in data and data['administrative_level_two'] is not None:
-                    adminl2 = data['administrative_level_two']
-                    if adminl1.id != adminl2.administrative_level_one.id:
-                        country_admin_is_valid = False
-            if (('country' not in data or data['country'] is None or 'administrative_level_one' not in data
-                 or data['administrative_level_one'] is None)
-                    and ('latitude' not in data or data['latitude'] is None
-                         or 'longitude' not in data and data['longitude'] is None)):
-                message = "country and administrative_level_one are required if latitude or longitude is null."
-                details.append(message)
-            if ('latitude' in data and data['latitude'] is not None
-                    and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(data['latitude']))):
-                latlng_is_valid = False
-            if ('longitude' in data and data['longitude'] is not None
-                    and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['longitude']))):
-                latlng_is_valid = False
-            if ('latitude' in data and data['latitude'] is not None
-                    and 'longitude' in data and data['longitude'] is not None
-                    and ('country' not in data or 'administrative_level_one' not in data)):
-                payload = {'lat': data['latitude'], 'lng': data['longitude'],
-                           'username': GEONAMES_USERNAME}
-                r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
-                if 'address' not in r.json() or 'geonames' not in r.json():
-                    latlng_is_valid = False
-            if 'new_location_species' in data:
-                for spec in data['new_location_species']:
-                    if 'species' in spec and spec['species'] is not None:
-                        if Species.objects.filter(id=spec['species']).first() is None:
-                            message = "A submitted species ID (" + str(spec['species'])
-                            message += ") in new_location_species was not found in the database."
-                            details.append(message)
-                        else:
-                            min_location_species = True
-                    if 'population_count' in spec and spec['population_count'] is not None:
-                        dead_count = 0
-                        sick_count = 0
-                        if 'dead_count_estimated' in spec or 'dead_count' in spec:
-                            dead_count = max(spec.get('dead_count_estimated') or 0,
-                                             spec.get('dead_count') or 0)
-                        if 'sick_count_estimated' in spec or 'sick_count' in spec:
-                            sick_count = max(spec.get('sick_count_estimated') or 0,
-                                             spec.get('sick_count') or 0)
-                        if spec['population_count'] >= dead_count + sick_count:
-                            pop_is_valid.append(True)
-                        else:
-                            pop_is_valid.append(False)
-                    if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                            and 'sick_count' in spec and spec['sick_count'] is not None
-                            and not spec['sick_count_estimated'] > spec['sick_count']):
-                        est_sick_is_valid = False
-                    if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                            and 'dead_count' in spec and spec['dead_count'] is not None
-                            and not spec['dead_count_estimated'] > spec['dead_count']):
-                        est_dead_is_valid = False
-                    if data['event'].event_type.id == mortality_morbidity.id:
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and spec['dead_count_estimated'] > 0):
-                            min_species_count = True
-                        elif ('dead_count' in spec and spec['dead_count'] is not None
-                              and spec['dead_count'] > 0):
-                            min_species_count = True
-                        elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                              and spec['sick_count_estimated'] > 0):
-                            min_species_count = True
-                        elif ('sick_count' in spec and spec['sick_count'] is not None
-                              and spec['sick_count'] > 0):
-                            min_species_count = True
-                if 'new_location_contacts' in data and data['new_location_contacts'] is not None:
-                    for loc_contact in data['new_location_contacts']:
-                        if Contact.objects.filter(id=loc_contact['contact']).first() is None:
-                            message = "A submitted contact ID (" + str(loc_contact['contact'])
-                            message += ") in new_location_contacts was not found in the database."
-                            details.append(message)
-            if not country_admin_is_valid:
-                message = "administrative_level_one must belong to the submitted country,"
-                message += " and administrative_level_two must belong to the submitted administrative_level_one."
-                details.append(message)
-            if not start_date_is_valid:
-                message = "If event_type is 'Mortality/Morbidity'"
-                message += " start_date for a new event_location must be current date or earlier."
-                details.append(message)
-            if not end_date_is_valid:
-                details.append("end_date may not be before start_date.")
-            if not latlng_is_valid:
-                message = "latitude and longitude must be in decimal degrees and represent a point in a country."
-                details.append(message)
-            if False in comments_is_valid:
-                message = "Each new_event_location requires at least one new_comment, which must be one of"
-                message += " the following types: Site description, History, Environmental factors, Clinical signs"
-                details.append(message)
-            if not min_start_date:
-                details.append("start_date is required for at least one new event_location.")
-            if not min_location_species:
-                details.append("Each new_event_location requires at least one new_location_species.")
-            if False in pop_is_valid:
-                message = "new_location_species population_count cannot be less than the sum of dead_count"
-                message += " and sick_count (where those counts are the maximum of the estimated or known count)."
-                details.append(message)
-            if data['event'].event_type.id == mortality_morbidity.id and not min_species_count:
-                message = "At least one new_location_species requires at least one species count in any of the"
-                message += " following fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                details.append(message)
-            if not est_sick_is_valid:
-                details.append("Estimated sick count must always be more than known sick count.")
-            if not est_dead_is_valid:
-                details.append("Estimated dead count must always be more than known dead count.")
-            if details:
-                raise serializers.ValidationError(details)
+        # if this is a new EventLocation check if the Event is complete
+        if 'request' in self.context and self.context['request'].method == 'POST' and data['event'].complete:
+            raise serializers.ValidationError(message_complete)
 
         # else this is an existing EventLocation so check if this is an update and if parent Event is complete
         elif self.context['request'].method in ['PUT', 'PATCH'] and self.instance.event.complete:
@@ -2044,6 +1920,186 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+
+        # 1. Not every location needs a start date at initiation, but at least one location must.
+        # 2. Not every location needs a species at initiation, but at least one location must.
+        # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+        # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #    and estimated_dead for at least one species in the event at the time of event initiation.
+        #    (sick + dead + estimated_sick + estimated_dead >= 1)
+        # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
+        # 7. Every location needs at least one comment, which must be one of the following types:
+        #    Site description, History, Environmental factors, Clinical signs
+        # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
+        #    if county is null.  Update state and country if state is null. If don't enter country, state, and
+        #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
+        # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
+        # 10. Location start date cannot be after today if event type is Mortality/Morbidity
+        # 11. Location end date must be equal to or greater than start date.
+        # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        country_admin_is_valid = True
+        latlng_is_valid = True
+        comments_is_valid = []
+        required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
+        min_start_date = False
+        start_date_is_valid = True
+        end_date_is_valid = True
+        min_location_species = False
+        min_species_count = False
+        pop_is_valid = []
+        est_sick_is_valid = True
+        est_dead_is_valid = True
+        specdiag_nonsuspect_basis_is_valid = True
+        details = []
+        mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+        if [i for i in required_comment_types if i in validated_data and validated_data[i]]:
+            comments_is_valid.append(True)
+        else:
+            comments_is_valid.append(False)
+        if 'start_date' in validated_data and validated_data['start_date'] is not None:
+            min_start_date = True
+            if (validated_data['event'].event_type.id == mortality_morbidity.id
+                    and validated_data['start_date'] > date.today()):
+                start_date_is_valid = False
+            if ('end_date' in validated_data and validated_data['end_date'] is not None
+                    and validated_data['end_date'] < validated_data['start_date']):
+                end_date_is_valid = False
+        elif 'end_date' in validated_data and validated_data['end_date'] is not None:
+            end_date_is_valid = False
+        if ('country' in validated_data and validated_data['country'] is not None
+                and 'administrative_level_one' in validated_data
+                and validated_data['administrative_level_one'] is not None):
+            country = validated_data['country']
+            adminl1 = validated_data['administrative_level_one']
+            if country.id != adminl1.country.id:
+                country_admin_is_valid = False
+            if 'administrative_level_two' in validated_data and validated_data['administrative_level_two'] is not None:
+                adminl2 = validated_data['administrative_level_two']
+                if adminl1.id != adminl2.administrative_level_one.id:
+                    country_admin_is_valid = False
+        if (('country' not in validated_data or validated_data['country'] is None
+             or 'administrative_level_one' not in validated_data or validated_data['administrative_level_one'] is None)
+                and ('latitude' not in validated_data or validated_data['latitude'] is None
+                     or 'longitude' not in validated_data and validated_data['longitude'] is None)):
+            message = "country and administrative_level_one are required if latitude or longitude is null."
+            details.append(message)
+        if ('latitude' in validated_data and validated_data['latitude'] is not None
+                and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(validated_data['latitude']))):
+            latlng_is_valid = False
+        if ('longitude' in validated_data and validated_data['longitude'] is not None
+                and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(validated_data['longitude']))):
+            latlng_is_valid = False
+        if ('latitude' in validated_data and validated_data['latitude'] is not None
+                and 'longitude' in validated_data and validated_data['longitude'] is not None
+                and ('country' not in validated_data or 'administrative_level_one' not in validated_data)):
+            payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
+                       'username': GEONAMES_USERNAME}
+            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+            if 'address' not in r.json() or 'geonames' not in r.json():
+                latlng_is_valid = False
+        if 'new_location_species' in validated_data:
+            for spec in validated_data['new_location_species']:
+                if 'species' in spec and spec['species'] is not None:
+                    if Species.objects.filter(id=spec['species']).first() is None:
+                        message = "A submitted species ID (" + str(spec['species'])
+                        message += ") in new_location_species was not found in the database."
+                        details.append(message)
+                    else:
+                        min_location_species = True
+                if 'population_count' in spec and spec['population_count'] is not None:
+                    dead_count = 0
+                    sick_count = 0
+                    if 'dead_count_estimated' in spec or 'dead_count' in spec:
+                        dead_count = max(spec.get('dead_count_estimated') or 0,
+                                         spec.get('dead_count') or 0)
+                    if 'sick_count_estimated' in spec or 'sick_count' in spec:
+                        sick_count = max(spec.get('sick_count_estimated') or 0,
+                                         spec.get('sick_count') or 0)
+                    if spec['population_count'] >= dead_count + sick_count:
+                        pop_is_valid.append(True)
+                    else:
+                        pop_is_valid.append(False)
+                if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                        and 'sick_count' in spec and spec['sick_count'] is not None
+                        and not spec['sick_count_estimated'] > spec['sick_count']):
+                    est_sick_is_valid = False
+                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                        and 'dead_count' in spec and spec['dead_count'] is not None
+                        and not spec['dead_count_estimated'] > spec['dead_count']):
+                    est_dead_is_valid = False
+                if validated_data['event'].event_type.id == mortality_morbidity.id:
+                    if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
+                            and spec['dead_count_estimated'] > 0):
+                        min_species_count = True
+                    elif ('dead_count' in spec and spec['dead_count'] is not None
+                          and spec['dead_count'] > 0):
+                        min_species_count = True
+                    elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
+                          and spec['sick_count_estimated'] > 0):
+                        min_species_count = True
+                    elif ('sick_count' in spec and spec['sick_count'] is not None
+                          and spec['sick_count'] > 0):
+                        min_species_count = True
+                if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                    for specdiag in spec['new_species_diagnoses']:
+                        if not specdiag['suspect']:
+                            if specdiag['basis'] in [1, 2, 4]:
+                                specdiag_nonsuspect_basis_is_valid = False
+                            elif specdiag['basis'] == 3:
+                                if ('new_species_diagnosis_organizations' in specdiag
+                                        and specdiag['new_species_diagnosis_organizations'] is not None):
+                                    org = Organization.objects.filter(
+                                        id=specdiag['new_species_diagnosis_organizations']).first()
+                                    if not org or not org.laboratory:
+                                        specdiag_nonsuspect_basis_is_valid = False
+            if 'new_location_contacts' in validated_data and validated_data['new_location_contacts'] is not None:
+                for loc_contact in validated_data['new_location_contacts']:
+                    if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                        message = "A submitted contact ID (" + str(loc_contact['contact'])
+                        message += ") in new_location_contacts was not found in the database."
+                        details.append(message)
+        if not country_admin_is_valid:
+            message = "administrative_level_one must belong to the submitted country,"
+            message += " and administrative_level_two must belong to the submitted administrative_level_one."
+            details.append(message)
+        if not start_date_is_valid:
+            message = "If event_type is 'Mortality/Morbidity'"
+            message += " start_date for a new event_location must be current date or earlier."
+            details.append(message)
+        if not end_date_is_valid:
+            details.append("end_date may not be before start_date.")
+        if not latlng_is_valid:
+            message = "latitude and longitude must be in decimal degrees and represent a point in a country."
+            details.append(message)
+        if False in comments_is_valid:
+            message = "Each new_event_location requires at least one new_comment, which must be one of"
+            message += " the following types: Site description, History, Environmental factors, Clinical signs"
+            details.append(message)
+        if not min_start_date:
+            details.append("start_date is required for at least one new event_location.")
+        if not min_location_species:
+            details.append("Each new_event_location requires at least one new_location_species.")
+        if False in pop_is_valid:
+            message = "new_location_species population_count cannot be less than the sum of dead_count"
+            message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+            details.append(message)
+        if validated_data['event'].event_type.id == mortality_morbidity.id and not min_species_count:
+            message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
+            message += " count in any of the following fields:"
+            message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+            details.append(message)
+        if not est_sick_is_valid:
+            details.append("Estimated sick count must always be more than known sick count.")
+        if not est_dead_is_valid:
+            details.append("Estimated dead count must always be more than known dead count.")
+        if not specdiag_nonsuspect_basis_is_valid:
+            message = "A non-suspect diagnosis can only have a basis of"
+            message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
+            message += " and only if that diagnosis has a related laboratory"
+            details.append(message)
+        if details:
+            raise serializers.ValidationError(details)
 
         flyway = None
 
@@ -2528,11 +2584,29 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
-        species_count_is_valid = []
+        # 1. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
+        #    and estimated_dead for at least one species in the event at the time of event initiation.
+        #    (sick + dead + estimated_sick + estimated_dead >= 1)
+        # 3. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+        # 4. If present, estimated dead must be higher than known dead (estimated_dead > dead).
+        min_species_count = False
+        pop_is_valid = []
         est_sick_is_valid = True
         est_dead_is_valid = True
         details = []
 
+        if 'population_count' in data and data['population_count'] is not None:
+            dead_count = 0
+            sick_count = 0
+            if 'dead_count_estimated' in data or 'dead_count' in data:
+                dead_count = max(data.get('dead_count_estimated') or 0, data.get('dead_count') or 0)
+            if 'sick_count_estimated' in data or 'sick_count' in data:
+                sick_count = max(data.get('sick_count_estimated') or 0, data.get('sick_count') or 0)
+            if data['population_count'] >= dead_count + sick_count:
+                pop_is_valid.append(True)
+            else:
+                pop_is_valid.append(False)
         if ('sick_count_estimated' in data and data['sick_count_estimated'] is not None
                 and 'sick_count' in data and data['sick_count'] is not None
                 and not data['sick_count_estimated'] > data['sick_count']):
@@ -2541,26 +2615,33 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 and 'dead_count' in data and data['dead_count'] is not None
                 and not data['dead_count_estimated'] > data['dead_count']):
             est_dead_is_valid = False
-        if (data['event_location'].event.event_type.id == EventType.objects.filter(
-                name='Mortality/Morbidity').first().id):
-            if ('dead_count_estimated' in data and data['dead_count_estimated'] is not None
-                    and data['dead_count_estimated'] > 0):
-                species_count_is_valid.append(True)
-            elif ('dead_count' in data and data['dead_count'] is not None
-                  and data['dead_count'] > 0):
-                species_count_is_valid.append(True)
-            elif ('sick_count_estimated' in data and data['sick_count_estimated'] is not None
-                  and data['sick_count_estimated'] > 0):
-                species_count_is_valid.append(True)
-            elif ('sick_count' in data and data['sick_count'] is not None
-                  and data['sick_count'] > 0):
-                species_count_is_valid.append(True)
-            else:
-                species_count_is_valid.append(False)
+        mm = EventType.objects.filter(name='Mortality/Morbidity').first()
+        mm_locspecs = None
+        if data['event_location'].event.event_type.id == mm.id:
+            locspecs = LocationSpecies.objects.filter(event_location=data['event_location'].id)
+            mm_locspecs = [locspec for locspec in locspecs if locspec.event_location.event.event_type.id == mm.id]
+            if mm_locspecs is None:
+                if ('dead_count_estimated' in data and data['dead_count_estimated'] is not None
+                        and data['dead_count_estimated'] > 0):
+                    min_species_count = True
+                elif ('dead_count' in data and data['dead_count'] is not None
+                      and data['dead_count'] > 0):
+                    min_species_count = True
+                elif ('sick_count_estimated' in data and data['sick_count_estimated'] is not None
+                      and data['sick_count_estimated'] > 0):
+                    min_species_count = True
+                elif ('sick_count' in data and data['sick_count'] is not None
+                      and data['sick_count'] > 0):
+                    min_species_count = True
 
-        if False in species_count_is_valid:
-            message = "Each new_location_species requires at least one species count in any of these"
-            message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+        if False in pop_is_valid:
+            message = "New location_species population_count cannot be less than the sum of dead_count"
+            message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+            details.append(message)
+        if data['event_location'].event.event_type.id == mm.id and mm_locspecs is None and not min_species_count:
+            message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
+            message += " count in any of the following fields:"
+            message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
             details.append(message)
         if not est_sick_is_valid:
             details.append("Estimated sick count must always be more than known sick count.")
