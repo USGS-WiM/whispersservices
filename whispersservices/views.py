@@ -83,8 +83,6 @@ class AuthLastLoginMixin(object):
     This class will update the user's last_login field each time a request is received
     """
 
-    # permission_classes = (permissions.IsAuthenticated,)
-
     def finalize_response(self, request, *args, **kwargs):
         user = request.user
         if user.is_authenticated:
@@ -98,6 +96,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
     """
 
+    permission_classes = (DRYPermissions,)
     pagination_class = StandardResultsSetPagination
     filter_backends = (filters.OrderingFilter,)
 
@@ -116,17 +115,11 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
 class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
-    This class will automatically assign the User ID to the created_by and modified_by history fields when appropriate
+    This class will only allow GET requests (list and retrieve)
     """
 
     pagination_class = StandardResultsSetPagination
     filter_backends = (filters.OrderingFilter,)
-
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, modified_by=self.request.user)
-
-    def perform_update(self, serializer):
-        serializer.save(modified_by=self.request.user)
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
@@ -143,7 +136,6 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
 
 class EventViewSet(HistoryViewSet):
-    permission_classes = (DRYPermissions,)
 
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
@@ -378,7 +370,6 @@ class EventContactViewSet(HistoryViewSet):
 
 
 class EventLocationViewSet(HistoryViewSet):
-    permission_classes = (DRYPermissions,)
     queryset = EventLocation.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -436,7 +427,6 @@ class CountryViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
-    # serializer_class = AdministrativeLevelOneSerializer
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
@@ -454,7 +444,6 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
-    # serializer_class = AdministrativeLevelTwoSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -555,7 +544,6 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 class SpeciesViewSet(HistoryViewSet):
     queryset = Species.objects.all()
-    # serializer_class = SpeciesSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -616,7 +604,6 @@ class DiagnosisTypeViewSet(HistoryViewSet):
 
 
 class EventDiagnosisViewSet(HistoryViewSet):
-    permission_classes = (DRYPermissions,)
     queryset = EventDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -656,7 +643,6 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
-    permission_classes = (DRYPermissions,)
     queryset = SpeciesDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -748,7 +734,6 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 
 class CommentViewSet(HistoryViewSet):
-    # queryset = Comment.objects.all()
     serializer_class = CommentSerializer
 
     def get_queryset(self):
@@ -819,8 +804,6 @@ class UserViewSet(HistoryViewSet):
         else:
             return Contact.objects.none()
 
-        # never return the superuser(s)
-        # queryset = queryset.exclude(is_superuser=True)
         # filter by username, exact
         username = self.request.query_params.get('username', None)
         if username is not None:
@@ -835,30 +818,6 @@ class UserViewSet(HistoryViewSet):
         if email is not None:
             queryset = queryset.filter(organization__exact=organization)
         return queryset
-
-        # # do not allow an anonymous user to see anything at all
-        # if not user.is_authenticated:
-        #     return User.objects.none()
-        # # do not allow a public user to see anything except their own user data
-        # if user.role.is_public:
-        #     return user
-        # else:
-        #     # never return the superuser(s)
-        #     queryset = User.objects.all().exclude(is_superuser=True)
-        #     # filter by username, exact
-        #     username = self.request.query_params.get('username', None)
-        #     if username is not None:
-        #         queryset = queryset.filter(username__exact=username)
-        #     email = self.request.query_params.get('email', None)
-        #     if email is not None:
-        #         queryset = queryset.filter(email__exact=email)
-        #     role = self.request.query_params.get('role', None)
-        #     if role is not None:
-        #         queryset = queryset.filter(role__exact=role)
-        #     organization = self.request.query_params.get('organization', None)
-        #     if email is not None:
-        #         queryset = queryset.filter(organization__exact=organization)
-        #     return queryset
 
 
 class AuthView(views.APIView):
@@ -884,7 +843,6 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
-    # serializer_class = OrganizationSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -954,7 +912,6 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
-    # serializer_class = ContactSerializer
 
     @action(detail=False)
     def user_contacts(self, request):
@@ -1032,7 +989,7 @@ class ContactTypeViewSet(HistoryViewSet):
     serializer_class = ContactTypeSerializer
 
 
-class SearchViewSet(viewsets.ModelViewSet):
+class SearchViewSet(HistoryViewSet):
     serializer_class = SearchSerializer
 
     @action(detail=False)
@@ -1268,18 +1225,18 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             not_search_params = ['no_page', 'page', 'format', 'slim']
             [ordered_query_params.popitem(param) for param in ordered_query_params_static if param in not_search_params]
             if len(ordered_query_params) > 0:
+                admin_user = User.objects.get(pk=1)
                 if not user.is_authenticated:
-                    admin_user = User.objects.get(pk=1)
                     search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
                 else:
                     search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
                 if not search:
                     if not user.is_authenticated:
-                        admin_user = User.objects.get(pk=1)
                         search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
                     else:
                         search = Search.objects.create(data=ordered_query_params, created_by=user)
                 search.count += 1
+                search.modified_by = admin_user if not user.is_authenticated else user
                 search.save()
 
         # then proceed to build the queryset
@@ -1526,8 +1483,6 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
-    permission_classes = (DRYPermissions,)
-    # queryset = Event.objects.all()
 
     @action(detail=True)
     def flat(self, request, pk):
