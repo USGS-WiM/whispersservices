@@ -51,7 +51,6 @@ class HistoryNameModel(HistoryModel):
         abstract = True
 
 
-# TODO: impose read-only permissions on lookup tables except for admins
 class PermissionsHistoryModel(HistoryModel):
     """
     An abstract base class model for the common permissions.
@@ -1239,6 +1238,7 @@ class Contact(PermissionsHistoryModel):
     first_name = models.CharField(max_length=128, blank=True, default='')
     last_name = models.CharField(max_length=128, blank=True, default='')
     email = models.CharField(max_length=128, blank=True, default='')
+    # email = models.CharField(max_length=128, null=True, blank=True, default=None, unique=True)  # COMMENT: this can only be applied after the cooperator fixes their duplicate records
     phone = models.TextField(blank=True, default='')
     affiliation = models.TextField(blank=True, default='')
     title = models.CharField(max_length=128, blank=True, default='')
