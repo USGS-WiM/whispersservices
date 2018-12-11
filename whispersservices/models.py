@@ -835,7 +835,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     @property
     def cause_string(self):
         """Returns cause name of the record, appended with word 'suspect' if record has suspect=True"""
-        return str(self.cause) + " suspect" if self.suspect and self.cause else str(self.cause) if self.cause else ''
+        return 'Suspect ' + str(self.cause) if self.suspect and self.cause else str(self.cause) if self.cause else ''
 
     location_species = models.ForeignKey('LocationSpecies', models.CASCADE, related_name='speciesdiagnoses')
     diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='speciesdiagnoses')
