@@ -245,6 +245,7 @@ class EventSerializer(serializers.ModelSerializer):
         # 10. Location start date cannot be after today if event type is Mortality/Morbidity
         # 11. Location end date must be equal to or greater than start date.
         # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        # 13: A diagnosis can only be used once for a location-species-labID combination
         if 'new_event_locations' in validated_data:
             country_admin_is_valid = True
             latlng_is_valid = True
@@ -259,6 +260,7 @@ class EventSerializer(serializers.ModelSerializer):
             est_sick_is_valid = True
             est_dead_is_valid = True
             specdiag_nonsuspect_basis_is_valid = True
+            specdiag_lab_is_valid = True
             details = []
             mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
             for item in validated_data['new_event_locations']:
@@ -352,7 +354,10 @@ class EventSerializer(serializers.ModelSerializer):
                                   and spec['sick_count'] > 0):
                                 min_species_count = True
                         if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                            specdiag_labs = []
                             for specdiag in spec['new_species_diagnoses']:
+                                [specdiag_labs.append(specdiag_lab) for specdiag_lab in
+                                 specdiag['new_species_diagnosis_organizations']]
                                 if not specdiag['suspect']:
                                     if specdiag['basis'] in [1, 2, 4]:
                                         specdiag_nonsuspect_basis_is_valid = False
@@ -363,6 +368,8 @@ class EventSerializer(serializers.ModelSerializer):
                                                 id=specdiag['new_species_diagnosis_organizations']).first()
                                             if not org or not org.laboratory:
                                                 specdiag_nonsuspect_basis_is_valid = False
+                            if len(specdiag_labs) != len(set(specdiag_labs)):
+                                specdiag_lab_is_valid = False
                 if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                     for loc_contact in item['new_location_contacts']:
                         if Contact.objects.filter(id=loc_contact['contact']).first() is None:
@@ -395,8 +402,8 @@ class EventSerializer(serializers.ModelSerializer):
                 message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                 details.append(message)
             if validated_data['event_type'].id == mortality_morbidity.id and not min_species_count:
-                message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
-                message += " count in any of the following fields:"
+                message = "For Mortality/Morbidity events, at least one new_location_species requires"
+                message += " at least one species count in any of the following fields:"
                 message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                 details.append(message)
             if not est_sick_is_valid:
@@ -407,6 +414,9 @@ class EventSerializer(serializers.ModelSerializer):
                 message = "A non-suspect diagnosis can only have a basis of"
                 message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
                 message += " and only if that diagnosis has a related laboratory"
+                details.append(message)
+            if not specdiag_lab_is_valid:
+                message = "A diagnosis can only be used once for any combination of a location, species, and lab."
                 details.append(message)
             if details:
                 raise serializers.ValidationError(details)
@@ -979,6 +989,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # 10. Location start date cannot be after today if event type is Mortality/Morbidity
         # 11. Location end date must be equal to or greater than start date.
         # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        # 13: A diagnosis can only be used once for a location-species-labID combination
         if 'new_event_locations' in validated_data:
             country_admin_is_valid = True
             latlng_is_valid = True
@@ -993,6 +1004,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             est_sick_is_valid = True
             est_dead_is_valid = True
             specdiag_nonsuspect_basis_is_valid = True
+            specdiag_lab_is_valid = True
             details = []
             mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
             for item in validated_data['new_event_locations']:
@@ -1086,7 +1098,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                   and spec['sick_count'] > 0):
                                 min_species_count = True
                         if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                            specdiag_labs = []
                             for specdiag in spec['new_species_diagnoses']:
+                                [specdiag_labs.append(specdiag_lab) for specdiag_lab in
+                                 specdiag['new_species_diagnosis_organizations']]
                                 if not specdiag['suspect']:
                                     if specdiag['basis'] in [1, 2, 4]:
                                         specdiag_nonsuspect_basis_is_valid = False
@@ -1097,6 +1112,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                 id=specdiag['new_species_diagnosis_organizations']).first()
                                             if not org or not org.laboratory:
                                                 specdiag_nonsuspect_basis_is_valid = False
+                            if len(specdiag_labs) != len(set(specdiag_labs)):
+                                specdiag_lab_is_valid = False
                 if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                     for loc_contact in item['new_location_contacts']:
                         if Contact.objects.filter(id=loc_contact['contact']).first() is None:
@@ -1129,8 +1146,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                 details.append(message)
             if validated_data['event_type'].id == mortality_morbidity.id and not min_species_count:
-                message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
-                message += " count in any of the following fields:"
+                message = "For Mortality/Morbidity events, at least one new_location_species requires"
+                message += " at least one species count in any of the following fields:"
                 message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                 details.append(message)
             if not est_sick_is_valid:
@@ -1141,6 +1158,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 message = "A non-suspect diagnosis can only have a basis of"
                 message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
                 message += " and only if that diagnosis has a related laboratory"
+                details.append(message)
+            if not specdiag_lab_is_valid:
+                message = "A diagnosis can only be used once for any combination of a location, species, and lab."
                 details.append(message)
             if details:
                 raise serializers.ValidationError(details)
@@ -1954,6 +1974,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # 10. Location start date cannot be after today if event type is Mortality/Morbidity
         # 11. Location end date must be equal to or greater than start date.
         # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
+        # 13: A diagnosis can only be used once for a location-species-labID combination
         country_admin_is_valid = True
         latlng_is_valid = True
         comments_is_valid = []
@@ -1967,6 +1988,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         est_sick_is_valid = True
         est_dead_is_valid = True
         specdiag_nonsuspect_basis_is_valid = True
+        specdiag_lab_is_valid = True
         details = []
         mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
         if [i for i in required_comment_types if i in validated_data and validated_data[i]]:
@@ -2058,7 +2080,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                           and spec['sick_count'] > 0):
                         min_species_count = True
                 if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
+                    specdiag_labs = []
                     for specdiag in spec['new_species_diagnoses']:
+                        [specdiag_labs.append(specdiag_lab) for specdiag_lab in
+                         specdiag['new_species_diagnosis_organizations']]
                         if not specdiag['suspect']:
                             if specdiag['basis'] in [1, 2, 4]:
                                 specdiag_nonsuspect_basis_is_valid = False
@@ -2069,6 +2094,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                         id=specdiag['new_species_diagnosis_organizations']).first()
                                     if not org or not org.laboratory:
                                         specdiag_nonsuspect_basis_is_valid = False
+                    if len(specdiag_labs) != len(set(specdiag_labs)):
+                        specdiag_lab_is_valid = False
             if 'new_location_contacts' in validated_data and validated_data['new_location_contacts'] is not None:
                 for loc_contact in validated_data['new_location_contacts']:
                     if Contact.objects.filter(id=loc_contact['contact']).first() is None:
@@ -2113,6 +2140,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
             message = "A non-suspect diagnosis can only have a basis of"
             message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
             message += " and only if that diagnosis has a related laboratory"
+            details.append(message)
+        if not specdiag_lab_is_valid:
+            message = "A diagnosis can only be used once for any combination of a location, species, and lab."
             details.append(message)
         if details:
             raise serializers.ValidationError(details)
