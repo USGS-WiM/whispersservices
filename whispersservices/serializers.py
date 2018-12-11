@@ -3143,7 +3143,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             # first update self priority then update this specdiag priority
             if not self_priority_updated:
                 # first check if self diagnosis cause is equal to this specdiag diagnosis cause
-                if species_diagnosis.cause and species_diagnosis.cause.id == specdiag.cause.id:
+                if species_diagnosis.cause and specdiag.cause and species_diagnosis.cause.id == specdiag.cause.id:
                     if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
                         species_diagnosis.priority = priority
                         priority += 1
@@ -3153,7 +3153,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                         priority += 1
                         self_priority_updated = True
                 # else check if self diagnosis cause is less than this specdiag diagnosis cause
-                elif species_diagnosis.cause and species_diagnosis.cause.id < specdiag.cause.id:
+                elif species_diagnosis.cause and specdiag.cause and species_diagnosis.cause.id < specdiag.cause.id:
                     if species_diagnosis.diagnosis.name == specdiag.diagnosis.name:
                         species_diagnosis.priority = priority
                         priority += 1
@@ -3260,7 +3260,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             # first update self priority then update this specdiag priority
             if not self_priority_updated:
                 # first check if self diagnosis cause is equal to this specdiag diagnosis cause
-                if instance.cause.id == specdiag.cause.id:
+                if instance.cause and specdiag.cause and instance.cause.id == specdiag.cause.id:
                     if instance.diagnosis.name == specdiag.diagnosis.name:
                         instance.priority = priority
                         priority += 1
@@ -3270,7 +3270,17 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                         priority += 1
                         self_priority_updated = True
                 # else check if self diagnosis cause is less than this specdiag diagnosis cause
-                elif instance.cause.id < specdiag.cause.id:
+                elif instance.cause and specdiag.cause and instance.cause.id < specdiag.cause.id:
+                    if instance.diagnosis.name == specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                    elif instance.diagnosis.name < specdiag.diagnosis.name:
+                        instance.priority = priority
+                        priority += 1
+                        self_priority_updated = True
+                        # else check if both self diagnosis cause and this specdiag diagnosis cause are null
+                elif instance.cause is None and specdiag.cause is None:
                     if instance.diagnosis.name == specdiag.diagnosis.name:
                         instance.priority = priority
                         priority += 1
