@@ -334,8 +334,6 @@ class CommentSerializer(serializers.ModelSerializer):
         # if they really need to make such a change, they should delete the comment and create a new one
         instance.comment = validated_data.get('comment', instance.comment)
         instance.comment_type = validated_data.get('comment_type', instance.comment_type)
-        instance.object_id = instance.object_id
-        instance.new_content_type = instance.content_type
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modifed_by)
 
         instance.save()
@@ -1007,11 +1005,13 @@ class EventSerializer(serializers.ModelSerializer):
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = event_diagnosis.pop('diagnosis', None)
                     if diagnosis_id in valid_diagnosis_ids:
+                        # ensure this new event diagnosis has the correct suspect value
+                        # (false if any matching species diagnoses are false, otherwise true)
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        matching_specdiag_suspect = SpeciesDiagnosis.objects.filter(
+                        matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
                             location_species__event_location__event=event.id, diagnosis=diagnosis_id
-                        ).values_list('suspect', flat=True).first()
-                        suspect = matching_specdiag_suspect if matching_specdiag_suspect is not None else True
+                        ).values_list('suspect', flat=True)
+                        suspect = False if False in matching_specdiags_suspect else True
                         event_diagnosis = EventDiagnosis.objects.create(**event_diagnosis, event=event,
                                                                         diagnosis=diagnosis, suspect=suspect,
                                                                         created_by=user, modified_by=user)
@@ -1140,13 +1140,6 @@ class EventSerializer(serializers.ModelSerializer):
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
         instance.complete = validated_data.get('complete', instance.complete)
-        instance.start_date = validated_data.get('start_date', instance.start_date)
-        instance.end_date = validated_data.get('end_date', instance.end_date)
-        instance.affected_count = validated_data.get('affected_count', instance.affected_count)
-        instance.staff = instance.staff
-        instance.event_status = instance.event_status
-        instance.legal_status = instance.legal_status
-        instance.legal_number = instance.legal_number
         instance.public = validated_data.get('public', instance.public)
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
@@ -1771,11 +1764,13 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
                     if diagnosis_id in valid_diagnosis_ids:
+                        # ensure this new event diagnosis has the correct suspect value
+                        # (false if any matching species diagnoses are false, otherwise true)
                         diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-                        matching_specdiag_suspect = SpeciesDiagnosis.objects.filter(
+                        matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
                             location_species__event_location__event=event.id, diagnosis=diagnosis_id
-                        ).values_list('suspect', flat=True).first()
-                        suspect = matching_specdiag_suspect if matching_specdiag_suspect is not None else True
+                        ).values_list('suspect', flat=True)
+                        suspect = False if False in matching_specdiags_suspect else True
                         event_diagnosis = EventDiagnosis.objects.create(**event_diagnosis, event=event,
                                                                         diagnosis=diagnosis, suspect=suspect,
                                                                         created_by=user, modified_by=user)
@@ -1906,9 +1901,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
         instance.complete = validated_data.get('complete', instance.complete)
-        instance.start_date = validated_data.get('start_date', instance.start_date)
-        instance.end_date = validated_data.get('end_date', instance.end_date)
-        instance.affected_count = validated_data.get('affected_count', instance.affected_count)
         instance.staff = validated_data.get('staff', instance.staff)
         instance.event_status = validated_data.get('event_status', instance.event_status)
         instance.quality_check = validated_data.get('quality_check', instance.quality_check)
@@ -2096,7 +2088,6 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
         else:
             user = None
 
-        instance.event = validated_data.get('event', instance.event)
         instance.organization = validated_data.get('organization', instance.organization)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
@@ -2569,9 +2560,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
         if 'new_location_species' in validated_data:
             validated_data.pop('new_location_species')
 
+        # TODO: consider updating flyway if lat/lng or country/state/county change
         # update the EventLocation object
         instance.name = validated_data.get('name', instance.name)
-        instance.event = validated_data.get('event', instance.event)
         instance.start_date = validated_data.get('start_date', instance.start_date)
         instance.end_date = validated_data.get('end_date', instance.end_date)
         instance.country = validated_data.get('country', instance.country)
@@ -2846,7 +2837,6 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
             user = None
 
         # update the LocationSpecies object
-        instance.event_location = validated_data.get('event_location', instance.event_location)
         instance.species = validated_data.get('species', instance.species)
         instance.population_count = validated_data.get('population_count', instance.population_count)
         instance.sick_count = validated_data.get('sick_count', instance.sick_count)
@@ -3011,6 +3001,19 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # if validated_data['event'].complete and validated_data['diagnosis'] == undetermined.id:
         #     [evt_diag.delete() for evt_diag in get_event_diagnoses()]
 
+        # ensure this new event diagnosis has the correct suspect value
+        # (false if any matching species diagnoses are false, otherwise true)
+        event = validated_data['event']
+        diagnosis = validated_data['diagnosis']
+        matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
+            location_species__event_location__event=event.id, diagnosis=diagnosis.id
+        ).values_list('suspect', flat=True)
+        suspect = False if False in matching_specdiags_suspect else True
+        event_diagnosis = EventDiagnosis.objects.create(**validated_data, event=event, diagnosis=diagnosis,
+                                                        suspect=suspect)
+        event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
+        event_diagnosis.save()
+
         event_diagnosis = EventDiagnosis.objects.create(**validated_data)
 
         # Now that we have the new event diagnoses created,
@@ -3031,11 +3034,16 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             user = None
 
         # update the EventDiagnosis object
-        instance.event = validated_data.get('event', instance.event)
         instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
-        instance.suspect = validated_data.get('suspect', instance.suspect)
         instance.major = validated_data.get('major', instance.major)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+
+        # ensure this event diagnosis has the correct suspect value
+        # (false if any matching species diagnoses are false, otherwise true)
+        matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
+            location_species__event_location__event=instance.event.id, diagnosis=instance.diagnosis.id
+        ).values_list('suspect', flat=True)
+        instance.suspect = False if False in matching_specdiags_suspect else True
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
@@ -3207,7 +3215,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         #     instance.suspect = False
 
         # update the SpeciesDiagnosis object
-        instance.location_species = validated_data.get('location_species', instance.location_species)
         instance.diagnosis = validated_data.get('diagnosis', instance.diagnosis)
         instance.cause = validated_data.get('cause', instance.cause)
         instance.basis = validated_data.get('basis', instance.basis)
@@ -3400,7 +3407,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             else:
                 instance.response_by = user
 
-        instance.event = validated_data.get('event', instance.event)
         instance.request_type = validated_data.get('request_type', instance.request_type)
         instance.request_response = validated_data.get('request_response', instance.request_response)
 
