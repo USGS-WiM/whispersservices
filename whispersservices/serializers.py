@@ -3009,17 +3009,14 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             location_species__event_location__event=event.id, diagnosis=diagnosis.id
         ).values_list('suspect', flat=True)
         suspect = False if False in matching_specdiags_suspect else True
-        event_diagnosis = EventDiagnosis.objects.create(**validated_data, event=event, diagnosis=diagnosis,
-                                                        suspect=suspect)
+        event_diagnosis = EventDiagnosis.objects.create(**validated_data, suspect=suspect)
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
         event_diagnosis.save()
 
-        event_diagnosis = EventDiagnosis.objects.create(**validated_data)
-
         # Now that we have the new event diagnoses created,
-        # check for existing Pending records and delete them
-        evt_diags = EventDiagnosis.objects.filter(event=validated_data['event'].id)
-        [evt_diag.delete() for evt_diag in evt_diags if evt_diag.diagnosis.name == 'Pending']
+        # check for existing Pending or Undetermined records and delete them
+        event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3044,6 +3041,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             location_species__event_location__event=instance.event.id, diagnosis=instance.diagnosis.id
         ).values_list('suspect', flat=True)
         instance.suspect = False if False in matching_specdiags_suspect else True
+
+        # Now that we have the new event diagnoses created,
+        # check for existing Pending or Undetermined records and delete them
+        event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
