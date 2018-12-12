@@ -60,9 +60,9 @@ def construct_email(request_data, requester_email, message):
     from_address = settings.EMAIL_WHISPERS
     to_list = [settings.EMAIL_WHISPERS, ]
     bcc_list = []
-    reply_to_list = [requester_email, ]
+    reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
-    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
     try:
         # TODO: uncomment next line when code is deployed on the production server
         # email.send(fail_silently=False)

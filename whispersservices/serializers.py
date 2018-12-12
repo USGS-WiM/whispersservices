@@ -1,7 +1,7 @@
 import re
 import requests
 from datetime import date, timedelta
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
@@ -24,24 +24,28 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
     url = settings.APP_WHISPERS_URL + 'event/' + event_id_string
     subject = "Service request for Event " + event_id_string
     body = "A user (" + requester_email + ") with organization " + requester_org_name + " has requested "
-    body += request_type_name + " for event " + event_id_string + "."
+    body += "<strong>" + request_type_name + "</strong> for event " + event_id_string + "."
     if comments:
         body += "\r\n\r\nComments:"
         for comment in comments:
             body += "\r\n\t" + comment
-    body += "\r\n\r\nEvent Details:\r\n\t" + url
+    html_body = body + "\r\n\r\nEvent Details:\r\n\t<a href='" + url + "/'>" + url + "/</a>"
+    html_body.replace('<strong>', '').replace('</strong>', '')
+    body += "\r\n\r\nEvent Details:\r\n\t" + url + "/"
     from_address = settings.EMAIL_WHISPERS
     to_list = [settings.EMAIL_NWHC_EPI, ]
     bcc_list = []
-    reply_to_list = [requester_email, ]
+    reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
-    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
+    email.attach_alternative(html_body, "text/html")
     # TODO: uncomment next block when code is deployed on the production server
     # try:
     #     email.send(fail_silently=False)
     # except TypeError:
     #     message = "Service Request saved but send email failed, please contact the administrator."
     #     raise serializers.ValidationError(message)
+    return
 
 
 def construct_user_request_email(requester_email, message):
@@ -53,17 +57,16 @@ def construct_user_request_email(requester_email, message):
     from_address = settings.EMAIL_WHISPERS
     to_list = [settings.EMAIL_WHISPERS, ]
     bcc_list = []
-    reply_to_list = [requester_email, ]
+    reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
-    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_to_list, headers=headers)
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
     # TODO: uncomment next line when code is deployed on the production server
     # try:
     #     email.send(fail_silently=False)
     # except TypeError:
     #     message = "User saved but send email failed, please contact the administrator."
     #     raise serializers.ValidationError(message)
-
-    return email
+    return
 
 
 def calculate_priority_event_organization(instance):
