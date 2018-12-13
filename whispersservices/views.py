@@ -1221,9 +1221,11 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # first get or create the search and increment its count
         if query_params:
             ordered_query_params = OrderedDict(sorted(query_params.items()))
-            ordered_query_params_static = ordered_query_params.copy()
+            ordered_query_params_static_keys = ordered_query_params.copy().keys()
             not_search_params = ['no_page', 'page', 'format', 'slim']
-            [ordered_query_params.popitem(param) for param in ordered_query_params_static if param in not_search_params]
+            for param in ordered_query_params_static_keys:
+                if param in not_search_params:
+                    del ordered_query_params[param]
             if len(ordered_query_params) > 0:
                 admin_user = User.objects.get(pk=1)
                 if not user.is_authenticated:
@@ -1252,7 +1254,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         elif get_user_events:
             queryset = queryset.filter(
                 Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
-                #| Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
+                # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset

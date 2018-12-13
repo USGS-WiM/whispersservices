@@ -1,6 +1,6 @@
 import re
 import requests
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
@@ -402,7 +402,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                   'event_status', 'event_status_string', 'permissions', 'permission_source',)
+                  'event_status', 'event_status_string', 'permissions', 'permission_source',)
 
 
 # TODO: allow read-only staff field for event owner org
@@ -437,7 +437,8 @@ class EventSerializer(serializers.ModelSerializer):
         return permission_source
 
     def create(self, validated_data):
-        # TODO: figure out if this logic is necessary, see: https://www.django-rest-framework.org/api-guide/requests/#user
+        # TODO: figure out if this logic is necessary
+        #  see: https://www.django-rest-framework.org/api-guide/requests/#user
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:

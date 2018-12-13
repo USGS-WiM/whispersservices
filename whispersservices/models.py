@@ -1,7 +1,7 @@
 from django.db import models
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
-from datetime import date, datetime
+from datetime import date
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -226,6 +226,7 @@ class Event(PermissionsHistoryModel):
         db_table = "whispers_event"
         ordering = ['id']
         # TODO: 'unique together' fields
+        # The event record must be uniquely identified by the submission agency, event date, and location.
 
 
 class EventSuperEvent(PermissionsHistoryModel):
