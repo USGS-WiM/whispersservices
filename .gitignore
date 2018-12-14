@@ -10,6 +10,7 @@
 
 # dependencies
 /env
+/venv
 
 # IDEs and editors
 /.idea
