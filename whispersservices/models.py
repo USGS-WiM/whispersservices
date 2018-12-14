@@ -899,24 +899,26 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
         # if any speciesdiagnosis is confirmed, then the eventdiagnosis with the same diagnosis is also confirmed
         if not self.suspect:
-            same_eventdiagnosis_diagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id)
-            same_eventdiagnosis_diagnosis.suspect = False if same_eventdiagnosis_diagnosis else True
+            matching_eventdiagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
+            if matching_eventdiagnosis:
+                matching_eventdiagnosis.suspect = False if matching_eventdiagnosis else True
+                matching_eventdiagnosis.save()
 
-        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (set to True),
+        # conversely, if all speciesdiagnoses with the same diagnosis are un-confirmed (suspect set to True),
         # then the eventdiagnosis with the same diagnosis is also un-confirmed
         # (i.e, eventdiagnosis cannot be confirmed if no speciesdiagnoses with the same diagnosis are confirmed)
         if self.suspect:
             no_confirmed_speciesdiagnoses = True
-            same_speciesdiagnoses_diagnosis = SpeciesDiagnosis.objects.filter(
+            matching_speciesdiagnoses = SpeciesDiagnosis.objects.filter(
                 diagnosis=diagnosis.id, location_species__event_location__event=event.id)
-            for same_speciesdiagnosis_diagnosis in same_speciesdiagnoses_diagnosis:
-                if not same_speciesdiagnosis_diagnosis.suspect:
+            for matching_speciesdiagnosis in matching_speciesdiagnoses:
+                if not matching_speciesdiagnosis.suspect:
                     no_confirmed_speciesdiagnoses = False
             if no_confirmed_speciesdiagnoses:
-                same_eventdiagnosis_diag = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
-                if same_eventdiagnosis_diag is not None:
-                    same_eventdiagnosis_diag.suspect = True
-                    same_eventdiagnosis_diag.save()
+                matching_eventdiagnosis = EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).first()
+                if matching_eventdiagnosis:
+                    matching_eventdiagnosis.suspect = True
+                    matching_eventdiagnosis.save()
 
     # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
