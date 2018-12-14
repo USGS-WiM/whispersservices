@@ -586,10 +586,10 @@ class EventSerializer(serializers.ModelSerializer):
                                     elif specdiag['basis'] == 3:
                                         if ('new_species_diagnosis_organizations' in specdiag
                                                 and specdiag['new_species_diagnosis_organizations'] is not None):
-                                            org = Organization.objects.filter(
-                                                id=specdiag['new_species_diagnosis_organizations']).first()
-                                            if not org or not org.laboratory:
-                                                specdiag_nonsuspect_basis_is_valid = False
+                                            for org_id in specdiag['new_species_diagnosis_organizations']:
+                                                org = Organization.objects.filter(id=org_id).first()
+                                                if not org or not org.laboratory:
+                                                    specdiag_nonsuspect_basis_is_valid = False
                             if len(specdiag_labs) != len(set(specdiag_labs)):
                                 specdiag_lab_is_valid = False
                 if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
@@ -1342,10 +1342,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     elif specdiag['basis'] == 3:
                                         if ('new_species_diagnosis_organizations' in specdiag
                                                 and specdiag['new_species_diagnosis_organizations'] is not None):
-                                            org = Organization.objects.filter(
-                                                id=specdiag['new_species_diagnosis_organizations']).first()
-                                            if not org or not org.laboratory:
-                                                specdiag_nonsuspect_basis_is_valid = False
+                                            for org_id in specdiag['new_species_diagnosis_organizations']:
+                                                org = Organization.objects.filter(id=org_id).first()
+                                                if not org or not org.laboratory:
+                                                    specdiag_nonsuspect_basis_is_valid = False
                             if len(specdiag_labs) != len(set(specdiag_labs)):
                                 specdiag_lab_is_valid = False
                 if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
@@ -2319,10 +2319,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                             elif specdiag['basis'] == 3:
                                 if ('new_species_diagnosis_organizations' in specdiag
                                         and specdiag['new_species_diagnosis_organizations'] is not None):
-                                    org = Organization.objects.filter(
-                                        id=specdiag['new_species_diagnosis_organizations']).first()
-                                    if not org or not org.laboratory:
-                                        specdiag_nonsuspect_basis_is_valid = False
+                                    for org_id in specdiag['new_species_diagnosis_organizations']:
+                                        org = Organization.objects.filter(id=org_id).first()
+                                        if not org or not org.laboratory:
+                                            specdiag_nonsuspect_basis_is_valid = False
                     if len(specdiag_labs) != len(set(specdiag_labs)):
                         specdiag_lab_is_valid = False
             if 'new_location_contacts' in validated_data and validated_data['new_location_contacts'] is not None:
