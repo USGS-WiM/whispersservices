@@ -157,7 +157,7 @@ class EventViewSet(HistoryViewSet):
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 queryset = Event.objects.filter(id=pk)
                 obj = queryset[0]
                 circle_read = obj.circle_read if obj.circle_read is not None else []
@@ -183,7 +183,7 @@ class EventViewSet(HistoryViewSet):
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         if self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj is not None:
                     circle_read = obj.circle_read if obj.circle_read is not None else []
@@ -339,7 +339,7 @@ class EventOrganizationViewSet(HistoryViewSet):
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = EventOrganization.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return EventOrganizationSerializer
@@ -398,7 +398,7 @@ class EventLocationViewSet(HistoryViewSet):
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = EventLocation.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return EventLocationSerializer
@@ -532,7 +532,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = LocationSpecies.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return LocationSpeciesSerializer
@@ -632,7 +632,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = EventDiagnosis.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return EventDiagnosisSerializer
@@ -671,7 +671,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = EventLocation.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return SpeciesDiagnosisSerializer
@@ -896,7 +896,7 @@ class OrganizationViewSet(HistoryViewSet):
         # for pk requests, unpublished data can only be returned to the owner or their org or admins
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 queryset = Organization.objects.filter(id=pk)
                 obj = queryset[0]
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
@@ -1187,7 +1187,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj is not None:
                     circle_read = obj.circle_read if obj.circle_read is not None else []
@@ -1527,7 +1527,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 queryset = Event.objects.filter(id=pk)
                 obj = queryset[0]
                 circle_read = obj.circle_read if obj.circle_read is not None else []
@@ -1549,7 +1549,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and isinstance(pk, int):
+            if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj is not None:
                     circle_read = obj.circle_read if obj.circle_read is not None else []

@@ -1139,7 +1139,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         # remove child service_requests list from the request
         if 'new_service_requests' in validated_data:
-            validated_data.pop('new_eservice_requests')
+            validated_data.pop('new_service_requests')
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -1900,7 +1900,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         # remove child service_requests list from the request
         if 'new_service_requests' in validated_data:
-            validated_data.pop('new_eservice_requests')
+            validated_data.pop('new_service_requests')
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
