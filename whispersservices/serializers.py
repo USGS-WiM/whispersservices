@@ -4731,7 +4731,7 @@ class FlatEventDetailSerializer(serializers.Serializer):
     # requested from the EventDetails Search
 
     event_id = serializers.IntegerField()
-    event_reference = serializers.CharField()
+    # event_reference = serializers.CharField()
     event_type = serializers.CharField()
     complete = serializers.CharField()
     organization = serializers.CharField()
@@ -4760,7 +4760,7 @@ class FlatEventDetailSerializer(serializers.Serializer):
     species_diagnosis_id = serializers.IntegerField()
     species_diagnosis_priority = serializers.IntegerField()
     speciesdx = serializers.CharField()
-    causal = serializers.CharField()
+    # causal = serializers.CharField()
     suspect = serializers.BooleanField()
     number_tested = serializers.IntegerField()
     number_positive = serializers.IntegerField()

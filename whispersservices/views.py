@@ -1463,13 +1463,16 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
 
 class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
-    header = ['event_id', 'event_reference', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
+    # header = ['event_id', 'event_reference', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
+    header = ['event_id', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
               'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
               'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
-              'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'suspect', 'number_tested',
+              # 'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'suspect', 'number_tested',
+              'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'suspect', 'number_tested',
               'number_positive', 'lab']
-    labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
+    # labels = {'event_id': 'Event ID', 'event_reference': 'User Event Reference', 'event_type': 'Event Type',
+    labels = {'event_id': 'Event ID', 'event_type': 'Event Type',
               'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'affected_count': 'Number Affected', 'event_diagnosis': 'Event Diagnosis',
               'location_id': 'Location ID', 'location_priority': 'Location Priority',
@@ -1480,7 +1483,8 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'estimated_sick': 'Estimated Sick', 'estimated_dead': 'Estimated Dead', 'captive': 'Captive',
               'age_bias': 'Age Bias', 'sex_bias': 'Sex Bias', 'species_diagnosis_id': 'Species Diagnosis ID',
               'species_diagnosis_priority': 'Species Diagnosis Priority', 'speciesdx': 'Species Diagnosis',
-              'causal': 'Significance of Diagnosis for Species', 'suspect': 'Species Diagnosis Suspect',
+              # 'causal': 'Significance of Diagnosis for Species', 'suspect': 'Species Diagnosis Suspect',
+              'suspect': 'Species Diagnosis Suspect',
               'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed', 'lab': 'Lab'}
 
 
