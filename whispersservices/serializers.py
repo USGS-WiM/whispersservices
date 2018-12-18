@@ -4525,8 +4525,9 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
                 if not org.do_not_publish:
                     new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
                                'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                               'administrative_level_one': org.administrative_level_one.name,
-                               'country': org.country.name, 'phone': org.phone}
+                               'administrative_level_one': org.administrative_level_one.id,
+                               'administrative_level_one_string': org.administrative_level_one.name,
+                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
                     pub_orgs.append(new_org)
         return pub_orgs
 
@@ -4566,9 +4567,23 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
-    eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
+    eventorganizations = serializers.SerializerMethodField()
+
+    def get_eventorganizations(self, obj):
+        pub_orgs = []
+        if obj.organizations is not None:
+            orgs = obj.organizations.all()
+            for org in orgs:
+                if not org.do_not_publish:
+                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+                               'administrative_level_one': org.administrative_level_one.id,
+                               'administrative_level_one_string': org.administrative_level_one.name,
+                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                    pub_orgs.append(new_org)
+        return pub_orgs
 
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
@@ -4639,9 +4654,23 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
-    eventorganizations = OrganizationSerializer(many=True, source='organizations')
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
+    eventorganizations = serializers.SerializerMethodField()
+
+    def get_eventorganizations(self, obj):
+        pub_orgs = []
+        if obj.organizations is not None:
+            orgs = obj.organizations.all()
+            for org in orgs:
+                if not org.do_not_publish:
+                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+                               'administrative_level_one': org.administrative_level_one.id,
+                               'administrative_level_one_string': org.administrative_level_one.name,
+                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                    pub_orgs.append(new_org)
+        return pub_orgs
 
     def get_eventdiagnoses(self, obj):
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
@@ -4735,3 +4764,4 @@ class FlatEventDetailSerializer(serializers.Serializer):
     suspect = serializers.BooleanField()
     number_tested = serializers.IntegerField()
     number_positive = serializers.IntegerField()
+    lab = serializers.CharField()
