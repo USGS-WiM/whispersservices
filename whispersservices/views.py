@@ -795,8 +795,8 @@ class UserViewSet(HistoryViewSet):
             return User.objects.filter(pk=user.id)
         # user-specific requests and requests from a partner user can only return data owned by the user or user's org
         elif user.role.is_partneradmin:
-            queryset = Contact.objects.all().filter(
-                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+            queryset = User.objects.all().filter(
+                Q(id__exact=user.id) | Q(organization__exact=user.organization))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = User.objects.all()
@@ -959,7 +959,7 @@ class ContactViewSet(HistoryViewSet):
         # user-specific requests and requests from a partner user can only return data owned by the user or user's org
         elif get_user_contacts or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
             queryset = Contact.objects.all().filter(
-                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Contact.objects.all()
@@ -1253,7 +1253,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
             queryset = queryset.filter(
-                Q(created_by__exact=user) | Q(created_by__organization__exact=user.organization)).distinct()
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization)).distinct()
                 # | Q(circle_read__in=user.circles) | Q(circle_write__in=user.circles))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:

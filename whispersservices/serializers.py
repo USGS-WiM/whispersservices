@@ -4378,11 +4378,12 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
 
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
+    organizations_string = serializers.StringRelatedField(many=True, source='organizations')
 
     class Meta:
         model = SpeciesDiagnosis
         fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
-                  'suspect_count', 'pooled',)
+                  'suspect_count', 'pooled', 'organizations', 'organizations_string')
 
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
