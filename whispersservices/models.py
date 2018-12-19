@@ -1115,7 +1115,7 @@ class User(AbstractUser):
 
     @staticmethod
     def has_read_permission(request):
-        # Only admins or the creator or an admin member of the creator's organization can 'read' (retrieve)
+        # Only admins or the creator or an admin member of the creator's organization can 'read' (list)
         # but this cannot be controlled here in this model; it can only be controlled in the views using this model
         return True
 
@@ -1312,10 +1312,43 @@ class ContactType(AdminPermissionsHistoryModel):
         ordering = ['id']
 
 
-class Search(PermissionsHistoryModel):
+class Search(HistoryModel):
     """
     Searches
     """
+
+    @staticmethod
+    def has_read_permission(request):
+        # Only admins or the creator can 'read' (list)
+        # but this cannot be controlled here in this model; it can only be controlled in the views using this model
+        return True
+
+    def has_object_read_permission(self, request):
+        # Only admins or the creator can 'read' (retrieve)
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
+
+    @staticmethod
+    def has_write_permission(request):
+        # Anyone can 'write'
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        return True
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator can update
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
+
+    def has_object_destroy_permission(self, request):
+        # Only superadmins or the creator can delete
+        if not request.user.is_authenticated:
+            return False
+        else:
+            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
 
     name = models.CharField(max_length=128, blank=True, default='')
     data = JSONField(blank=True)
