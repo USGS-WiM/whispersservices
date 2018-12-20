@@ -536,7 +536,7 @@ class EventSerializer(serializers.ModelSerializer):
                         and ('country' not in item or 'administrative_level_one' not in item)):
                     payload = {'lat': item['latitude'], 'lng': item['longitude'],
                                'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
                     if 'address' not in r.json() or 'geonames' not in r.json():
                         latlng_is_valid = False
                 if 'new_location_species' in item:
@@ -860,7 +860,7 @@ class EventSerializer(serializers.ModelSerializer):
                             or event_location['administrative_level_two'] is None):
                         payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
                                    'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
                         geonames_object_list = r.json()
                         if 'address' in geonames_object_list:
                             address = geonames_object_list['address']
@@ -873,7 +873,7 @@ class EventSerializer(serializers.ModelSerializer):
                             country_code = address['countryCode']
                             if len(country_code) == 2:
                                 payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                                 alpha3 = r.json()['geonames'][0]['isoAlpha3']
                                 event_location['country'] = Country.objects.filter(abbreviation=alpha3).first()
                             else:
@@ -921,7 +921,7 @@ class EventSerializer(serializers.ModelSerializer):
                             flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
                         if flyway is None and 'geometry' in payload:
-                            r = requests.get(FLYWAYS_API, params=payload)
+                            r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
                             flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                             flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
@@ -1011,9 +1011,9 @@ class EventSerializer(serializers.ModelSerializer):
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
-            valid_diagnosis_ids = SpeciesDiagnosis.objects.filter(
+            valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct()
+            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
@@ -1299,7 +1299,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         and ('country' not in item or 'administrative_level_one' not in item)):
                     payload = {'lat': item['latitude'], 'lng': item['longitude'],
                                'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
                     if 'address' not in r.json() or 'geonames' not in r.json():
                         latlng_is_valid = False
                 if 'new_location_species' in item:
@@ -1623,7 +1623,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             or event_location['administrative_level_two'] is None):
                         payload = {'lat': event_location['latitude'], 'lng': event_location['longitude'],
                                    'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
                         geonames_object_list = r.json()
                         if 'address' in geonames_object_list:
                             address = geonames_object_list['address']
@@ -1636,7 +1636,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             country_code = address['countryCode']
                             if len(country_code) == 2:
                                 payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                                 alpha3 = r.json()['geonames'][0]['isoAlpha3']
                                 event_location['country'] = Country.objects.filter(abbreviation=alpha3).first()
                             else:
@@ -1687,7 +1687,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
                         if flyway is None and 'geometry' in payload:
-                            r = requests.get(FLYWAYS_API, params=payload)
+                            r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
                             flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                             flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
@@ -2278,7 +2278,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 and ('country' not in validated_data or 'administrative_level_one' not in validated_data)):
             payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
                        'username': GEONAMES_USERNAME}
-            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
             if 'address' not in r.json() or 'geonames' not in r.json():
                 latlng_is_valid = False
         if 'new_location_species' in validated_data:
@@ -2432,7 +2432,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 or validated_data['administrative_level_two'] is None):
             payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
                        'username': GEONAMES_USERNAME}
-            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload)
+            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
             geonames_object_list = r.json()
             if 'address' in geonames_object_list:
                 address = geonames_object_list['address']
@@ -2444,7 +2444,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 country_code = address['countryCode']
                 if len(country_code) == 2:
                     payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload)
+                    r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                     alpha3 = r.json()['geonames'][0]['isoAlpha3']
                     validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
                 else:
@@ -2485,7 +2485,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
             if flyway is None and 'geometry' in payload:
-                r = requests.get(FLYWAYS_API, params=payload)
+                r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
                 flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                 flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
