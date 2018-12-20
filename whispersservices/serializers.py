@@ -36,7 +36,10 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
     body = body.replace('<strong>', '').replace('</strong>', '').replace('<br>', '    ').replace('&nbsp;', ' ')
     body += url + "/"
     from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_NWHC_EPI, ]
+    if settings.ENVIRONMENT == 'production':
+        to_list = [settings.EMAIL_NWHC_EPI, ]
+    else:
+        to_list = [settings.EMAIL_WHISPERS, ]
     bcc_list = []
     reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
