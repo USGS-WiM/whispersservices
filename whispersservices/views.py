@@ -63,12 +63,14 @@ def construct_email(request_data, requester_email, message):
     reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
     email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    try:
-        # TODO: uncomment next line when code is deployed on the production server
-        # email.send(fail_silently=False)
-        return Response({"status": 'email sent'}, status=200)
-    except TypeError:
-        return Response({"status": "send email failed, please contact the administrator."}, status=500)
+    if settings.ENVIRONMENT in ['production', 'test']:
+        try:
+            email.send(fail_silently=False)
+            return Response({"status": 'email sent'}, status=200)
+        except TypeError:
+            return Response({"status": "send email failed, please contact the administrator."}, status=500)
+    else:
+        return Response(email.__dict__, status=200)
 
 
 ######
@@ -865,7 +867,7 @@ class OrganizationViewSet(HistoryViewSet):
         if user.role.is_superadmin or user.role.is_admin:
             return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
         # partner requests only have access to a more limited list of fields
-        if user.role.is_partner or user.role.is_partner_manager or user.role.is_partneradmin:
+        if user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
             return OrganizationSerializer if not slim else OrganizationSlimSerializer
         # all other requests are rejected
         else:

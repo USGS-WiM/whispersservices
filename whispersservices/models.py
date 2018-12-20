@@ -545,6 +545,10 @@ class AdministrativeLevelTwo(AdminPermissionsHistoryModel):
     Administrative Level Two (ex. in US it is counties)
     """
 
+    @staticmethod
+    def has_request_new_permission(request):
+        return True
+
     name = models.CharField(max_length=128)
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.CASCADE, related_name='administrativeleveltwos')
@@ -692,6 +696,10 @@ class Species(AdminPermissionsHistoryModel):
     Species
     """
 
+    @staticmethod
+    def has_request_new_permission(request):
+        return True
+
     name = models.CharField(max_length=128, blank=True, default='')
     class_name = models.CharField(max_length=128, blank=True, default='')
     order_name = models.CharField(max_length=128, blank=True, default='')
@@ -750,6 +758,10 @@ class Diagnosis(AdminPermissionsHistoryNameModel):
     """
     Diagnosis
     """
+
+    @staticmethod
+    def has_request_new_permission(request):
+        return True
 
     diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses')
 
@@ -1114,6 +1126,10 @@ class User(AbstractUser):
     """
 
     @staticmethod
+    def has_request_new_permission(request):
+        return True
+
+    @staticmethod
     def has_read_permission(request):
         # Only admins or the creator or an admin member of the creator's organization can 'read' (list)
         # but this cannot be controlled here in this model; it can only be controlled in the views using this model
@@ -1245,6 +1261,10 @@ class Organization(AdminPermissionsHistoryNameModel):
     """
     Organization
     """
+
+    @staticmethod
+    def has_request_new_permission(request):
+        return True
 
     private_name = models.CharField(max_length=128, blank=True, default='')
     address_one = models.CharField(max_length=128, blank=True, default='')

@@ -1,5 +1,6 @@
 import re
 import requests
+import json
 from datetime import datetime, timedelta
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
@@ -27,12 +28,13 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
     body = "A user (" + requester_email + ") with organization " + requester_org_name + " has requested "
     body += "<strong>" + request_type_name + "</strong> for event " + event_id_string + "."
     if comments:
-        body += "\r\n\r\nComments:"
+        body += "<br><br>Comments:"
         for comment in comments:
-            body += "\r\n\t" + comment
-    html_body = body + "\r\n\r\nEvent Details:\r\n\t<a href='" + url + "/'>" + url + "/</a>"
-    html_body.replace('<strong>', '').replace('</strong>', '')
-    body += "\r\n\r\nEvent Details:\r\n\t" + url + "/"
+            body += "<br>&nbsp;&nbsp;&nbsp;&nbsp;" + comment
+    body += "<br><br>Event Details:<br>&nbsp;&nbsp;&nbsp;&nbsp;"
+    html_body = body + "<a href='" + url + "/'>" + url + "/</a>"
+    body = body.replace('<strong>', '').replace('</strong>', '').replace('<br>', '    ').replace('&nbsp;', ' ')
+    body += url + "/"
     from_address = settings.EMAIL_WHISPERS
     to_list = [settings.EMAIL_NWHC_EPI, ]
     bcc_list = []
@@ -40,20 +42,19 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
     headers = None  # {'Message-ID': 'foo'}
     email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
     email.attach_alternative(html_body, "text/html")
-    # TODO: uncomment next block when code is deployed on the production server
-    # try:
-    #     email.send(fail_silently=False)
-    # except TypeError:
-    #     message = "Service Request saved but send email failed, please contact the administrator."
-    #     raise serializers.ValidationError(message)
-    return
+    if settings.ENVIRONMENT in ['production', 'test']:
+        try:
+            email.send(fail_silently=False)
+        except TypeError:
+            message = "Service Request saved but send email failed, please contact the administrator."
+            raise serializers.ValidationError(message)
+    return email
 
 
 def construct_user_request_email(requester_email, message):
     # construct and send the request email
     subject = "Assistance Request"
     body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
-    body += "Please change the role for this user:" + "\r\n\r\n"
     body += message
     from_address = settings.EMAIL_WHISPERS
     to_list = [settings.EMAIL_WHISPERS, ]
@@ -61,13 +62,13 @@ def construct_user_request_email(requester_email, message):
     reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
     email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    # TODO: uncomment next line when code is deployed on the production server
-    # try:
-    #     email.send(fail_silently=False)
-    # except TypeError:
-    #     message = "User saved but send email failed, please contact the administrator."
-    #     raise serializers.ValidationError(message)
-    return
+    if settings.ENVIRONMENT in ['production', 'test']:
+        try:
+            email.send(fail_silently=False)
+        except TypeError:
+            message = "User saved but send email failed, please contact the administrator."
+            raise serializers.ValidationError(message)
+    return email
 
 
 def calculate_priority_event_organization(instance):
@@ -421,6 +422,7 @@ class EventSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_superevents = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -804,8 +806,12 @@ class EventSerializer(serializers.ModelSerializer):
                             service_request_comments.append(comment.comment)
 
                 # construct and send the request email
-                construct_service_request_email(service_request.event.id, user.organization.name,
-                                                service_request.request_type.name, user.email, service_request_comments)
+                service_request_email = construct_service_request_email(service_request.event.id,
+                                                                        user.organization.name,
+                                                                        service_request.request_type.name, user.email,
+                                                                        service_request_comments)
+                if settings.ENVIRONMENT not in ['production', 'test']:
+                    event.service_request_email = service_request_email.__dict__
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -1047,7 +1053,9 @@ class EventSerializer(serializers.ModelSerializer):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
-            else:
+            elif (user != instance.created_by
+                  or (user.organization != instance.created_by.organization
+                      and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
                 raise serializers.ValidationError(message)
@@ -1159,7 +1167,7 @@ class EventSerializer(serializers.ModelSerializer):
                   'affected_count', 'event_status', 'event_status_string', 'public', 'circle_read', 'circle_write',
                   'organizations', 'contacts', 'comments', 'new_event_diagnoses', 'new_organizations', 'new_comments',
                   'new_event_locations', 'new_superevents', 'new_service_request', 'created_date', 'created_by',
-                  'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'service_request_email',
                   'permissions', 'permission_source',)
 
 
@@ -1179,6 +1187,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_superevents = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
         user = self.context['request'].user
@@ -1560,8 +1569,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             service_request_comments.append(comment.comment)
 
                 # construct and send the request email
-                construct_service_request_email(service_request.event.id, user.organization.name,
-                                                service_request.request_type.name, user.email, service_request_comments)
+                service_request_email = construct_service_request_email(service_request.event.id,
+                                                                        user.organization.name,
+                                                                        service_request.request_type.name, user.email,
+                                                                        service_request_comments)
+                if settings.ENVIRONMENT not in ['production', 'test']:
+                    event.service_request_email = service_request_email.__dict__
 
         # create the child event_locations for this event
         if new_event_locations is not None:
@@ -1926,8 +1939,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                   'circle_read', 'circle_write', 'superevents', 'organizations', 'contacts', 'comments',
                   'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
-                  'new_service_request', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+                  'new_service_request', 'created_date', 'created_by', 'created_by_string', 'modified_date',
+                  'modified_by', 'modified_by_string', 'service_request_email', 'permissions', 'permission_source',)
 
 
 class EventSuperEventSerializer(serializers.ModelSerializer):
@@ -3435,6 +3448,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
     # comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
     new_comments = serializers.ListField(write_only=True, required=False)
+    service_request_email = serializers.JSONField(read_only=True)
 
     # def get_comments(self, obj):
     #     content_type = ContentType.objects.get_for_model(self.Meta.model)
@@ -3484,8 +3498,12 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     service_request_comments.append(comment.comment)
 
         # construct and send the request email
-        construct_service_request_email(service_request.event.id, user.organization.name,
-                                        service_request.request_type.name, user.email, service_request_comments)
+        service_request_email = construct_service_request_email(service_request.event.id,
+                                                                user.organization.name,
+                                                                service_request.request_type.name, user.email,
+                                                                service_request_comments)
+        if settings.ENVIRONMENT not in ['production', 'test']:
+            service_request['service_request_email'] = json.loads(model_to_dict(service_request_email))
 
         return service_request
 
@@ -3524,7 +3542,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         model = ServiceRequest
         fields = ('id', 'event', 'request_type', 'request_response', 'response_by', 'created_time', 'comments',
                   'new_comments', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+                  'modified_date', 'modified_by', 'modified_by_string', 'service_request_email')
 
 
 class ServiceRequestTypeSerializer(serializers.ModelSerializer):
@@ -3555,11 +3573,21 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 
 
 # TODO: impose minimum security requirements on passwords
+# Password must be at least 12 characters long.
+# Password cannot contain your username.
+# Password cannot have been used in previous 20 passwords.
+# Password cannot have been changed less than 24 hours ago.
+# Password must satisfy 3 out of the following requirements:
+# Contain lowercase letters (a, b, c, ..., z)
+# Contain uppercase letters (A, B, C, ..., Z)
+# Contain numbers (0, 1, 2, ..., 9)
+# Contain symbols (~, !, @, #, etc.)
 # TODO: better protect this endpoint: anon and partner users can create a user but should only be able to submit 'username', 'password', 'first_name', 'last_name', 'email', others auto-assigned, admins can submit all except is_superuser
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')
     message = serializers.CharField(write_only=True, required=False)
+    user_email = serializers.JSONField(read_only=True)
 
     # currently only public users can be created through the API
     def create(self, validated_data):
@@ -3573,21 +3601,36 @@ class UserSerializer(serializers.ModelSerializer):
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
+            requested_org = validated_data.pop('organization')
+            requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
+            original_message = message.copy()
+            message = "Please change the role for this user to:" + requested_role.name + "\r\n"
+            message += "Please change the organization for this user to:" + requested_org.name + "\r\n"
+            message += "\r\n" + original_message
 
-        # only admins can edit is_superuser, is_staff, and is_active fields
-        if requesting_user.is_authenticated and (requesting_user.role.is_superadmin or requesting_user.role.is_admin):
+        else:
+
+            # Admins can create users with any org and any role except SuperAdmin
+            if requesting_user.role.is_admin:
+                if validated_data['role'].name == 'SuperAdmin':
+                    message = "You can only assign roles with equal or lower permissions to your own."
+                    raise serializers.ValidationError(message)
+
+            # PartnerAdmins can only create users in their own org with equal or lower roles
+            if requesting_user.role.is_partneradmin:
+                if validated_data['role'].name in ['SuperAdmin', 'Admin']:
+                    message = "You can only assign roles with equal or lower permissions to your own."
+                    raise serializers.ValidationError(message)
+                validated_data['organization'] = requesting_user.organization
+
+        # only SuperAdmins and Admins can edit is_superuser, is_staff, and is_active fields
+        if (requesting_user.is_authenticated
+                and not (requesting_user.role.is_superadmin or requesting_user.role.is_admin)):
             validated_data['is_superuser'] = False
             validated_data['is_staff'] = False
             validated_data['is_active'] = True
-
-        # PartnerAdmins can only create users in their own org with equal or lower roles
-        if requesting_user.is_authenticated and requesting_user.role.is_partneradmin:
-            if validated_data['role'].name in ['SuperAdmin', 'Admin']:
-                message = "You can only assign roles with equal or lower permissions to your own."
-                raise serializers.ValidationError(message)
-            validated_data['organization'] = requesting_user.organization
 
         user = User.objects.create(**validated_data)
         requesting_user = user if not requesting_user.is_authenticated else requesting_user
@@ -3598,7 +3641,9 @@ class UserSerializer(serializers.ModelSerializer):
         user.save()
 
         if message is not None:
-            construct_user_request_email(user.email, message)
+            user_email = construct_user_request_email(user.email, message)
+            if settings.ENVIRONMENT not in ['production', 'test']:
+                user.user_email = user_email.__dict__
 
         return user
 
@@ -3648,7 +3693,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'message',)
+                  'user_status', 'message', 'user_email')
 
 
 class RoleSerializer(serializers.ModelSerializer):

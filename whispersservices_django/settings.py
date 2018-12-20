@@ -40,6 +40,8 @@ ADMIN_ENABLED = False
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 APP_WHISPERS_URL = CONFIG.get('general', 'APP_WHISPERS_URL')
 
+ENVIRONMENT = CONFIG.get('general', 'ENVIRONMENT')
+
 # Application definition
 
 INSTALLED_APPS = [
