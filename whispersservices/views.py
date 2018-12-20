@@ -211,8 +211,7 @@ class EventViewSet(HistoryViewSet):
                         else:
                             return EventSerializer
                     # owner and org partner managers and org partner admins have full access to non-admin fields
-                    elif user == obj.created_by or (user.organization == obj.created_by.organization and (
-                            user.role.is_partnermanager or user.role.is_partneradmin)):
+                    elif user == obj.created_by or user.organization == obj.created_by.organization:
                         return EventSerializer
             return EventPublicSerializer
         # all list requests, and all requests from public users (except circle members), must use the public serializer
@@ -1198,9 +1197,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     if user.role.is_superadmin or user.role.is_admin:
                         return EventSummaryAdminSerializer
                     # owner and org members and shared circles have full access to non-admin fields
-                    elif user == obj.created_by or (user.organization == obj.created_by.organization and (
-                            user.role.is_partnermanager or user.role.is_partneradmin)
-                            or user in circle_read or user in circle_write):
+                    elif (user == obj.created_by or user.organization == obj.created_by.organization
+                          or user in circle_read or user in circle_write):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
         # admins have access to all fields
@@ -1564,9 +1562,8 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                     if user.role.is_superadmin or user.role.is_admin:
                         return EventDetailAdminSerializer
                     # owner and org members and shared circles have full access to non-admin fields
-                    elif user == obj.created_by or (user.organization == obj.created_by.organization and (
-                            user.role.is_partnermanager or user.role.is_partneradmin)
-                            or user in circle_read or user in circle_write):
+                    elif (user == obj.created_by or user.organization == obj.created_by.organization
+                          or user in circle_read or user in circle_write):
                         return EventDetailSerializer
             return EventDetailPublicSerializer
         # admins have access to all fields
