@@ -1140,8 +1140,8 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
+                    or (request.user.organization == self.organization
                         and request.user.role.is_partneradmin))
 
     @staticmethod
@@ -1155,8 +1155,8 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
+                    or (request.user.organization == self.organization
                         and request.user.role.is_partneradmin))
 
     def has_object_destroy_permission(self, request):
@@ -1164,8 +1164,8 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
+                    or (request.user.organization == self.organization
                         and request.user.role.is_partneradmin))
 
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users')

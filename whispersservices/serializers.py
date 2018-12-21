@@ -3589,8 +3589,17 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     organization_string = serializers.StringRelatedField(source='organization')
-    message = serializers.CharField(write_only=True, required=False)
+    message = serializers.CharField(write_only=True, allow_blank=True, required=False)
     user_email = serializers.JSONField(read_only=True)
+
+    def validate(self, data):
+
+        if self.context['request'].method in ['POST', 'PUT']:
+            if 'role' not in data or ('role' in data and data['role'] is None):
+                data['role'] = Role.objects.filter(name='Public').first()
+            if 'organization' not in data or ('organization' in data and data['organization'] is None):
+                data['organization'] = Organization.objects.filter(name='Public').first()
+        return data
 
     # currently only public users can be created through the API
     def create(self, validated_data):
@@ -3608,7 +3617,7 @@ class UserSerializer(serializers.ModelSerializer):
             requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
-            original_message = message.copy()
+            original_message = message
             message = "Please change the role for this user to:" + requested_role.name + "\r\n"
             message += "Please change the organization for this user to:" + requested_org.name + "\r\n"
             message += "\r\n" + original_message
@@ -3664,7 +3673,7 @@ class UserSerializer(serializers.ModelSerializer):
             else:
                 raise serializers.ValidationError("You can only edit your own user information.")
 
-        if requesting_user.role.is_superadmin or requesting_user.role.is_admin or requesting_user.is_partneradmin:
+        if requesting_user.role.is_superadmin or requesting_user.role.is_admin or requesting_user.role.is_partneradmin:
             instance.username = validated_data.get('username', instance.username)
             instance.email = validated_data.get('email', instance.email)
 
