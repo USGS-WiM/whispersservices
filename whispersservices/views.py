@@ -16,6 +16,7 @@ from whispersservices.serializers import *
 from whispersservices.models import *
 from whispersservices.permissions import *
 from whispersservices.pagination import *
+from whispersservices.authentication import *
 from dry_rest_permissions.generics import DRYPermissions
 User = get_user_model()
 
@@ -822,7 +823,7 @@ class UserViewSet(HistoryViewSet):
 
 
 class AuthView(views.APIView):
-    authentication_classes = (authentication.BasicAuthentication,)
+    authentication_classes = (CustomBasicAuthentication,)
     serializer_class = UserSerializer
 
     def post(self, request):

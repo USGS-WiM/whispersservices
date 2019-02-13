@@ -3587,7 +3587,7 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 # Contain symbols (~, !, @, #, etc.)
 # TODO: better protect this endpoint: anon and partner users can create a user but should only be able to submit 'username', 'password', 'first_name', 'last_name', 'email', others auto-assigned, admins can submit all except is_superuser
 class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, allow_blank=True, required=False)
     organization_string = serializers.StringRelatedField(source='organization')
     message = serializers.CharField(write_only=True, allow_blank=True, required=False)
     user_email = serializers.JSONField(read_only=True)
@@ -3599,6 +3599,8 @@ class UserSerializer(serializers.ModelSerializer):
                 data['role'] = Role.objects.filter(name='Public').first()
             if 'organization' not in data or ('organization' in data and data['organization'] is None):
                 data['organization'] = Organization.objects.filter(name='Public').first()
+            if 'password' not in data and self.context['request'].method == 'POST':
+                raise serializers.ValidationError("password is required")
         return data
 
     # currently only public users can be created through the API
@@ -3665,7 +3667,7 @@ class UserSerializer(serializers.ModelSerializer):
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
             raise serializers.ValidationError("You cannot edit user data.")
-        if (requesting_user.role.is_public or requesting_user.role.is_affiliate
+        elif (requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
             if instance.id == requesting_user.id:
                 instance.first_name = validated_data.get('first_name', instance.first_name)
@@ -3673,7 +3675,8 @@ class UserSerializer(serializers.ModelSerializer):
             else:
                 raise serializers.ValidationError("You can only edit your own user information.")
 
-        if requesting_user.role.is_superadmin or requesting_user.role.is_admin or requesting_user.role.is_partneradmin:
+        elif (requesting_user.role.is_superadmin or requesting_user.role.is_admin
+              or requesting_user.role.is_partneradmin):
             instance.username = validated_data.get('username', instance.username)
             instance.email = validated_data.get('email', instance.email)
 
@@ -4633,14 +4636,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
-            for org in orgs:
+            evtorgs = EventOrganization.objects.filter(event=obj.id).order_by('priority')
+            for evtorg in evtorgs:
+                org = [org for org in orgs if org['id'] == evtorg['organization']][0]
                 if not org.do_not_publish:
                     new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
                                'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
                                'administrative_level_one': org.administrative_level_one.id,
                                'administrative_level_one_string': org.administrative_level_one.name,
                                'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                    pub_orgs.append(new_org)
+                    pub_orgs.append({str(evtorg.id): new_org})
         return pub_orgs
 
     def get_eventdiagnoses(self, obj):
@@ -4720,14 +4725,16 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
-            for org in orgs:
-                if not org.do_not_publish:
-                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                               'administrative_level_one': org.administrative_level_one.id,
-                               'administrative_level_one_string': org.administrative_level_one.name,
-                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                    pub_orgs.append(new_org)
+            evtorgs = EventOrganization.objects.filter(
+                event=obj.id, organization__do_not_publish=False).order_by('priority')
+            for evtorg in evtorgs:
+                org = [org for org in orgs if org.id == evtorg.organization.id][0]
+                new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                           'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+                           'administrative_level_one': org.administrative_level_one.id,
+                           'administrative_level_one_string': org.administrative_level_one.name,
+                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
         return pub_orgs
 
     def get_eventdiagnoses(self, obj):
