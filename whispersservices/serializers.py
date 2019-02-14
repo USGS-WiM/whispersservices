@@ -4582,14 +4582,16 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
-            for org in orgs:
-                if not org.do_not_publish:
-                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                               'administrative_level_one': org.administrative_level_one.id,
-                               'administrative_level_one_string': org.administrative_level_one.name,
-                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                    pub_orgs.append(new_org)
+            evtorgs = EventOrganization.objects.filter(
+                event=obj.id, organization__do_not_publish=False).order_by('priority')
+            for evtorg in evtorgs:
+                org = [org for org in orgs if org.id == evtorg.organization.id][0]
+                new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                           'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+                           'administrative_level_one': org.administrative_level_one.id,
+                           'administrative_level_one_string': org.administrative_level_one.name,
+                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
         return pub_orgs
 
     def get_permission_source(self, obj):
@@ -4636,16 +4638,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
-            evtorgs = EventOrganization.objects.filter(event=obj.id).order_by('priority')
+            evtorgs = EventOrganization.objects.filter(
+                event=obj.id, organization__do_not_publish=False).order_by('priority')
             for evtorg in evtorgs:
-                org = [org for org in orgs if org['id'] == evtorg['organization']][0]
-                if not org.do_not_publish:
-                    new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-                               'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                               'administrative_level_one': org.administrative_level_one.id,
-                               'administrative_level_one_string': org.administrative_level_one.name,
-                               'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                    pub_orgs.append({str(evtorg.id): new_org})
+                org = [org for org in orgs if org.id == evtorg.organization.id][0]
+                new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+                           'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+                           'administrative_level_one': org.administrative_level_one.id,
+                           'administrative_level_one_string': org.administrative_level_one.name,
+                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
         return pub_orgs
 
     def get_eventdiagnoses(self, obj):
