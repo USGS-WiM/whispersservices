@@ -3722,6 +3722,8 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class CircleSerlializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_users = serializers.ListField(write_only=True)
 
     # on create, also create child objects (circle-user M:M relates)
