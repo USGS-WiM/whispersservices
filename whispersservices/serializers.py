@@ -3506,7 +3506,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                                                 service_request.request_type.name, user.email,
                                                                 service_request_comments)
         if settings.ENVIRONMENT not in ['production', 'test']:
-            service_request['service_request_email'] = json.loads(model_to_dict(service_request_email))
+            service_request.service_request_email = vars(service_request_email)
 
         return service_request
 
