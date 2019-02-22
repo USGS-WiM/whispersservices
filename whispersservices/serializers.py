@@ -1160,6 +1160,32 @@ class EventSerializer(serializers.ModelSerializer):
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = instance.event_type.id
+        if event_type_id not in [1, 2]:
+            instance.affected_count = None
+        else:
+            locations = EventLocation.objects.filter(event=instance.id).values('id', 'start_date', 'end_date')
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                instance.affected_count = sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
+                instance.affected_count = sum(positive_counts)
+
         instance.save()
 
         return instance
@@ -1931,6 +1957,32 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.circle_read = validated_data.get('circle_read', instance.circle_read)
         instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = instance.event_type.id
+        if event_type_id not in [1, 2]:
+            instance.affected_count = None
+        else:
+            locations = EventLocation.objects.filter(event=instance.id).values('id', 'start_date', 'end_date')
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                instance.affected_count = sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
+                instance.affected_count = sum(positive_counts)
+
         instance.save()
 
         return instance

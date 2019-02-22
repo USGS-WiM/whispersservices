@@ -438,7 +438,7 @@ class EventLocation(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(EventLocation, self).save(*args, **kwargs)
 
-        event = self.event
+        event = Event.objects.filter(id=self.event.id).first()
         locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
 
         # start_date and end_date
@@ -653,8 +653,7 @@ class LocationSpecies(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(LocationSpecies, self).save(*args, **kwargs)
 
-        event = self.event_location.event
-        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+        event = Event.objects.filter(id=self.event_location.event.id).first()
 
         # affected_count
         # If EventType = Morbidity/Mortality
@@ -664,6 +663,7 @@ class LocationSpecies(PermissionsHistoryModel):
         if event_type_id not in [1, 2]:
             event.affected_count = None
         else:
+            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
             loc_ids = [loc['id'] for loc in locations]
             loc_species = LocationSpecies.objects.filter(
                 event_location_id__in=loc_ids).values(
@@ -879,9 +879,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
-        event = self.location_species.event_location.event
+        event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
-        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
 
         # affected_count
         # If EventType = Morbidity/Mortality
@@ -891,6 +890,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         if event_type_id not in [1, 2]:
             event.affected_count = None
         else:
+            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
             loc_ids = [loc['id'] for loc in locations]
             loc_species = LocationSpecies.objects.filter(
                 event_location_id__in=loc_ids).values(
