@@ -674,7 +674,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
-                obj = EventLocation.objects.filter(id=pk).first()
+                obj = SpeciesDiagnosis.objects.filter(id=pk).first()
                 if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization):
                     return SpeciesDiagnosisSerializer
             return SpeciesDiagnosisPublicSerializer
