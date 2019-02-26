@@ -432,10 +432,13 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
-        countries = self.request.query_params.get('country', None)
-        if countries is not None and countries != '':
-            countries_list = countries.split(',')
-            queryset = queryset.filter(country__in=countries_list)
+        country = self.request.query_params.get('country', None)
+        if country is not None and country != '':
+            if LIST_DELIMETER in country:
+                country_list = country.split(',')
+                queryset = queryset.filter(country__in=country_list)
+            else:
+                queryset = queryset.filter(country__exact=country)
         return queryset
 
     def get_serializer_class(self):
@@ -459,8 +462,11 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         queryset = AdministrativeLevelTwo.objects.all()
         administrative_level_one = self.request.query_params.get('administrativelevelone', None)
         if administrative_level_one is not None and administrative_level_one != '':
-            administrative_level_one_list = administrative_level_one.split(',')
-            queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
+            if LIST_DELIMETER in administrative_level_one:
+                administrative_level_one_list = administrative_level_one.split(',')
+                queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
+            else:
+                queryset = queryset.filter(administrative_level_one__exact=administrative_level_one)
         return queryset
 
     def get_serializer_class(self):
@@ -595,8 +601,11 @@ class DiagnosisViewSet(HistoryViewSet):
         queryset = Diagnosis.objects.all()
         diagnosis_type = self.request.query_params.get('diagnosis_type', None)
         if diagnosis_type is not None and diagnosis_type != '':
-            diagnosis_type_list = diagnosis_type.split(',')
-            queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
+            if LIST_DELIMETER in diagnosis_type:
+                diagnosis_type_list = diagnosis_type.split(',')
+                queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
+            else:
+                queryset = queryset.filter(diagnosis_type__exact=diagnosis_type)
         return queryset
 
 
@@ -919,7 +928,18 @@ class ContactViewSet(HistoryViewSet):
     def user_contacts(self, request):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_contacts=True).order_by('id')
+        queryset = self.build_queryset(query_params, get_user_contacts=True)
+        ordering_param = query_params.get('ordering', None)
+        if ordering_param is not None:
+            fields = [field.strip() for field in ordering_param.split(',')]
+            ordering = filters.OrderingFilter.remove_invalid_fields(
+                filters.OrderingFilter(), queryset, fields, self, request)
+            if ordering:
+                queryset = queryset.order_by(*ordering)
+            else:
+                queryset = queryset.order_by('id')
+        else:
+            queryset = queryset.order_by('id')
         slim = True if 'slim' in self.request.query_params else False
 
         if 'no_page' in self.request.query_params:
@@ -969,14 +989,20 @@ class ContactViewSet(HistoryViewSet):
         else:
             return Contact.objects.none()
 
-        orgs = query_params.get('org', None)
-        if orgs is not None and orgs != '':
-            orgs_list = orgs.split(',')
-            queryset = queryset.filter(organization__in=orgs_list)
-        owner_orgs = query_params.get('ownerorg', None)
-        if owner_orgs is not None and owner_orgs != '':
-            owner_orgs_list = owner_orgs.split(',')
-            queryset = queryset.filter(owner_organization__in=owner_orgs_list)
+        org = query_params.get('org', None)
+        if org is not None and org != '':
+            if LIST_DELIMETER in org:
+                org_list = org.split(',')
+                queryset = queryset.filter(organization__in=org_list)
+            else:
+                queryset = queryset.filter(organization__exact=org)
+        owner_org = query_params.get('ownerorg', None)
+        if owner_org is not None and owner_org != '':
+            if LIST_DELIMETER in owner_org:
+                owner_org_list = owner_org.split(',')
+                queryset = queryset.filter(owner_organization__in=owner_org_list)
+            else:
+                queryset = queryset.filter(owner_organization__exact=owner_org)
         return queryset
 
     def get_serializer_class(self):
@@ -998,7 +1024,18 @@ class SearchViewSet(HistoryViewSet):
     def user_searches(self, request):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_searches=True).order_by('id')
+        queryset = self.build_queryset(query_params, get_user_searches=True)
+        ordering_param = query_params.get('ordering', None)
+        if ordering_param is not None:
+            fields = [field.strip() for field in ordering_param.split(',')]
+            ordering = filters.OrderingFilter.remove_invalid_fields(
+                filters.OrderingFilter(), queryset, fields, self, request)
+            if ordering:
+                queryset = queryset.order_by(*ordering)
+            else:
+                queryset = queryset.order_by('id')
+        else:
+            queryset = queryset.order_by('id')
 
         if 'no_page' in self.request.query_params:
             serializer = SearchSerializer(queryset, many=True, context={'request': request})
@@ -1048,10 +1085,13 @@ class SearchViewSet(HistoryViewSet):
         else:
             return Search.objects.none()
 
-        owners = query_params.get('owner', None)
-        if owners is not None and owners != '':
-            owners_list = owners.split(',')
-            queryset = queryset.filter(created_by__in=owners_list)
+        owner = query_params.get('owner', None)
+        if owner is not None and owner != '':
+            if LIST_DELIMETER not in owner:
+                owner_list = owner.split(',')
+                queryset = queryset.filter(created_by__in=owner_list)
+            else:
+                queryset = queryset.filter(created_by__exact=owner)
         return queryset
 
 
@@ -1085,7 +1125,18 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
         query_params = self.request.query_params
-        queryset = self.build_queryset(query_params, get_user_events=True).order_by('id')
+        queryset = self.build_queryset(query_params, get_user_events=True)
+        ordering_param = query_params.get('ordering', None)
+        if ordering_param is not None:
+            fields = [field.strip() for field in ordering_param.split(',')]
+            ordering = filters.OrderingFilter.remove_invalid_fields(
+                filters.OrderingFilter(), queryset, fields, self, request)
+            if ordering:
+                queryset = queryset.order_by(*ordering)
+            else:
+                queryset = queryset.order_by('id')
+        else:
+            queryset = queryset.order_by('id')
         user = self.request.user
         no_page = True if 'no_page' in self.request.query_params else False
 
