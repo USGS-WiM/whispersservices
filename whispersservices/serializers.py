@@ -691,7 +691,7 @@ class EventSerializer(serializers.ModelSerializer):
                             and 'dead_count' in spec and spec['dead_count'] is not None
                             and not spec['dead_count_estimated'] > spec['dead_count']):
                         est_dead_is_valid = False
-                    if validated_data['event_type'] == mortality_morbidity.id:
+                    if validated_data['event_type'].id == mortality_morbidity.id:
                         if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
                                 and spec['dead_count_estimated'] > 0):
                             species_count_is_valid.append(True)
