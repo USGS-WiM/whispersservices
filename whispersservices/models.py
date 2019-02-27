@@ -383,6 +383,7 @@ class EventOrganization(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_eventorganization"
         ordering = ['event', 'priority']
+        unique_together = ('event', 'organization')
 
 
 class EventContact(PermissionsHistoryModel):
