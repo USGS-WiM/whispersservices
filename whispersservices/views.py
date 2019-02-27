@@ -9,7 +9,7 @@ from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
-from rest_framework.exceptions import PermissionDenied, APIException
+from rest_framework.exceptions import PermissionDenied, APIException, NotFound
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
 from whispersservices.serializers import *
@@ -162,14 +162,15 @@ class EventViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 queryset = Event.objects.filter(id=pk)
-                obj = queryset[0]
-                circle_read = obj.circle_read if obj.circle_read is not None else []
-                circle_write = obj.circle_write if obj.circle_write is not None else []
-                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
-                                        or user in circle_read or user in circle_write
-                                        or user.role.is_superadmin or user.role.is_admin):
-                    return queryset
-            return queryset.filter(public=True)
+                if queryset:
+                    obj = queryset[0]
+                    circle_read = obj.circle_read if obj.circle_read is not None else []
+                    circle_write = obj.circle_write if obj.circle_write is not None else []
+                    if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                            or user in circle_read or user in circle_write
+                                            or user.role.is_superadmin or user.role.is_admin):
+                        return queryset
+            raise NotFound
         # all list requests, and all requests from public users (except circle members), must only return public data
         elif self.action == 'list' or user.role.is_public:
             return queryset.filter(public=True)
@@ -909,11 +910,12 @@ class OrganizationViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 queryset = Organization.objects.filter(id=pk)
-                obj = queryset[0]
-                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
-                                        or user.role.is_superadmin or user.role.is_admin):
-                    return queryset
-            return queryset.filter(do_not_publish=False)
+                if queryset:
+                    obj = queryset[0]
+                    if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                            or user.role.is_superadmin or user.role.is_admin):
+                        return queryset
+            raise NotFound
         # all list requests, and all requests from public users, must only return published data
         elif self.action == 'list' or user.role.is_public:
             return queryset.filter(do_not_publish=False)
@@ -1153,7 +1155,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
         # public users must use the public serializer unless in a circle
         elif user.role.is_public:
-            if user in queryset[0].circle_write or user in queryset[0].circle_read:
+            if queryset and user in queryset[0].circle_write or user in queryset[0].circle_read:
                 if no_page:
                     serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
                 else:
@@ -1183,7 +1185,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
         # partner users can see public fields and event_reference field
         elif (user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin or user.role.is_affiliate
-              or user in queryset[0].circle_write or user in queryset[0].circle_read):
+              or (queryset and user in queryset[0].circle_write or user in queryset[0].circle_read)):
             if no_page:
                 serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
             else:
@@ -1585,14 +1587,15 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 queryset = Event.objects.filter(id=pk)
-                obj = queryset[0]
-                circle_read = obj.circle_read if obj.circle_read is not None else []
-                circle_write = obj.circle_write if obj.circle_write is not None else []
-                if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
-                                        or user in circle_read or user in circle_write
-                                        or user.role.is_superadmin or user.role.is_admin):
-                    return queryset
-            return queryset.filter(public=True)
+                if queryset:
+                    obj = queryset[0]
+                    circle_read = obj.circle_read if obj.circle_read is not None else []
+                    circle_write = obj.circle_write if obj.circle_write is not None else []
+                    if obj is not None and (user == obj.created_by or user.organization == obj.created_by.organization
+                                            or user in circle_read or user in circle_write
+                                            or user.role.is_superadmin or user.role.is_admin):
+                        return queryset
+            raise NotFound
         # all list requests must only return public data
         else:
             return queryset.filter(public=True)
