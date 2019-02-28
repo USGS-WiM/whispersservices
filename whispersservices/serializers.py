@@ -758,7 +758,9 @@ class EventSerializer(serializers.ModelSerializer):
 
         # create the child organizations for this event
         if new_organizations is not None:
-            for org_id in new_organizations:
+            # only create unique records (silently ignore duplicates submitted by user)
+            new_unique_organizations = list(set(new_organizations))
+            for org_id in new_unique_organizations:
                 if org_id is not None:
                     org = Organization.objects.filter(pk=org_id).first()
                     if org is not None:
@@ -1547,7 +1549,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         # create the child organizations for this event
         if new_organizations is not None:
-            for org_id in new_organizations:
+            # only create unique records (silently ignore duplicates submitted by user)
+            new_unique_organizations = list(set(new_organizations))
+            for org_id in new_unique_organizations:
                 if org_id is not None:
                     org = Organization.objects.filter(pk=org_id).first()
                     if org is not None:
