@@ -4,6 +4,7 @@ from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
 from django.db.models import Count
+from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
@@ -1483,16 +1484,36 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.filter(affected_count__gte=affected_count__gte)
         elif affected_count__lte is not None:
             queryset = queryset.filter(affected_count__lte=affected_count__lte)
+
+        # # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
+        # # the date filters below are date-exclusive
+        # start_date = query_params.get('start_date', None)
+        # end_date = query_params.get('end_date', None)
+        # if start_date is not None and end_date is not None:
+        #     queryset = queryset.filter(start_date__gt=start_date, end_date__lt=end_date)
+        # elif start_date is not None:
+        #     queryset = queryset.filter(start_date__gt=start_date)
+        # elif end_date is not None:
+        #     queryset = queryset.filter(end_date__lt=end_date)
+
         # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
-        # the date filters below are date-exclusive
+        # the date filters below are date-inclusive
         start_date = query_params.get('start_date', None)
         end_date = query_params.get('end_date', None)
         if start_date is not None and end_date is not None:
-            queryset = queryset.filter(start_date__gt=start_date, end_date__lt=end_date)
-        elif start_date is not None:
-            queryset = queryset.filter(start_date__gt=start_date)
-        elif end_date is not None:
-            queryset = queryset.filter(end_date__lt=end_date)
+            queryset = queryset.filter(
+                Q(start_date__lte=start_date, end_date__gte=start_date)
+                | Q(start_date__gte=start_date, start_date__lte=end_date)
+            )
+        elif start_date is not None and end_date is None:
+            queryset = queryset.filter(
+                Q(start_date__lte=start_date, end_date__gte=start_date)
+                | Q(start_date__lte=start_date, end_date__isnull=True)
+                | Q(start_date__gte=start_date, start_date__lte=Now())
+            )
+        elif start_date is None and end_date is not None:
+            queryset = queryset.filter(start_date__lte=end_date)
+
         # TODO: determine the intended use of the following three query params
         # because only admins or fellow org or circle members should even be able to filter on these values
         # perhaps these should instead be used implicitly based on the requester
