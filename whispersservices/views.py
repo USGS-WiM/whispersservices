@@ -231,22 +231,90 @@ class EventViewSet(HistoryViewSet):
             return EventPublicSerializer
 
 
-class EventSuperEventViewSet(HistoryViewSet):
-    queryset = EventSuperEvent.objects.all()
-    serializer_class = EventSuperEventSerializer
+class EventEventGroupViewSet(HistoryViewSet):
 
     def destroy(self, request, *args, **kwargs):
-        # if the related event is complete, no relates to superevents can be deleted
+        # if the related event is complete, no relates to eventgroups can be deleted
         if self.get_object().complete:
-            message = "SuperEvent for a complete event may not be changed"
+            message = "EventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
-        return super(EventSuperEventViewSet, self).destroy(request, *args, **kwargs)
+        return super(EventEventGroupViewSet, self).destroy(request, *args, **kwargs)
+
+    # override the default queryset to allow filtering by user type
+    def get_queryset(self):
+        user = self.request.user
+        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        if not user.is_authenticated:
+            return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
+        # admins have access to all records
+        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+            return EventEventGroup.objects.all()
+        else:
+            return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventEventGroupPublicSerializer
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventEventGroupPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.role.is_superadmin or user.role.is_admin:
+            return EventEventGroupSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventEventGroupPublicSerializer
 
 
-class SuperEventViewSet(HistoryViewSet):
-    queryset = SuperEvent.objects.all()
-    serializer_class = SuperEventSerializer
+class EventGroupViewSet(HistoryViewSet):
+
+    # override the default queryset to allow filtering by user type
+    def get_queryset(self):
+        user = self.request.user
+        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        if not user.is_authenticated:
+            return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
+        # admins have access to all records
+        if user.role.is_superadmin or user.role.is_admin:
+            return EventGroup.objects.all()
+        else:
+            return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all requests from anonymous users must use the public serializer
+        if not user.is_authenticated:
+            return EventGroupPublicSerializer
+        # all list requests, and all requests from public users, must use the public serializer
+        if self.action == 'list' or user.role.is_public:
+            return EventGroupPublicSerializer
+        # for all other requests admins have access to all fields
+        if user.role.is_superadmin or user.role.is_admin:
+            return EventGroupSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return EventGroupPublicSerializer
+
+
+class EventGroupCategoryViewSet(HistoryViewSet):
+    serializer_class = EventGroupCategorySerializer
+
+    # override the default queryset to allow filtering by user type
+    def get_queryset(self):
+        user = self.request.user
+        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        if not user.is_authenticated:
+            return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
+        # admins have access to all records
+        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+            return EventGroupCategory.objects.all()
+        else:
+            return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
 
 
 class EventTypeViewSet(HistoryViewSet):
@@ -815,7 +883,7 @@ class UserViewSet(HistoryViewSet):
             queryset = User.objects.all()
         # otherwise return nothing
         else:
-            return Contact.objects.none()
+            return User.objects.none()
 
         # filter by username, exact
         username = self.request.query_params.get('username', None)

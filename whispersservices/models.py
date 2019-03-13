@@ -180,7 +180,7 @@ class Event(PermissionsHistoryModel):
     public = models.BooleanField(default=True)
     circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
     circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
-    superevents = models.ManyToManyField('SuperEvent', through='EventSuperEvent', related_name='events')
+    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events')
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
@@ -229,35 +229,54 @@ class Event(PermissionsHistoryModel):
         # The event record must be uniquely identified by the submission agency, event date, and location.
 
 
-class EventSuperEvent(PermissionsHistoryModel):
+class EventEventGroup(AdminPermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Events and Super Events.
     """
 
     event = models.ForeignKey('Event', models.CASCADE)
-    superevent = models.ForeignKey('SuperEvent', models.CASCADE)
+    eventgroup = models.ForeignKey('EventGroup', models.CASCADE)
 
     def __str__(self):
         return str(self.id)
 
     class Meta:
-        db_table = "whispers_eventsuperevent"
+        db_table = "whispers_eventeventgroup"
+        ordering = ['id']
+        unique_together = ('event', 'eventgroup')
+
+
+class EventGroup(AdminPermissionsHistoryModel):
+    """
+    Event Group
+    """
+
+    @property
+    def name(self):
+        return "G" + str(self.id)
+
+    category = models.IntegerField(null=True)
+    comments = GenericRelation('Comment', related_name='eventgroups')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventgroup"
         ordering = ['id']
 
 
-class SuperEvent(PermissionsHistoryModel):
+class EventGroupCategory(AdminPermissionsHistoryNameModel):
     """
-    Super Event
+    Event Group Category
     """
-
-    category = models.IntegerField(null=True)
-    comments = GenericRelation('Comment', related_name='superevents')
 
     def __str__(self):
-        return str(self.id)
+        return self.name
 
     class Meta:
-        db_table = "whispers_superevent"
+        db_table = "whispers_eventgroupcategory"
+        verbose_name_plural = "categories"
         ordering = ['id']
 
 

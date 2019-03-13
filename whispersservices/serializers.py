@@ -13,7 +13,7 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: implement required field validations for nested objects
 # TODO: consider implementing type checking for nested objects
 
-COMMENT_CONTENT_TYPES = ['event', 'superevent', 'eventlocation', 'servicerequest']
+COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
 FLYWAYS_API = 'https://services.arcgis.com/'
@@ -423,7 +423,7 @@ class EventSerializer(serializers.ModelSerializer):
     new_organizations = serializers.ListField(write_only=True, required=False)
     new_comments = serializers.ListField(write_only=True, required=False)
     new_event_locations = serializers.ListField(write_only=True, required=False)
-    new_superevents = serializers.ListField(write_only=True, required=False)
+    new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
@@ -748,8 +748,8 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child event_locations list from the request
         new_event_locations = validated_data.pop('new_event_locations', None)
 
-        # pull out child superevents list from the request
-        new_superevents = validated_data.pop('new_superevents', None)
+        # pull out child eventgroups list from the request
+        new_eventgroups = validated_data.pop('new_eventgroups', None)
 
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
@@ -782,13 +782,13 @@ class EventSerializer(serializers.ModelSerializer):
                     Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
                                            created_by=user, modified_by=user)
 
-        # create the child superevents for this event
-        if new_superevents is not None:
-            for superevent_id in new_superevents:
-                if superevent_id is not None:
-                    superevent = SuperEvent.objects.filter(pk=superevent_id).first()
-                    if superevent is not None:
-                        EventSuperEvent.objects.create(event=event, superevent=superevent,
+        # create the child eventgroups for this event
+        if new_eventgroups is not None:
+            for eventgroup_id in new_eventgroups:
+                if eventgroup_id is not None:
+                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    if eventgroup is not None:
+                        EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
 
         # Create the child service requests for this event
@@ -924,8 +924,12 @@ class EventSerializer(serializers.ModelSerializer):
 
                         if flyway is None and 'geometry' in payload:
                             r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
-                            flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
-                            flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+                            flyway_features = r.json()['features']
+                            # the FLYWAYS_API only covers the contiguous USA and Alaska, so any points outside that area
+                            # will not intersect USA flyways and so have an empty features array in the response
+                            if len(flyway_features) > 0:
+                                flyway_name = flyway_features[0]['attributes']['NAME'].replace(' Flyway', '')
+                                flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
                     evt_location = EventLocation.objects.create(created_by=user, modified_by=user, **event_location)
 
@@ -1197,7 +1201,7 @@ class EventSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'event_status', 'event_status_string', 'public', 'circle_read', 'circle_write',
                   'organizations', 'contacts', 'comments', 'new_event_diagnoses', 'new_organizations', 'new_comments',
-                  'new_event_locations', 'new_superevents', 'new_service_request', 'created_date', 'created_by',
+                  'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date', 'created_by',
                   'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'service_request_email',
                   'permissions', 'permission_source',)
 
@@ -1216,7 +1220,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
     new_organizations = serializers.ListField(write_only=True, required=False)
     new_comments = serializers.ListField(write_only=True, required=False)
     new_event_locations = serializers.ListField(write_only=True, required=False)
-    new_superevents = serializers.ListField(write_only=True, required=False)
+    new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
@@ -1539,8 +1543,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out child event_locations list from the request
         new_event_locations = validated_data.pop('new_event_locations', None)
 
-        # pull out child superevents list from the request
-        new_superevents = validated_data.pop('new_superevents', None)
+        # pull out child eventgroups list from the request
+        new_eventgroups = validated_data.pop('new_eventgroups', None)
 
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
@@ -1573,13 +1577,13 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
                                            created_by=user, modified_by=user)
 
-        # create the child superevents for this event
-        if new_superevents is not None:
-            for superevent_id in new_superevents:
-                if superevent_id is not None:
-                    superevent = SuperEvent.objects.filter(pk=superevent_id).first()
-                    if superevent is not None:
-                        EventSuperEvent.objects.create(event=event, superevent=superevent,
+        # create the child eventgroups for this event
+        if new_eventgroups is not None:
+            for eventgroup_id in new_eventgroups:
+                if eventgroup_id is not None:
+                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    if eventgroup is not None:
+                        EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
 
         # Create the child service requests for this event
@@ -1996,38 +2000,77 @@ class EventAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'circle_read', 'circle_write', 'superevents', 'organizations', 'contacts', 'comments',
-                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_superevents',
+                  'circle_read', 'circle_write', 'eventgroups', 'organizations', 'contacts', 'comments',
+                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
                   'new_service_request', 'created_date', 'created_by', 'created_by_string', 'modified_date',
                   'modified_by', 'modified_by_string', 'service_request_email', 'permissions', 'permission_source',)
 
 
-class EventSuperEventSerializer(serializers.ModelSerializer):
+class EventEventGroupPublicSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
+        # TODO: determine if this is true
         if data['event'].complete:
-            message = "SuperEvent for a complete event may not be changed"
+            message = "EventEventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
         return data
 
     class Meta:
-        model = EventSuperEvent
-        fields = ('id', 'event', 'superevent', 'created_date', 'created_by', 'created_by_string',
+        model = EventEventGroup
+        fields = ('id', 'event', 'eventgroup',)
+
+
+class EventEventGroupSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    def validate(self, data):
+
+        # TODO: determine if this is true
+        if data['event'].complete:
+            message = "EventEventGroup for a complete event may not be changed"
+            message += " unless the event is first re-opened by the event owner or an administrator."
+            raise serializers.ValidationError(message)
+
+        return data
+
+    class Meta:
+        model = EventEventGroup
+        fields = ('id', 'event', 'eventgroup', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class SuperEventSerializer(serializers.ModelSerializer):
+class EventGroupPublicSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
-        model = SuperEvent
-        fields = ('id', 'category', 'events', 'created_date', 'created_by', 'created_by_string',
+        model = EventGroup
+        fields = ('id', 'name', 'events',)
+
+
+class EventGroupSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = EventGroup
+        fields = ('id', 'name', 'category', 'events', 'comments', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class EventGroupCategorySerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = EventGroupCategory
+        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
@@ -4489,7 +4532,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
-                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'superevents', 'organizations',
+                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups', 'organizations',
                   'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
                   'species', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
@@ -4635,6 +4678,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailPublicSerializer(many=True)
     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
+    eventgroups = EventGroupPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4670,8 +4714,8 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_status', 'event_status_string','eventdiagnoses', 'eventlocations', 'eventorganizations',
-                  'permissions', 'permission_source',)
+                  'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                  'eventorganizations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -4691,6 +4735,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
+    eventgroups = EventGroupPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4754,10 +4799,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'created_date', 'created_by',
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'eventgroups', 'eventdiagnoses',
+                  'eventlocations', 'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments', 'servicerequests',
                   'permissions', 'permission_source',)
 
 
@@ -4780,6 +4825,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
+    eventgroups = EventGroupSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4844,7 +4890,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'superevents',
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups',
                   'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments', 'servicerequests',
                   'created_date', 'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
                   'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
