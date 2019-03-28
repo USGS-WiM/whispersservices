@@ -2007,8 +2007,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
 
 class EventEventGroupPublicSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -2046,8 +2044,6 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
 
 
 class EventGroupPublicSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = EventGroup
@@ -3594,6 +3590,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
+                    # TODO: comment type should always be 'Service Request' regardless of what user may specify
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                     comment = Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                      comment_type=comment_type, created_by=user, modified_by=user)

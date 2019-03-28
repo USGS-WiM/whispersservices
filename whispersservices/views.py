@@ -53,6 +53,13 @@ PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
 
+def get_request_user(request):
+    if request:
+        return request.user
+    else:
+        return None
+
+
 def construct_email(request_data, requester_email, message):
     # construct and send the request email
     subject = "Assistance Request"
@@ -112,7 +119,9 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            return super().paginate_queryset(*args, **kwargs)
+        elif 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
@@ -127,7 +136,9 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            return super().paginate_queryset(*args, **kwargs)
+        elif 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
@@ -152,11 +163,11 @@ class EventViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
         queryset = Event.objects.all()
 
+        user = get_request_user(self.request)
         # all requests from anonymous users must only return public data
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return queryset.filter(public=True)
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
         elif self.action in PK_REQUESTS:
@@ -181,9 +192,9 @@ class EventViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventPublicSerializer
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         if self.action in PK_REQUESTS:
@@ -243,9 +254,9 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
@@ -255,9 +266,9 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventEventGroupPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -274,9 +285,9 @@ class EventGroupViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin:
@@ -286,9 +297,9 @@ class EventGroupViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventGroupPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -306,9 +317,9 @@ class EventGroupCategoryViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
@@ -350,7 +361,7 @@ class EventAbstractViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = EventAbstract.objects.all()
-        contains = self.request.query_params.get('contains', None)
+        contains = self.request.query_params.get('contains', None) if self.request else None
         if contains is not None:
             queryset = queryset.filter(text__contains=contains)
         return queryset
@@ -395,9 +406,9 @@ class EventOrganizationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventOrganizationPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -454,9 +465,9 @@ class EventLocationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventLocationPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -502,7 +513,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
-        country = self.request.query_params.get('country', None)
+        country = self.request.query_params.get('country', None) if self.request else None
         if country is not None and country != '':
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
@@ -512,7 +523,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return AdministrativeLevelOneSlimSerializer
         else:
             return AdministrativeLevelOneSerializer
@@ -530,17 +541,17 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
-        administrative_level_one = self.request.query_params.get('administrativelevelone', None)
-        if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMETER in administrative_level_one:
-                administrative_level_one_list = administrative_level_one.split(',')
-                queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
+        admin_level_one = self.request.query_params.get('administrativelevelone', None) if self.request else None
+        if admin_level_one is not None and admin_level_one != '':
+            if LIST_DELIMETER in admin_level_one:
+                admin_level_one_list = admin_level_one.split(',')
+                queryset = queryset.filter(administrative_level_one__in=admin_level_one_list)
             else:
-                queryset = queryset.filter(administrative_level_one__exact=administrative_level_one)
+                queryset = queryset.filter(administrative_level_one__exact=admin_level_one)
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return AdministrativeLevelTwoSlimSerializer
         else:
             return AdministrativeLevelTwoSerializer
@@ -594,9 +605,9 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return LocationSpeciesPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -632,7 +643,7 @@ class SpeciesViewSet(HistoryViewSet):
         return construct_email(request.data, request.user.email, message)
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return SpeciesSlimSerializer
         else:
             return SpeciesSerializer
@@ -660,7 +671,7 @@ class DiagnosisViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new diagnosis:"
@@ -669,7 +680,7 @@ class DiagnosisViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
         queryset = Diagnosis.objects.all()
-        diagnosis_type = self.request.query_params.get('diagnosis_type', None)
+        diagnosis_type = self.request.query_params.get('diagnosis_type', None) if self.request else None
         if diagnosis_type is not None and diagnosis_type != '':
             if LIST_DELIMETER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
@@ -697,9 +708,9 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventDiagnosisPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -736,9 +747,9 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous users must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return SpeciesDiagnosisPublicSerializer
         # all list requests, and all requests from public users, must use the public serializer
         if self.action == 'list' or user.role.is_public:
@@ -819,7 +830,7 @@ class CommentViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = Comment.objects.all()
-        contains = self.request.query_params.get('contains', None)
+        contains = self.request.query_params.get('contains', None) if self.request else None
         if contains is not None:
             queryset = queryset.filter(comment__contains=contains)
         return queryset
@@ -848,7 +859,7 @@ class UserViewSet(HistoryViewSet):
     # anyone can request a new user, but an email address is required if the request comes from a non-user
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             words = request.data.split(" ")
             email_addresses = [word for word in words if '@' in word]
             if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
@@ -866,10 +877,9 @@ class UserViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
-
+        user = get_request_user(self.request)
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return User.objects.none()
         # public and partner users can only see themselves
         elif user.role.is_public or user.role.is_partner or user.role.is_partnermanager:
@@ -906,8 +916,8 @@ class AuthView(views.APIView):
     serializer_class = UserSerializer
 
     def post(self, request):
-        user = request.user
-        if user.is_authenticated:
+        user = request.user if request is not None else None
+        if user and user.is_authenticated:
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
         return Response(self.serializer_class(user).data)
@@ -927,7 +937,7 @@ class OrganizationViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new organization:"
@@ -935,12 +945,10 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
-        slim = False
-        if 'slim' in self.request.query_params:
-            slim = True
+        user = get_request_user(self.request)
+        slim = True if self.request is not None and 'slim' in self.request.query_params else False
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
         # admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
@@ -956,23 +964,24 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
         queryset = Organization.objects.all()
 
-        users = self.request.query_params.get('users', None)
-        if users is not None and users != '':
-            users_list = users.split(',')
-            queryset = queryset.filter(users__in=users_list)
-        contacts = self.request.query_params.get('contacts', None)
-        if contacts is not None and contacts != '':
-            contacts_list = contacts.split(',')
-            queryset = queryset.filter(contacts__in=contacts_list)
-        laboratory = self.request.query_params.get('laboratory', None)
-        if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
-            queryset = queryset.filter(laboratory__exact=laboratory)
+        if self.request:
+            users = self.request.query_params.get('users', None)
+            if users is not None and users != '':
+                users_list = users.split(',')
+                queryset = queryset.filter(users__in=users_list)
+            contacts = self.request.query_params.get('contacts', None)
+            if contacts is not None and contacts != '':
+                contacts_list = contacts.split(',')
+                queryset = queryset.filter(contacts__in=contacts_list)
+            laboratory = self.request.query_params.get('laboratory', None)
+            if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
+                queryset = queryset.filter(laboratory__exact=laboratory)
 
+        user = get_request_user(self.request)
         # all requests from anonymous users must only return published data
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return queryset.filter(do_not_publish=False)
         # for pk requests, unpublished data can only be returned to the owner or their org or admins
         elif self.action in PK_REQUESTS:
@@ -998,9 +1007,9 @@ class ContactViewSet(HistoryViewSet):
     @action(detail=False)
     def user_contacts(self, request):
         # limit data to what the user owns and what the user's org owns
-        query_params = self.request.query_params
+        query_params = self.request.query_params if request is not None else None
         queryset = self.build_queryset(query_params, get_user_contacts=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params is not None else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1011,40 +1020,45 @@ class ContactViewSet(HistoryViewSet):
                 queryset = queryset.order_by('id')
         else:
             queryset = queryset.order_by('id')
-        slim = True if 'slim' in self.request.query_params else False
 
-        if 'no_page' in self.request.query_params:
-            if slim:
-                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
-            else:
-                serializer = ContactSerializer(queryset, many=True, context={'request': request})
+        if not request:
+            serializer = ContactSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
+
         else:
-            page = self.paginate_queryset(queryset)
-            if page is not None:
+            slim = True if 'slim' in self.request.query_params else False
+
+            if 'no_page' in self.request.query_params:
                 if slim:
-                    serializer = ContactSlimSerializer(page, many=True, context={'request': request})
+                    serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
                 else:
-                    serializer = ContactSerializer(page, many=True, context={'request': request})
-                return self.get_paginated_response(serializer.data)
-            if slim:
-                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+                    serializer = ContactSerializer(queryset, many=True, context={'request': request})
+                return Response(serializer.data, status=200)
             else:
-                serializer = ContactSerializer(queryset, many=True, context={'request': request})
-            return Response(serializer.data, status=200)
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    if slim:
+                        serializer = ContactSlimSerializer(page, many=True, context={'request': request})
+                    else:
+                        serializer = ContactSerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                if slim:
+                    serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+                else:
+                    serializer = ContactSerializer(queryset, many=True, context={'request': request})
+                return Response(serializer.data, status=200)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_contacts=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_contacts):
-        user = self.request.user
-
+        user = get_request_user(self.request)
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return Contact.objects.none()
         # public users cannot see anything
         elif user.role.is_public:
@@ -1077,7 +1091,7 @@ class ContactViewSet(HistoryViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return ContactSlimSerializer
         else:
             return ContactSerializer
@@ -1094,9 +1108,9 @@ class SearchViewSet(HistoryViewSet):
     @action(detail=False)
     def user_searches(self, request):
         # limit data to what the user owns and what the user's org owns
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_searches=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1108,7 +1122,14 @@ class SearchViewSet(HistoryViewSet):
         else:
             queryset = queryset.order_by('id')
 
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = SearchSerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        elif 'no_page' in self.request.query_params:
             serializer = SearchSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
         else:
@@ -1129,22 +1150,21 @@ class SearchViewSet(HistoryViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if self.request and 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_searches=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_searches):
-        user = self.request.user
-
+        user = get_request_user(self.request)
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
         elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
@@ -1184,20 +1204,20 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     @action(detail=False)
     def get_count(self, request):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return Response({"count": self.build_queryset(query_params, get_user_events=False).count()})
 
     @action(detail=False)
     def get_user_events_count(self, request):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return Response({"count": self.build_queryset(query_params, get_user_events=True).count()})
 
     @action(detail=False)
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_events=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1208,12 +1228,13 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.order_by('id')
         else:
             queryset = queryset.order_by('id')
-        user = self.request.user
-        no_page = True if 'no_page' in self.request.query_params else False
+
+        no_page = True if self.request and 'no_page' in self.request.query_params else False
 
         # determine the appropriate serializer to ensure the requester sees only permitted data
+        user = get_request_user(self.request)
         # anonymous user must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             if no_page:
                 serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
             else:
@@ -1278,7 +1299,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
-        frmt = self.request.query_params.get('format', None)
+        frmt = self.request.query_params.get('format', None) if self.request else None
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
@@ -1289,7 +1310,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
-        renderer_format = self.request.accepted_renderer.format
+        renderer_format = self.request.accepted_renderer.format if self.request else ''
         if renderer_format == 'csv':
             fileextension = '.csv'
             filename = 'event_summary_'
@@ -1301,12 +1322,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        frmt = self.request.query_params.get('format', None)
-        user = self.request.user
+        frmt = self.request.query_params.get('format', None) if self.request else None
+        user = get_request_user(self.request)
 
         if frmt is not None and frmt == 'csv':
             return FlatEventSummaryPublicSerializer
-        elif not user.is_authenticated:
+        elif not user or not user.is_authenticated:
             return EventSummaryPublicSerializer
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         elif self.action == 'retrieve':
@@ -1333,13 +1354,13 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_events=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_events):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # first get or create the search and increment its count
         if query_params:
@@ -1368,7 +1389,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         queryset = Event.objects.all()
 
         # anonymous users can only see public data
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             if get_user_events:
                 return queryset.none()
             else:
@@ -1642,7 +1663,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
-        frmt = self.request.query_params.get('format', None)
+        frmt = self.request.query_params.get('format', None) if self.request else None
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
@@ -1653,7 +1674,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
-        renderer_format = self.request.accepted_renderer.format
+        renderer_format = self.request.accepted_renderer.format if self.request else ''
         if renderer_format == 'csv':
             fileextension = '.csv'
             filename = 'event_details_'
@@ -1665,10 +1686,10 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         queryset = Event.objects.all()
 
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return queryset.filter(public=True)
 
         # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
@@ -1691,8 +1712,8 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
-        if not user.is_authenticated:
+        user = get_request_user(self.request)
+        if not user or not user.is_authenticated:
             return EventDetailPublicSerializer
         # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
         elif self.action == 'retrieve':
