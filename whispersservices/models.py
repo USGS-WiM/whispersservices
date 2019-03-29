@@ -255,7 +255,7 @@ class EventGroup(AdminPermissionsHistoryModel):
     def name(self):
         return "G" + str(self.id)
 
-    category = models.IntegerField(null=True)
+    category = models.ForeignKey('EventGroupCategory', models.CASCADE)
     comments = GenericRelation('Comment', related_name='eventgroups')
 
     def __str__(self):

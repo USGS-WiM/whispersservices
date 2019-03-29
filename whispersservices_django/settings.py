@@ -89,6 +89,16 @@ TEMPLATES = [
     },
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        # 'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ),
+}
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
 WSGI_APPLICATION = 'whispersservices_django.wsgi.application'
 
 EMAIL_BACKEND = CONFIG.get('email', 'EMAIL_BACKEND')

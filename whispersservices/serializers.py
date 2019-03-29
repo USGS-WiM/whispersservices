@@ -2007,8 +2007,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
 
 class EventEventGroupPublicSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -2046,8 +2044,6 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
 
 
 class EventGroupPublicSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
         model = EventGroup
