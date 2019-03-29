@@ -2053,10 +2053,97 @@ class EventGroupPublicSerializer(serializers.ModelSerializer):
 class EventGroupSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    comments = CommentSerializer(many=True, read_only=True)
+    new_comment = serializers.CharField(write_only=True, required=True, allow_blank=False)
+    new_events = serializers.ListField(write_only=True, required=True)
+
+    def create(self, validated_data):
+        if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
+            raise serializers.ValidationError("An EventGroup must have at least two Events")
+
+        # pull out event ID list from the request
+        new_event_ids = validated_data.pop('new_events', [])
+        event_ids = list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True))
+        if len(new_event_ids) != len(event_ids):
+            not_event_ids = list(set(new_event_ids) - set(event_ids))
+            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+
+        # pull out comment from the request
+        new_comment = validated_data.pop("new_comment")
+
+        eventgroup = EventGroup.objects.create(**validated_data)
+
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        # create the related comment
+        comment_type = CommentType.objects.filter(name='Biologically Equivalent (Public)').first()
+        Comment.objects.create(content_object=eventgroup, comment=new_comment,
+                               comment_type=comment_type, created_by=user, modified_by=user)
+
+        # create the related event-eventgroups
+        for event_id in new_event_ids:
+            event = Event.objects.filter(id=event_id).first()
+            if event:
+                EventEventGroup.objects.create(eventgroup=eventgroup, event=event, created_by=user, modified_by=user)
+
+        return eventgroup
+
+    def update(self, instance, validated_data):
+        if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
+            raise serializers.ValidationError("An EventGroup must have at least two Events")
+
+        # pull out event ID list from the request
+        new_event_ids = validated_data.pop('new_events', [])
+        event_ids = list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True))
+        if len(new_event_ids) != len(event_ids):
+            not_event_ids = list(set(new_event_ids) - set(event_ids))
+            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        # update the comment
+        new_comment = validated_data.pop("new_comment", None)
+        if new_comment:
+            content_type = ContentType.objects.get_for_model(self.Meta.model)
+            comment = Comment.objects.filter(object_id=instance.id, content_type=content_type).first()
+            comment.comment = new_comment
+            comment.save()
+
+        if new_event_ids:
+            # get the old (current) event ID list for this Event Group
+            old_event_ids = list(EventEventGroup.objects.filter(
+                eventgroup=instance.id).values_list('event_id', flat=True))
+
+            # identify and delete relates where event IDs are present in old list but not new list
+            delete_event_ids = list(set(old_event_ids) - set(new_event_ids))
+            for event_id in delete_event_ids:
+                delete_event = EventEventGroup.objects.filter(eventgroup=instance.id, event=event_id)
+                delete_event.delete()
+
+            # identify and create relates where sample IDs are present in new list but not old list
+            add_event_ids = list(set(new_event_ids) - set(old_event_ids))
+            for event_id in add_event_ids:
+                event = Event.objects.filter(id=event_id).first()
+                if event:
+                    EventEventGroup.objects.create(eventgroup=instance, event=event, created_by=user, modified_by=user)
+
+        instance.category = validated_data.get('category', instance.category)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+
+        instance.save()
+
+        return instance
 
     class Meta:
         model = EventGroup
-        fields = ('id', 'name', 'category', 'events', 'comments', 'created_date', 'created_by', 'created_by_string',
+        fields = ('id', 'name', 'category', 'comments', 'events', "new_events", 'new_comment',
+                  'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 

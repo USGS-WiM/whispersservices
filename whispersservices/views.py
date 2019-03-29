@@ -148,6 +148,18 @@ class EventViewSet(HistoryViewSet):
             message = "A complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
+        elif self.get_object().eventgroups:
+            eventgroups_min_events = []
+            eventgroups = EventGroup.objects.filter(events=self.get_object().id)
+            for eg in eventgroups:
+                eventgroup = EventGroup.objects.filter(id=eg.id).annotate(num_events=Count('events'))
+                if eventgroup[0].num_events == 2:
+                    eventgroups_min_events.append(eventgroup[0].id)
+            if len(eventgroups_min_events) > 0:
+                message = "An event may not be deleted if any event group " + str(eventgroups_min_events)
+                message += " to which it belongs would have fewer than two events following this delete."
+                raise APIException(message)
+
         return super(EventViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
