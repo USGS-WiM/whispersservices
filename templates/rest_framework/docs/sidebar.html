@@ -3,7 +3,7 @@
     <h3 class="brand"><a href="#">{{ document.title }}</a></h3>
 
     <i class="fa fa-bars fa-2x toggle-btn" data-toggle="collapse" data-target="#menu-content"></i>
-    <div class="menu-list">
+    <div class="menu-list" style="width: auto;"> <!-- Temporary inline styles to stop my eyes from bleeding until Mitch can fix it -->
         <ul id="menu-content" class="menu-content collapse out">
             {% if document|data %}
             {% for section_key, section in document|data|items %}
