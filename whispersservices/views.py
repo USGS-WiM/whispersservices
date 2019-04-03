@@ -152,6 +152,26 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
 class EventViewSet(HistoryViewSet):
 
+    """
+    list:
+    Returns a list of all events.
+
+    create:
+    Creates a new event.
+    
+    read:
+    Returns an event by id.
+    
+    update:
+    Updates an event.
+    
+    partial_update:
+    Updates parts of an event.
+    
+    delete:
+    Deletes an event.
+    """
+
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
         # if the event is complete, it cannot be deleted
@@ -244,6 +264,26 @@ class EventViewSet(HistoryViewSet):
 
 class EventEventGroupViewSet(HistoryViewSet):
 
+    """
+    list:
+    Returns a list of all event event groups.
+
+    create:
+    Creates a new event event group.
+    
+    read:
+    Returns an event event group by id.
+    
+    update:
+    Updates an event event group.
+    
+    partial_update:
+    Updates parts of an event event group.
+    
+    delete:
+    Deletes an event event group.
+    """
+
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to eventgroups can be deleted
         if self.get_object().complete:
@@ -283,6 +323,26 @@ class EventEventGroupViewSet(HistoryViewSet):
 
 class EventGroupViewSet(HistoryViewSet):
 
+    """
+    list:
+    Returns a list of all event groups.
+
+    create:
+    Creates a new event group.
+    
+    read:
+    Returns an event group by id.
+    
+    update:
+    Updates an event group.
+    
+    partial_update:
+    Updates parts of an event group.
+    
+    delete:
+    Deletes an event group.
+    """
+
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
         user = get_request_user(self.request)
@@ -313,6 +373,26 @@ class EventGroupViewSet(HistoryViewSet):
 
 
 class EventGroupCategoryViewSet(HistoryViewSet):
+
+    """
+    list:
+    Returns a list of all event group categories.
+
+    create:
+    Creates a new event group category.
+    
+    read:
+    Returns an event group category by id.
+    
+    update:
+    Updates an event group category.
+    
+    partial_update:
+    Updates parts of an event group category.
+    
+    delete:
+    Deletes an event group category.
+    """
     serializer_class = EventGroupCategorySerializer
 
     # override the default queryset to allow filtering by user type
@@ -329,26 +409,123 @@ class EventGroupCategoryViewSet(HistoryViewSet):
 
 
 class EventTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event types.
+
+    create:
+    Creates a new event type.
+    
+    read:
+    Returns an event type by id.
+    
+    update:
+    Updates an event type.
+    
+    partial_update:
+    Updates parts of an event type.
+    
+    delete:
+    Deletes an event type.
+    """
     queryset = EventType.objects.all()
     serializer_class = EventTypeSerializer
 
 
 class StaffViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all staff.
+
+    create:
+    Creates a new staff member.
+    
+    read:
+    Returns a staff member by id.
+    
+    update:
+    Updates a staff member.
+    
+    partial_update:
+    Updates parts of a staff member.
+    
+    delete:
+    Deletes a staff member.
+    """
     queryset = Staff.objects.all()
     serializer_class = StaffSerializer
 
 
 class LegalStatusViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all legal statuses.
+
+    create:
+    Creates a new legal status.
+    
+    read:
+    Returns a legal status by id.
+    
+    update:
+    Updates a legal status.
+    
+    partial_update:
+    Updates parts of a legal status.
+    
+    delete:
+    Deletes a legal status.
+    """
     queryset = LegalStatus.objects.all()
     serializer_class = LegalStatusSerializer
 
 
 class EventStatusViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event statuses.
+
+    create:
+    Creates a new event status.
+    
+    read:
+    Returns an event status by id.
+    
+    update:
+    Updates an event status.
+    
+    partial_update:
+    Updates parts of an event status.
+    
+    delete:
+    Deletes an event status.
+    """
     queryset = EventStatus.objects.all()
     serializer_class = EventStatusSerializer
 
 
 class EventAbstractViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event abstracts.
+
+    create:
+    Creates a new event abstract.
+    
+    read:
+    Returns an event abstract by id.
+    
+    update:
+    Updates an event abstract.
+    
+    partial_update:
+    Updates parts of an event abstract.
+    
+    delete:
+    Deletes an event abstract.
+    """
+    # not visible in api
+
     serializer_class = EventAbstractSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -368,6 +545,25 @@ class EventAbstractViewSet(HistoryViewSet):
 
 
 class EventCaseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event cases.
+
+    create:
+    Creates a new event case.
+    
+    read:
+    Returns an event case by id.
+    
+    update:
+    Updates an event case.
+    
+    partial_update:
+    Updates parts of an event case.
+    
+    delete:
+    Deletes an event case.
+    """
     queryset = EventCase.objects.all()
     serializer_class = EventCaseSerializer
 
@@ -381,6 +577,25 @@ class EventCaseViewSet(HistoryViewSet):
 
 
 class EventLabsiteViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event lab sites.
+
+    create:
+    Creates a new event lab site.
+    
+    read:
+    Returns an event lab site by id.
+    
+    update:
+    Updates an event lab site.
+    
+    partial_update:
+    Updates parts of an event lab site.
+    
+    delete:
+    Deletes an event lab site.
+    """
     queryset = EventLabsite.objects.all()
     serializer_class = EventLabsiteSerializer
 
@@ -394,6 +609,25 @@ class EventLabsiteViewSet(HistoryViewSet):
 
 
 class EventOrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event organizations.
+
+    create:
+    Creates a new event organization.
+    
+    read:
+    Returns an event organization by id.
+    
+    update:
+    Updates an event organization.
+    
+    partial_update:
+    Updates parts of an event organization.
+    
+    delete:
+    Deletes an event organization.
+    """
     queryset = EventOrganization.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -433,6 +667,25 @@ class EventOrganizationViewSet(HistoryViewSet):
 
 
 class EventContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event contacts.
+
+    create:
+    Creates a new event contact.
+    
+    read:
+    Returns an event contact by id.
+    
+    update:
+    Updates an event contact.
+    
+    partial_update:
+    Updates parts of an event contact.
+    
+    delete:
+    Deletes an event contact.
+    """
     queryset = EventContact.objects.all()
     serializer_class = EventContactSerializer
 
@@ -453,6 +706,25 @@ class EventContactViewSet(HistoryViewSet):
 
 
 class EventLocationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event locations.
+
+    create:
+    Creates a new event location.
+    
+    read:
+    Returns an event location by id.
+    
+    update:
+    Updates an event location.
+    
+    partial_update:
+    Updates parts of an event location.
+    
+    delete:
+    Deletes an event location.
+    """
     queryset = EventLocation.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -492,6 +764,25 @@ class EventLocationViewSet(HistoryViewSet):
 
 
 class EventLocationContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event location contacts.
+
+    create:
+    Creates a new event location contact.
+    
+    read:
+    Returns an event contact by id.
+    
+    update:
+    Updates an event location contact.
+    
+    partial_update:
+    Updates parts of an event location contact.
+    
+    delete:
+    Deletes an event location contact.
+    """
     queryset = EventLocationContact.objects.all()
     serializer_class = EventLocationContactSerializer
 
@@ -505,11 +796,49 @@ class EventLocationContactViewSet(HistoryViewSet):
 
 
 class CountryViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all countries.
+
+    create:
+    Creates a new country.
+    
+    read:
+    Returns a country by id.
+    
+    update:
+    Updates a country.
+    
+    partial_update:
+    Updates parts of a country.
+    
+    delete:
+    Deletes a country.
+    """
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level ones.
+
+    create:
+    Creates an new administrative level one.
+    
+    read:
+    Returns an administrative level one by id.
+    
+    update:
+    Updates an administrative level one.
+    
+    partial_update:
+    Updates parts of an administrative level one.
+    
+    delete:
+    Deletes an administrative level one.
+    """
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
@@ -530,6 +859,28 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level twos.
+
+    create:
+    Creates a new administrative level two.
+    
+    request_new:
+    Request to have a new administrative level two added.
+    
+    read:
+    Returns a administrative level two by id.
+    
+    update:
+    Updates an administrative level two.
+    
+    partial_update:
+    Updates parts of an administrative level two.
+    
+    delete:
+    Deletes an administrative level two.
+    """
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -558,16 +909,73 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
 
 class AdministrativeLevelLocalityViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level localities.
+
+    create:
+    Creates a new administrative level locality.
+    
+    read:
+    Returns an administrative level locality by id.
+    
+    update:
+    Updates an administrative level locality.
+    
+    partial_update:
+    Updates parts of an administrative level locality.
+    
+    delete:
+    Deletes an administrative level locality.
+    """
     queryset = AdministrativeLevelLocality.objects.all()
     serializer_class = AdministrativeLevelLocalitySerializer
 
 
 class LandOwnershipViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all landownerships.
+
+    create:
+    Creates a new landownership.
+    
+    read:
+    Returns a landownership by id.
+    
+    update:
+    Updates a landownership.
+    
+    partial_update:
+    Updates parts of a landownership.
+    
+    delete:
+    Deletes a landownership.
+    """
     queryset = LandOwnership.objects.all()
     serializer_class = LandOwnershipSerializer
 
 
 class EventLocationFlywayViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event location flyways.
+
+    create:
+    Creates an event location flyway.
+    
+    read:
+    Returns an event location flyway by id.
+    
+    update:
+    Updates an event location flyway.
+    
+    partial_update:
+    Updates parts of an event location flyway.
+    
+    delete:
+    Deletes an event location flyway.
+    """
     queryset = EventLocationFlyway.objects.all()
     serializer_class = EventLocationFlywaySerializer
 
@@ -581,6 +989,25 @@ class EventLocationFlywayViewSet(HistoryViewSet):
 
 
 class FlywayViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all flyways.
+
+    create:
+    Creates a flyway.
+    
+    read:
+    Returns a flyway by id.
+    
+    update:
+    Updates a flyway.
+    
+    partial_update:
+    Updates parts of a flyway.
+    
+    delete:
+    Deletes a flyway.
+    """
     queryset = Flyway.objects.all()
     serializer_class = FlywaySerializer
 
@@ -593,6 +1020,25 @@ class FlywayViewSet(HistoryViewSet):
 
 
 class LocationSpeciesViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all location species.
+
+    create:
+    Creates a location species.
+    
+    read:
+    Returns a location species by id.
+    
+    update:
+    Updates a location species.
+    
+    partial_update:
+    Updates parts of a location species.
+    
+    delete:
+    Deletes a location species.
+    """
     queryset = LocationSpecies.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -632,6 +1078,28 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 
 class SpeciesViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species.
+
+    create:
+    Creates a species.
+    
+    request_new:
+    Request to have a new species added.
+    
+    read:
+    Returns a species by id.
+    
+    update:
+    Updates a species.
+    
+    partial_update:
+    Updates parts of a species.
+    
+    delete:
+    Deletes a species.
+    """
     queryset = Species.objects.all()
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -650,11 +1118,49 @@ class SpeciesViewSet(HistoryViewSet):
 
 
 class AgeBiasViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all age biasses.
+
+    create:
+    Creates an age bias.
+    
+    read:
+    Returns an age bias by id.
+    
+    update:
+    Updates an age bias.
+    
+    partial_update:
+    Updates parts of an age bias.
+    
+    delete:
+    Deletes an age bias.
+    """
     queryset = AgeBias.objects.all()
     serializer_class = AgeBiasSerializer
 
 
 class SexBiasViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all sex biasses.
+
+    create:
+    Creates a sex bias.
+    
+    read:
+    Returns a sex bias by id.
+    
+    update:
+    Updates a sex bias.
+    
+    partial_update:
+    Updates parts of a sex bias.
+    
+    delete:
+    Deletes a sex bias.
+    """
     queryset = SexBias.objects.all()
     serializer_class = SexBiasSerializer
 
@@ -667,6 +1173,28 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnoses.
+
+    create:
+    Creates a diagnosis.
+
+    request_new:
+    Request to have a new diagnosis added.
+    
+    read:
+    Returns a diagnosis by id.
+    
+    update:
+    Updates a diagnosis.
+    
+    partial_update:
+    Updates parts of a diagnosis.
+    
+    delete:
+    Deletes a diagnosis.
+    """
     serializer_class = DiagnosisSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -691,11 +1219,49 @@ class DiagnosisViewSet(HistoryViewSet):
 
 
 class DiagnosisTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis types.
+
+    create:
+    Creates a diagnosis type.
+    
+    read:
+    Returns a diagnosis type by id.
+    
+    update:
+    Updates a diagnosis type.
+    
+    partial_update:
+    Updates parts of a diagnosis type.
+    
+    delete:
+    Deletes a diagnosis type.
+    """
     queryset = DiagnosisType.objects.all()
     serializer_class = DiagnosisTypeSerializer
 
 
 class EventDiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event diagnoses.
+
+    create:
+    Creates an event diagnosis.
+    
+    read:
+    Returns an event diagnosis by id.
+    
+    update:
+    Updates an event diagnosis.
+    
+    partial_update:
+    Updates parts of an event diagnosis.
+    
+    delete:
+    Deletes an event diagnosis.
+    """
     queryset = EventDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -735,6 +1301,25 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species diagnoses.
+
+    create:
+    Creates a species diagnosis.
+    
+    read:
+    Returns a species diagnosis by id.
+    
+    update:
+    Updates a species diagnosis.
+    
+    partial_update:
+    Updates parts of a species diagnosis.
+    
+    delete:
+    Deletes a species diagnosis.
+    """
     queryset = SpeciesDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -774,6 +1359,25 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species diagnosis organization.
+
+    create:
+    Creates a species diagnosis organization.
+    
+    read:
+    Returns a species diagnosis organization by id.
+    
+    update:
+    Updates a species diagnosis organization.
+    
+    partial_update:
+    Updates parts of a species diagnosis organization.
+    
+    delete:
+    Deletes a species diagnosis organization.
+    """
     queryset = SpeciesDiagnosisOrganization.objects.all()
     serializer_class = SpeciesDiagnosisOrganizationSerializer
 
@@ -787,11 +1391,49 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
 
 
 class DiagnosisBasisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis bases.
+
+    create:
+    Creates a diagnosis basis.
+    
+    read:
+    Returns a diagnosis basis by id.
+    
+    update:
+    Updates a diagnosis basis.
+    
+    partial_update:
+    Updates parts of a diagnosis basis.
+    
+    delete:
+    Deletes a diagnosis basis.
+    """
     queryset = DiagnosisBasis.objects.all()
     serializer_class = DiagnosisBasisSerializer
 
 
 class DiagnosisCauseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis causes.
+
+    create:
+    Creates a diagnosis cause.
+    
+    read:
+    Returns a diagnosis cause by id.
+    
+    update:
+    Updates a diagnosis cause.
+    
+    partial_update:
+    Updates parts of a diagnosis cause.
+    
+    delete:
+    Deletes a diagnosis cause.
+    """
     queryset = DiagnosisCause.objects.all()
     serializer_class = DiagnosisCauseSerializer
 
@@ -804,16 +1446,73 @@ class DiagnosisCauseViewSet(HistoryViewSet):
 
 
 class ServiceRequestViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service requests.
+
+    create:
+    Creates a service request.
+    
+    read:
+    Returns a service request by id.
+    
+    update:
+    Updates a service request.
+    
+    partial_update:
+    Updates parts of a service request.
+    
+    delete:
+    Deletes a service request.
+    """
     queryset = ServiceRequest.objects.all()
     serializer_class = ServiceRequestSerializer
 
 
 class ServiceRequestTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service request types.
+
+    create:
+    Creates a service request type.
+    
+    read:
+    Returns a service request type by id.
+    
+    update:
+    Updates a service request type.
+    
+    partial_update:
+    Updates parts of a service request type.
+    
+    delete:
+    Deletes a service request type.
+    """
     queryset = ServiceRequestType.objects.all()
     serializer_class = ServiceRequestTypeSerializer
 
 
 class ServiceRequestResponseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service request responses.
+
+    create:
+    Creates a service request response.
+    
+    read:
+    Returns a service request response by id.
+    
+    update:
+    Updates a service request response.
+    
+    partial_update:
+    Updates parts of a service request response.
+    
+    delete:
+    Deletes a service request response.
+    """
     queryset = ServiceRequestResponse.objects.all()
     serializer_class = ServiceRequestResponseSerializer
 
@@ -826,6 +1525,25 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 
 class CommentViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all comments.
+
+    create:
+    Creates a comment.
+    
+    read:
+    Returns a comment by id.
+    
+    update:
+    Updates a comment.
+    
+    partial_update:
+    Updates parts of a comment.
+    
+    delete:
+    Deletes a comment.
+    """
     serializer_class = CommentSerializer
 
     def get_queryset(self):
@@ -837,11 +1555,49 @@ class CommentViewSet(HistoryViewSet):
 
 
 class CommentTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all comment types.
+
+    create:
+    Creates a comment type.
+    
+    read:
+    Returns a comment type by id.
+    
+    update:
+    Updates a comment type.
+    
+    partial_update:
+    Updates parts of a comment type.
+    
+    delete:
+    Deletes a comment type.
+    """
     queryset = CommentType.objects.all()
     serializer_class = CommentTypeSerializer
 
 
 class ArtifactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all artifacts.
+
+    create:
+    Creates an artifact.
+    
+    read:
+    Returns an artifact by id.
+    
+    update:
+    Updates an artifact.
+    
+    partial_update:
+    Updates parts of an artifact.
+    
+    delete:
+    Deletes an artifact.
+    """
     queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer
 
@@ -854,6 +1610,28 @@ class ArtifactViewSet(HistoryViewSet):
 
 
 class UserViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all artifacts.
+
+    create:
+    Creates an artifact.
+
+    request_new:
+    Request to have a new user added.
+    
+    read:
+    Returns an artifact by id.
+    
+    update:
+    Updates an artifact.
+    
+    partial_update:
+    Updates parts of an artifact.
+    
+    delete:
+    Deletes an artifact.
+    """
     serializer_class = UserSerializer
 
     # anyone can request a new user, but an email address is required if the request comes from a non-user
@@ -912,6 +1690,11 @@ class UserViewSet(HistoryViewSet):
 
 
 class AuthView(views.APIView):
+    """
+    create:
+    Creates an auth.
+    """
+    
     authentication_classes = (CustomBasicAuthentication,)
     serializer_class = UserSerializer
 
@@ -924,16 +1707,76 @@ class AuthView(views.APIView):
 
 
 class RoleViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all roles.
+
+    create:
+    Creates a role.
+    
+    read:
+    Returns a role by id.
+    
+    update:
+    Updates a role.
+    
+    partial_update:
+    Updates parts of a role.
+    
+    delete:
+    Deletes a role.
+    """
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
 
 
 class CircleViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all circles.
+
+    create:
+    Creates a circle.
+    
+    read:
+    Returns a circle by id.
+    
+    update:
+    Updates a circle.
+    
+    partial_update:
+    Updates parts of a circle.
+    
+    delete:
+    Deletes a circle.
+    """
     queryset = Circle.objects.all()
     serializer_class = CircleSerlializer
 
 
 class OrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all organizations.
+
+    create:
+    Creates a organization.
+
+    request_new:
+    Request to have a new organization added.
+    
+    read:
+    Returns a organization by id.
+    
+    update:
+    Updates a organization.
+    
+    partial_update:
+    Updates parts of a organization.
+    
+    delete:
+    Deletes a organization.
+    """
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -1003,6 +1846,28 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all contacts.
+
+    create:
+    Creates a contact.
+
+    user_contacts:
+    Returns contacts owned by a user.
+    
+    read:
+    Returns a contact by id.
+    
+    update:
+    Updates a contact.
+    
+    partial_update:
+    Updates parts of a contact.
+    
+    delete:
+    Deletes a contact.
+    """
 
     @action(detail=False)
     def user_contacts(self, request):
@@ -1098,11 +1963,55 @@ class ContactViewSet(HistoryViewSet):
 
 
 class ContactTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all contact types.
+
+    create:
+    Creates a contact type.
+    
+    read:
+    Returns a contact type by id.
+    
+    update:
+    Updates a contact type.
+    
+    partial_update:
+    Updates parts of a contact type.
+    
+    delete:
+    Deletes a contact type.
+    """
     queryset = ContactType.objects.all()
     serializer_class = ContactTypeSerializer
 
 
 class SearchViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all searches.
+
+    create:
+    Creates a search.
+
+    top_ten:
+    Returns a list of the top 10 searches.
+
+    user_searches:
+    Returns a count of searches created by users.
+    
+    read:
+    Returns a search by id.
+    
+    update:
+    Updates a search.
+    
+    partial_update:
+    Updates parts of a search.
+    
+    delete:
+    Deletes a search.
+    """
     serializer_class = SearchSerializer
 
     @action(detail=False)
@@ -1194,6 +2103,8 @@ class SearchViewSet(HistoryViewSet):
 
 
 class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
+    # Not visible in api 
+    
     header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'eventdiagnoses']
     labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
@@ -1201,6 +2112,22 @@ class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
+    """
+    list:
+    Returns a list of all event summaries.
+
+    get_count:
+    Returns a count of all event summaries.
+    
+    get_user_events_count:
+    Returns a count of events created by a user.
+    
+    user_events:
+    Returns events create by a user.
+    
+    read:
+    Returns an event summary by id.
+    """
 
     @action(detail=False)
     def get_count(self, request):
@@ -1653,6 +2580,16 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
+    """
+    list:
+    Returns a list of all event details.
+    
+    read:
+    Returns an event detail.
+    
+    flat:
+    Returns a flattened response for an event detail by id.
+    """
 
     @action(detail=True)
     def flat(self, request, pk):
