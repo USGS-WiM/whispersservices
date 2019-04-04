@@ -3757,7 +3757,6 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 ######
 
 
-# TODO: impose minimum security requirements on passwords
 # Password must be at least 12 characters long.
 # Password cannot contain your username.
 # Password cannot have been used in previous 20 passwords.
@@ -3783,6 +3782,33 @@ class UserSerializer(serializers.ModelSerializer):
                 data['organization'] = Organization.objects.filter(name='Public').first()
             if 'password' not in data and self.context['request'].method == 'POST':
                 raise serializers.ValidationError("password is required")
+            elif 'password' in data:
+                password = data['password']
+                details = []
+                char_type_requirements_met = []
+                symbols = '~!@#$%^&*'
+
+                if len(password) < 12:
+                    details.append("Password must be at least 12 characters long.")
+                if self.initial_data['username'] in password:
+                    details.append("Password cannot contain username.")
+                if any(character.islower() for character in password):
+                    char_type_requirements_met.append('lowercase')
+                if any(character.isupper() for character in password):
+                    char_type_requirements_met.append('uppercase')
+                if any(character.isdigit() for character in password):
+                    char_type_requirements_met.append('number')
+                if any(character in password for character in symbols):
+                    char_type_requirements_met.append('special')
+                if len(char_type_requirements_met) < 3:
+                    message = "Password must satisfy three of the following requirements: "
+                    message += "Contain lowercase letters (a, b, c, ..., z); "
+                    message += "Contain uppercase letters (A, B, C, ..., Z); "
+                    message += "Contain numbers (0, 1, 2, ..., 9); "
+                    message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
+                    details.append(message)
+                if details:
+                    raise serializers.ValidationError(details)
         return data
 
     # currently only public users can be created through the API
