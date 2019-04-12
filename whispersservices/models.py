@@ -27,12 +27,12 @@ class HistoryModel(models.Model):
     An abstract base class model to track creation, modification, and data change history.
     """
 
-    created_date = models.DateField(default=date.today, null=True, blank=True, db_index=True)
+    created_date = models.DateField(default=date.today, null=True, blank=True, db_index=True, help_text='The date this object was created in "YYYY-MM-DD" format')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                   related_name='%(class)s_creator')
-    modified_date = models.DateField(auto_now=True, null=True, blank=True)
+                                   related_name='%(class)s_creator', help_text='A foreign key integer identifying the user who created the object')
+    modified_date = models.DateField(auto_now=True, null=True, blank=True, help_text='The date this object was last modified on in "YYYY-MM-DD" format')
     modified_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='%(class)s_modifier')
+                                    related_name='%(class)s_modifier', help_text='A foreign key integer identifying the user who last modified the object')
     history = HistoricalRecords(inherit=True)
 
     class Meta:
@@ -166,21 +166,21 @@ class Event(PermissionsHistoryModel):
     Event
     """
 
-    event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events')
-    event_reference = models.CharField(max_length=128, blank=True, default='')
-    complete = models.BooleanField(default=False)
-    start_date = models.DateField(null=True, blank=True, db_index=True)
-    end_date = models.DateField(null=True, blank=True, db_index=True)
-    affected_count = models.IntegerField(null=True, db_index=True)
-    staff = models.ForeignKey('Staff', models.PROTECT, null=True, related_name='events')
-    event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1)
-    legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1)
-    legal_number = models.CharField(max_length=128, blank=True, default='')
-    quality_check = models.DateField(null=True)
+    event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events', help_text='A foreign key integer value identifying a wildlife morbidity or mortality event')
+    event_reference = models.CharField(max_length=128, blank=True, default='', help_text='Name or number for an event designated by event owner')
+    complete = models.BooleanField(default=False, help_text='A boolean value indicating if an event is complete or incomplete. A complete event means it has ended, diagnostic tests are completed, and all information is updated in WHISPers')
+    start_date = models.DateField(null=True, blank=True, db_index=True, help_text='The date this event started on')
+    end_date = models.DateField(null=True, blank=True, db_index=True, help_text='The date this event ended on')
+    affected_count = models.IntegerField(null=True, db_index=True, help_text='An integer value for total number affected in this event')
+    staff = models.ForeignKey('Staff', models.PROTECT, null=True, related_name='events', help_text='A foreign key integer value identifying a staff member')
+    event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1, help_text='A foreign key integer value identifying event statuses specific to NWHC.')
+    legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1, help_text='A foreign key integer value identifying legal procedures associated with an event')
+    legal_number = models.CharField(max_length=128, blank=True, default='', help_text='A string field for legal case identifier')
+    quality_check = models.DateField(null=True, help_text='The date an NWHC staff and event owner make changes and check the record')
     public = models.BooleanField(default=True)
     circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
     circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
-    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events')
+    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', help_text='A foreign key integer identifying the user who last modified the object')
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
@@ -234,8 +234,8 @@ class EventEventGroup(AdminPermissionsHistoryModel):
     Table to allow many-to-many relationship between Events and Super Events.
     """
 
-    event = models.ForeignKey('Event', models.CASCADE)
-    eventgroup = models.ForeignKey('EventGroup', models.CASCADE)
+    event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
+    eventgroup = models.ForeignKey('EventGroup', models.CASCADE, help_text='A foreign key integer identifying an event group')
 
     def __str__(self):
         return str(self.id)
@@ -298,10 +298,10 @@ class Staff(AdminPermissionsHistoryModel):
     Staff
     """
 
-    first_name = models.CharField(max_length=128)
-    last_name = models.CharField(max_length=128)
-    role = models.ForeignKey('Role', models.PROTECT, related_name='staff')
-    active = models.BooleanField(default=False)
+    first_name = models.CharField(max_length=128, help_text='A string field for the staff members first name')
+    last_name = models.CharField(max_length=128, help_text='A string field for the staff members last name')
+    role = models.ForeignKey('Role', models.PROTECT, related_name='staff', help_text='A foreign key integer value for the staff role')
+    active = models.BooleanField(default=False, help_text='A boolean value indication if a staff memeber is active or not')
 
     def __str__(self):
         return self.first_name + " " + self.last_name
@@ -343,9 +343,9 @@ class EventAbstract(PermissionsHistoryModel):
     Event Abstract
     """
 
-    event = models.ForeignKey('Event', models.CASCADE, related_name='eventabstracts')
-    text = models.TextField(blank=True)
-    lab_id = models.IntegerField(null=True)
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventabstracts', help_text='A foreign key integer value identifying an event')
+    text = models.TextField(blank=True, help_text='A large text field for information')
+    lab_id = models.IntegerField(null=True, help_text='A integer value identifying a lab')
 
     def __str__(self):
         return str(self.id)
@@ -360,8 +360,8 @@ class EventCase(PermissionsHistoryModel):
     Event Case
     """
 
-    event = models.ForeignKey('Event', models.CASCADE, related_name='eventcases')
-    case = models.CharField(max_length=6, blank=True, default='')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventcases', help_text='A foreign key integer value identifying an event')
+    case = models.CharField(max_length=6, blank=True, default='', help_text='A string field for information on a case')
 
     def __str__(self):
         return str(self.id)
@@ -376,8 +376,8 @@ class EventLabsite(PermissionsHistoryModel):
     Event Labsite
     """
 
-    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlabsites')
-    lab_id = models.IntegerField(null=True)
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlabsites', help_text='A foreign key integer value identifying an event')
+    lab_id = models.IntegerField(null=True, help_text='A integer value identifying a lab')
 
     def __str__(self):
         return str(self.id)
@@ -392,9 +392,9 @@ class EventOrganization(PermissionsHistoryModel):
     Table to allow many-to-many relationship between Events and Organizations.
     """
 
-    event = models.ForeignKey('Event', models.CASCADE)
-    organization = models.ForeignKey('Organization', models.CASCADE)
-    priority = models.IntegerField(null=True)
+    event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
+    organization = models.ForeignKey('Organization', models.CASCADE, help_text='A foreign key integer value identifying a organization')
+    priority = models.IntegerField(null=True, help_text='An intger value indicating the event organizations priority')
 
     def __str__(self):
         return str(self.id)
@@ -410,8 +410,8 @@ class EventContact(PermissionsHistoryModel):
     Table to allow many-to-many relationship between Events and Contacts.
     """
 
-    event = models.ForeignKey('Event', models.CASCADE)
-    contact = models.ForeignKey('Contact', models.CASCADE)
+    event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
+    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value indentifying a contact')
 
     def __str__(self):
         return str(self.id)
@@ -433,22 +433,22 @@ class EventLocation(PermissionsHistoryModel):
     Event Location
     """
 
-    name = models.CharField(max_length=128, blank=True, default='')
-    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlocations')
-    start_date = models.DateField(null=True, blank=True)
-    end_date = models.DateField(null=True, blank=True)
-    country = models.ForeignKey('Country', models.PROTECT, related_name='eventlocations')
+    name = models.CharField(max_length=128, blank=True, default='', help_text='A unique alphanumeric value of the name of this object')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventlocations', help_text='A foreign key integer value identifying an event')
+    start_date = models.DateField(null=True, blank=True, help_text='The date of the event start at this location in "YYYY-MM-DD" format')
+    end_date = models.DateField(null=True, blank=True, help_text='The date of the event end at this location in "YYYY-MM-DD" format')
+    country = models.ForeignKey('Country', models.PROTECT, related_name='eventlocations', help_text='A foreign key integer value identifying the county to which this event location belongs')
     administrative_level_one = models.ForeignKey(
-        'AdministrativeLevelOne', models.PROTECT, related_name='eventlocations')
+        'AdministrativeLevelOne', models.PROTECT, related_name='eventlocations', help_text='A foreign key integer value identifying the administrative level one to which this event location belongs')
     administrative_level_two = models.ForeignKey(
-        'AdministrativeLevelTwo', models.PROTECT, null=True, related_name='eventlocations')
-    county_multiple = models.BooleanField(default=False)
-    county_unknown = models.BooleanField(default=False)
-    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    priority = models.IntegerField(null=True)
-    land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations')
-    contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations')
+        'AdministrativeLevelTwo', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the administrative level two to which this event location belongs')
+    county_multiple = models.BooleanField(default=False, help_text='A boolean value indicating that the event location spans multiple counties or not')
+    county_unknown = models.BooleanField(default=False, help_text='A boolean value indicating that the event location county is unkown or not')
+    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number indentifying the latitude for this event location')
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number indentifying the longitude for this event location')
+    priority = models.IntegerField(null=True, help_text='An intger value indicating the event locations priority. Can be used to set order of display based on importance')
+    land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the entity that owns the land where an event has occured')
+    contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations', help_text='')
     flyways = models.ManyToManyField('Flyway', through='EventLocationFlyway', related_name='eventlocations')
     gnis_name = models.CharField(max_length=256, blank=True, default='')
     gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
@@ -656,9 +656,10 @@ class LocationSpecies(PermissionsHistoryModel):
     """
     Location Species
     """
+    #species = models.CharField(unique=True, help_text=_("unique alphanumeric identifier"))
 
     event_location = models.ForeignKey('EventLocation', models.CASCADE, related_name='locationspecies')
-    species = models.ForeignKey('Species', models.PROTECT, related_name='locationspecies')
+    species = models.ForeignKey('Species', models.PROTECT, related_name='locationspecies', help_text='Animal species')
     population_count = models.IntegerField(null=True)
     sick_count = models.IntegerField(null=True)
     dead_count = models.IntegerField(null=True)
@@ -819,9 +820,9 @@ class EventDiagnosis(PermissionsHistoryModel):
         """Returns diagnosis name of the record, appended with word 'suspect' if record has suspect=True"""
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
-    event = models.ForeignKey('Event', models.CASCADE, related_name='eventdiagnoses')
-    diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='eventdiagnoses')
-    suspect = models.BooleanField(default=True)
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventdiagnoses', help_text='A foreign key integer value identifying an event')
+    diagnosis = models.ForeignKey('Diagnosis', models.PROTECT, related_name='eventdiagnoses', help_text='')
+    suspect = models.BooleanField(default=True, help_text='If "true" then the diagnosis is suspect')
     major = models.BooleanField(default=False)
     priority = models.IntegerField(null=True)
 
@@ -1030,7 +1031,7 @@ class ServiceRequest(PermissionsHistoryModel):
     Service Submission Request
     """
 
-    event = models.ForeignKey('Event', models.CASCADE, related_name='servicerequests')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='servicerequests', help_text='A foreign key integer value identifying an event')
     request_type = models.ForeignKey('ServiceRequestType', models.PROTECT, related_name='servicerequests')
     request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
                                          related_name='servicerequests')
