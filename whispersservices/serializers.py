@@ -2062,10 +2062,10 @@ class EventGroupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An EventGroup must have at least two Events")
 
         # pull out event ID list from the request
-        new_event_ids = validated_data.pop('new_events', [])
-        event_ids = list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True))
-        if len(new_event_ids) != len(event_ids):
-            not_event_ids = list(set(new_event_ids) - set(event_ids))
+        new_event_ids = set(validated_data.pop('new_events', []))
+        event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
+        not_event_ids = list(new_event_ids - event_ids)
+        if not_event_ids:
             raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
 
         # pull out comment from the request
@@ -2096,10 +2096,10 @@ class EventGroupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An EventGroup must have at least two Events")
 
         # pull out event ID list from the request
-        new_event_ids = validated_data.pop('new_events', [])
-        event_ids = list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True))
-        if len(new_event_ids) != len(event_ids):
-            not_event_ids = list(set(new_event_ids) - set(event_ids))
+        new_event_ids = set(validated_data.pop('new_events', []))
+        event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
+        not_event_ids = list(new_event_ids - event_ids)
+        if not_event_ids:
             raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
 
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
