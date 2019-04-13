@@ -82,8 +82,9 @@ class PermissionsHistoryModel(HistoryModel):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or (request.user.organization.id == self.created_by.organization.id
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     def has_object_destroy_permission(self, request):
@@ -91,8 +92,9 @@ class PermissionsHistoryModel(HistoryModel):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or (request.user.organization.id == self.created_by.organization.id
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     class Meta:
@@ -1160,9 +1162,8 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     @staticmethod
     def has_write_permission(request):
@@ -1175,18 +1176,16 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or an admin member of the creator's organization can delete
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users')
@@ -1290,8 +1289,7 @@ class Organization(AdminPermissionsHistoryNameModel):
     address_one = models.CharField(max_length=128, blank=True, default='')
     address_two = models.CharField(max_length=128, blank=True, default='')
     city = models.CharField(max_length=128, blank=True, default='')
-    postal_code = models.CharField(max_length=128, blank=True,
-                                   default='')  # models.BigIntegerField(null=True, blank=True)
+    postal_code = models.CharField(max_length=128, blank=True, default='')
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')

@@ -12,12 +12,34 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 # TODO: implement required field validations for nested objects
 # TODO: consider implementing type checking for nested objects
+# TODO: turn every ListField into a set to prevent errors caused by duplicates
 
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
 FLYWAYS_API = 'https://services.arcgis.com/'
 FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+
+
+def determine_permission_source(user, obj):
+    if not user.is_authenticated:
+        permission_source = ''
+    elif user.id == obj.created_by.id:
+        permission_source = 'user'
+    elif user.organization.id == obj.created_by.organization.id:
+        permission_source = 'organization'
+    elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
+        if obj.circle_read:
+            circle_readers = list(User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
+            permission_source = 'circle_read' if user.id in circle_readers else ''
+        elif obj.circle_write:
+            circle_writers = list(User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
+            permission_source = 'circle_write' if user.id in circle_writers else ''
+        else:
+            permission_source = ''
+    else:
+        permission_source = ''
+    return permission_source
 
 
 def construct_service_request_email(event_id, requester_org_name, request_type_name, requester_email, comments):
@@ -390,19 +412,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
@@ -428,19 +438,7 @@ class EventSerializer(serializers.ModelSerializer):
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     def create(self, validated_data):
         # TODO: figure out if this logic is necessary
@@ -1056,21 +1054,21 @@ class EventSerializer(serializers.ModelSerializer):
         if instance.complete:
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
-            if new_complete is None or (new_complete and (user == instance.created_by or (
-                    user.organization == instance.created_by.organization and (
+            if new_complete is None or (new_complete and (user.id == instance.created_by.id or (
+                    user.organization.id == instance.created_by.organization.id and (
                     user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
             elif (user != instance.created_by
-                  or (user.organization != instance.created_by.organization
+                  or (user.organization.id != instance.created_by.organization.id
                       and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
                 raise serializers.ValidationError(message)
 
-        if not instance.complete and new_complete and (user == instance.created_by or (
-                user.organization == instance.created_by.organization and (
+        if not instance.complete and new_complete and (user.id == instance.created_by.id or (
+                user.organization.id == instance.created_by.organization.id and (
                 user.role.is_partneradmin or user.role.is_partnermanager))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
@@ -1225,19 +1223,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     def create(self, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
@@ -3998,7 +3984,7 @@ class CircleSerlializer(serializers.ModelSerializer):
 
     class Meta:
         model = Circle
-        fields = ('id', 'name', 'description', 'new_users',
+        fields = ('id', 'name', 'description', 'users', 'new_users',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4057,16 +4043,7 @@ class ContactSerializer(serializers.ModelSerializer):
     owner_organization_string = serializers.SerializerMethodField()
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Contact
@@ -4109,16 +4086,7 @@ class SearchSerializer(serializers.ModelSerializer):
     permission_source = serializers.SerializerMethodField()
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     # def create(self, validated_data):
     #     user = self.context['request'].user
@@ -4356,19 +4324,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
@@ -4480,19 +4436,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -4608,19 +4552,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -4806,19 +4738,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         return pub_orgs
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
@@ -4891,19 +4811,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         return eventdiagnoses
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
@@ -4981,19 +4889,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         return eventdiagnoses
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
