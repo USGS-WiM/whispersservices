@@ -451,6 +451,18 @@ class EventSerializer(serializers.ModelSerializer):
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
+        # check if chosen circles are owned by the user or the user's org
+        if 'circle_read' in validated_data and validated_data['circle_read'] is not None:
+            if (user.id != validated_data['circle_read'].created_by.id
+                    or user.organization.id != validated_data['circle_read'].created_by.organization.id):
+                message = "circle_read may only be a circle owned by you or a member of your organization."
+                raise serializers.ValidationError(message)
+        if 'circle_write' in validated_data and validated_data['circle_write'] is not None:
+            if (user.id != validated_data['circle_write'].created_by.id
+                    or user.organization.id != validated_data['circle_write'].created_by.organization.id):
+                message = "circle_write may only be a circle owned by you or a member of your organization."
+                raise serializers.ValidationError(message)
+
         if 'new_event_locations' not in validated_data:
             raise serializers.ValidationError("new_event_locations is a required field")
         # 1. Not every location needs a start date at initiation, but at least one location must.
