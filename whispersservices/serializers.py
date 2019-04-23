@@ -3743,6 +3743,14 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 ######
 
 
+class UserPublicSerializer(serializers.ModelSerializer):
+    organization_string = serializers.StringRelatedField(source='organization')
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
+
+
 # Password must be at least 12 characters long.
 # Password cannot contain your username.
 # Password cannot have been used in previous 20 passwords.
@@ -3919,6 +3927,7 @@ class CircleSerlializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_users = serializers.ListField(write_only=True)
+    users = UserSerializer(many=True, read_only=True)
 
     # on create, also create child objects (circle-user M:M relates)
     def create(self, validated_data):

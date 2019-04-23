@@ -21,6 +21,7 @@ from whispersservices.authentication import *
 from dry_rest_permissions.generics import DRYPermissions
 User = get_user_model()
 
+# TODO: implement type checking on custom actions to prevent internal server error (HTTP 500)
 
 ########################################################################################################################
 #
@@ -848,8 +849,56 @@ class UserViewSet(HistoryViewSet):
         message = "Please add a new user:"
         return construct_email(request.data or '', user_email, message)
 
-    #  override the default serializer_class to ensure the requester sees only permitted data
-    # TODO: get_serializer_class(self):
+    @action(detail=False, methods=['post'])
+    def verify_email(self, request):
+        if isinstance(request.data, list):
+            found = []
+            not_found = []
+            for item in request.data:
+                # check if this item is a string
+                if isinstance(item, str):
+                    # check if this item is a well-formed email address
+                    if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
+                        # check if there is a matching user (email addresses are unique across all users)
+                        user = User.objects.filter(email=item).first()
+                        if user:
+                            found.append(user)
+                        else:
+                            not_found.append(item)
+                    else:
+                        not_found.append(item)
+                else:
+                    not_found.append(item)
+            if found:
+                serializer = UserPublicSerializer(found, many=True, context={'request': request})
+                resp = {**{"matching_users": serializer.data}, **{"no_matching_users": not_found}}
+                return Response(resp, status=200)
+            else:
+                resp = {**{"matching_users": found}, **{"no_matching_users": not_found}}
+                return Response(resp, status=200)
+        else:
+            raise serializers.ValidationError("You may only submit a list (array)")
+
+    # override the default serializer_class to ensure the requester sees only permitted data
+    def get_serializer_class(self):
+        user = self.request.user
+        # all requests from anonymous or public users must use the public serializer
+        if not user.is_authenticated or user.role.is_public:
+            return UserPublicSerializer
+        # creators and admins have access to all fields
+        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
+            return UserSerializer
+        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None and pk.isdigit():
+                obj = User.objects.filter(id=pk).first()
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                    return UserSerializer
+            return UserPublicSerializer
+        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        else:
+            return UserPublicSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
