@@ -903,16 +903,16 @@ class UserViewSet(HistoryViewSet):
         # anonymous users cannot see anything
         if not user.is_authenticated:
             return User.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = User.objects.all()
         # public and partner users can only see themselves
         elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
             return User.objects.filter(pk=user.id)
-        # user-specific requests and requests from a partner user can only return data owned by the user or user's org
+        # partneradmin can see data owned by the user or user's org
         elif user.role.is_partneradmin:
             queryset = User.objects.all().filter(
                 Q(id__exact=user.id) | Q(organization__exact=user.organization))
-        # admins, superadmins, and superusers can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = User.objects.all()
         # otherwise return nothing
         else:
             return User.objects.none()
@@ -951,8 +951,24 @@ class RoleViewSet(HistoryViewSet):
 
 
 class CircleViewSet(HistoryViewSet):
-    queryset = Circle.objects.all()
     serializer_class = CircleSerlializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = self.request.user
+
+        # anonymous users cannot see anything
+        if not user.is_authenticated:
+            return Circle.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Circle.objects.all()
+        # otherwise return data owned by the user or user's org
+        else:
+            queryset = Circle.objects.all().filter(
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
+
+        return queryset
 
 
 class OrganizationViewSet(HistoryViewSet):
