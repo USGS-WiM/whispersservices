@@ -29,12 +29,12 @@ def determine_permission_source(user, obj):
     elif user.organization.id == obj.created_by.organization.id:
         permission_source = 'organization'
     elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
-        if obj.circle_read:
-            circle_readers = list(User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
-            permission_source = 'circle_read' if user.id in circle_readers else ''
-        elif obj.circle_write:
-            circle_writers = list(User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
-            permission_source = 'circle_write' if user.id in circle_writers else ''
+        if obj.read_collaborators:
+            read_collaborators = list(User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+            permission_source = 'read_collaborators' if len(read_collaborators) > 0 else ''
+        elif obj.write_collaborators:
+            write_collaborators = list(User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
+            permission_source = 'write_collaborators' if len(write_collaborators) > 0 else ''
         else:
             permission_source = ''
     else:
@@ -435,6 +435,8 @@ class EventSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    new_read_collaborators = serializers.ListField(write_only=True, required=False)
+    new_write_collaborators = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
@@ -450,18 +452,6 @@ class EventSerializer(serializers.ModelSerializer):
 
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
-
-        # check if chosen circles are owned by the user or the user's org
-        if 'circle_read' in validated_data and validated_data['circle_read'] is not None:
-            if (user.id != validated_data['circle_read'].created_by.id
-                    or user.organization.id != validated_data['circle_read'].created_by.organization.id):
-                message = "circle_read may only be a circle owned by you or a member of your organization."
-                raise serializers.ValidationError(message)
-        if 'circle_write' in validated_data and validated_data['circle_write'] is not None:
-            if (user.id != validated_data['circle_write'].created_by.id
-                    or user.organization.id != validated_data['circle_write'].created_by.organization.id):
-                message = "circle_write may only be a circle owned by you or a member of your organization."
-                raise serializers.ValidationError(message)
 
         if 'new_event_locations' not in validated_data:
             raise serializers.ValidationError("new_event_locations is a required field")
@@ -764,7 +754,33 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
 
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = []
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+
         event = Event.objects.create(**validated_data)
+
+        # create the child collaborators for this event
+        if new_read_user_ids is not None:
+            for read_user_id in new_read_user_ids:
+                read_user = User.objects.get(id=read_user_id)
+                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+
+        if new_write_user_ids is not None:
+            for write_user_id in new_write_user_ids:
+                write_user = User.objects.get(id=write_user_id)
+                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -1168,13 +1184,50 @@ class EventSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
+        # get the old (current) collaborator ID list for this event
+        old_read_users = User.objects.filter(readevents=instance.id)
+        old_write_users = User.objects.filter(writeevents=instance.id)
+
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = []
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+        new_read_users = User.objects.filter(id__in=new_read_user_ids)
+        new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+        # identify and delete relates where user IDs are present in old list but not new list
+        delete_read_users = list(set(old_read_users) - set(new_read_users))
+        for user_id in delete_read_users:
+            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+            delete_user.delete()
+        delete_write_users = list(set(old_write_users) - set(new_write_users))
+        for user_id in delete_write_users:
+            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+            delete_user.delete()
+
+        # identify and create relates where user IDs are present in new list but not old list
+        add_read_users = list(set(new_read_users) - set(old_read_users))
+        for user_id in add_read_users:
+            EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+        add_write_users = list(set(new_write_users) - set(old_write_users))
+        for user_id in add_write_users:
+            EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
         instance.complete = validated_data.get('complete', instance.complete)
         instance.public = validated_data.get('public', instance.public)
-        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
-        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # affected_count
@@ -1209,11 +1262,12 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'circle_read', 'circle_write',
-                  'organizations', 'contacts', 'comments', 'new_event_diagnoses', 'new_organizations', 'new_comments',
-                  'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date', 'created_by',
-                  'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'service_request_email',
-                  'permissions', 'permission_source',)
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+                  'write_collaborators', 'organizations', 'contacts', 'comments', 'new_event_diagnoses',
+                  'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
+                  'new_service_request', 'new_read_collaborators', 'new_write_collaborators', 'created_date',
+                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'service_request_email', 'permissions', 'permission_source',)
 
 
 class EventAdminSerializer(serializers.ModelSerializer):
@@ -1232,6 +1286,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    new_read_collaborators = serializers.ListField(write_only=True, required=False)
+    new_write_collaborators = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
@@ -1547,7 +1603,33 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
 
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = []
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+
         event = Event.objects.create(**validated_data)
+
+        # create the child collaborators for this event
+        if new_read_user_ids is not None:
+            for read_user_id in new_read_user_ids:
+                read_user = User.objects.get(id=read_user_id)
+                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+
+        if new_write_user_ids is not None:
+            for write_user_id in new_write_user_ids:
+                write_user = User.objects.get(id=write_user_id)
+                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -1720,8 +1802,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
                         if flyway is None and 'geometry' in payload:
                             r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
-                            flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
-                            flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+                            r_features = r.json()['features']
+                            if len(r_features) > 0:
+                                flyway_name = r_features[0]['attributes']['NAME'].replace(' Flyway', '')
+                                flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
                     evt_location = EventLocation.objects.create(created_by=user, modified_by=user, **event_location)
 
@@ -1950,6 +2034,45 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
+        # get the old (current) collaborator ID list for this event
+        old_read_users = User.objects.filter(readevents=instance.id)
+        old_write_users = User.objects.filter(writeevents=instance.id)
+
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = []
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+        new_read_users = User.objects.filter(id__in=new_read_user_ids)
+        new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+        # identify and delete relates where user IDs are present in old list but not new list
+        delete_read_users = list(set(old_read_users) - set(new_read_users))
+        for user_id in delete_read_users:
+            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+            delete_user.delete()
+        delete_write_users = list(set(old_write_users) - set(new_write_users))
+        for user_id in delete_write_users:
+            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+            delete_user.delete()
+
+        # identify and create relates where user IDs are present in new list but not old list
+        add_read_users = list(set(new_read_users) - set(old_read_users))
+        for user_id in add_read_users:
+            EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+        add_write_users = list(set(new_write_users) - set(old_write_users))
+        for user_id in add_write_users:
+            EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
@@ -1960,8 +2083,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.legal_status = validated_data.get('legal_status', instance.legal_status)
         instance.legal_number = validated_data.get('legal_number', instance.legal_number)
         instance.public = validated_data.get('public', instance.public)
-        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
-        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # affected_count
@@ -1998,10 +2119,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'circle_read', 'circle_write', 'eventgroups', 'organizations', 'contacts', 'comments',
-                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
-                  'new_service_request', 'created_date', 'created_by', 'created_by_string', 'modified_date',
-                  'modified_by', 'modified_by_string', 'service_request_email', 'permissions', 'permission_source',)
+                  'read_collaborators', 'write_collaborators', 'eventgroups', 'organizations', 'contacts', 'comments',
+                  'new_read_collaborators', 'new_write_collaborators','new_event_diagnoses', 'new_organizations',
+                  'new_comments', 'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date',
+                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'service_request_email', 'permissions', 'permission_source',)
 
 
 class EventEventGroupPublicSerializer(serializers.ModelSerializer):
@@ -4787,6 +4909,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
     eventgroups = EventGroupPublicSerializer(many=True)
+    read_collaborators = UserPublicSerializer(many=True)
+    write_collaborators = UserPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4838,9 +4962,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'eventgroups', 'eventdiagnoses',
-                  'eventlocations', 'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
-                  'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
+                  'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
 
@@ -4865,6 +4990,8 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
     eventgroups = EventGroupSerializer(many=True)
+    read_collaborators = UserPublicSerializer(many=True)
+    write_collaborators = UserPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4917,11 +5044,12 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups',
-                  'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments', 'servicerequests',
-                  'created_date', 'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
-                  'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
-                  'modified_by_string', 'permissions', 'permission_source',)
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                  'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                  'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
+                  'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'permissions', 'permission_source',)
 
 
 class FlatEventDetailSerializer(serializers.Serializer):

@@ -180,8 +180,10 @@ class Event(PermissionsHistoryModel):
     legal_number = models.CharField(max_length=128, blank=True, default='')
     quality_check = models.DateField(null=True)
     public = models.BooleanField(default=True)
-    circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
-    circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
+    read_collaborators = models.ManyToManyField(
+        'User', through='EventReadUser', through_fields=('event', 'user'), related_name='readevents')
+    write_collaborators = models.ManyToManyField(
+        'User', through='EventWriteUser', through_fields=('event', 'user'), related_name='writeevents')
     eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events')
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
@@ -1242,6 +1244,38 @@ class Role(AdminPermissionsHistoryNameModel):
 
     class Meta:
         db_table = "whispers_role"
+        ordering = ['id']
+
+
+class EventReadUser(PermissionsHistoryModel):
+    """
+    Table to allow many-to-many relationship between Events and Read-Only Users.
+    """
+
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventreadusers')
+    user = models.ForeignKey('User', models.CASCADE, related_name='eventreadusers')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventreaduser"
+        ordering = ['id']
+
+
+class EventWriteUser(PermissionsHistoryModel):
+    """
+    Table to allow many-to-many relationship between Events and Read+Write Users.
+    """
+
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventwriteusers')
+    user = models.ForeignKey('User', models.CASCADE, related_name='eventwriteusers')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventwriteuser"
         ordering = ['id']
 
 

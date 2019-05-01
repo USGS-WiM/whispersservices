@@ -174,7 +174,7 @@ class EventViewSet(HistoryViewSet):
         # admins have full access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
             return queryset
-        # for all non-admins, pk requests can only return non-public data to the owner or their org or shared circles
+        # for all non-admins, pk requests can only return non-public data to the owner or their org or collaborators
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
@@ -182,17 +182,17 @@ class EventViewSet(HistoryViewSet):
                 if queryset:
                     obj = queryset[0]
                     if obj:
-                        circle_readers = []
-                        circle_writers = []
-                        if obj.circle_read:
-                            circle_readers = list(
-                                User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
-                        if obj.circle_write:
-                            circle_writers = list(
-                                User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
+                        read_collaborators = []
+                        write_collaborators = []
+                        if obj.read_collaborators:
+                            read_collaborators = list(
+                                User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+                        if obj.write_collaborators:
+                            write_collaborators = list(
+                                User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id
                                 or user.organization.id == obj.created_by.organization.id
-                                or user.id in circle_readers or user.id in circle_writers):
+                                or user.id in read_collaborators or user.id in write_collaborators):
                             return queryset
                         else:
                             return queryset.filter(public=True)
@@ -213,29 +213,29 @@ class EventViewSet(HistoryViewSet):
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
             return EventAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
+        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj:
-                    circle_readers = []
-                    circle_writers = []
-                    if obj.circle_read:
-                        circle_readers = list(
-                            User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
-                    if obj.circle_write:
-                        circle_writers = list(
-                            User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
-                    if user.id in circle_readers:
-                        # circle_read members can only retrieve
+                    read_collaborators = []
+                    write_collaborators = []
+                    if obj.read_collaborators:
+                        read_collaborators = list(
+                            User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+                    if obj.write_collaborators:
+                        write_collaborators = list(
+                            User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
+                    if user.id in read_collaborators:
+                        # read_collaborators members can only retrieve
                         if self.action == 'retrieve':
                             return EventSerializer
                         else:
                             raise PermissionDenied
-                    # circle_write members and org partners can retrieve and update but not delete
-                    elif user.id in circle_writers or (user.organization.id == obj.created_by.organization.id
-                                                       and (user.role.is_affiliate or user.role.is_partner)):
+                    # write_collaborators members and org partners can retrieve and update but not delete
+                    elif user.id in write_collaborators or (user.organization.id == obj.created_by.organization.id
+                                                            and (user.role.is_affiliate or user.role.is_partner)):
                         if self.action == 'delete':
                             raise PermissionDenied
                         else:
@@ -249,7 +249,7 @@ class EventViewSet(HistoryViewSet):
         # all create requests imply that the requester is the owner, so use the owner serializer
         elif self.action == 'create':
             return EventSerializer
-        # non-admins and non-owners (and non-owner orgs and shared circles) must use the public serializer
+        # non-admins and non-owners (and non-owner orgs and collaborators) must use the public serializer
         else:
             return EventPublicSerializer
 
@@ -1283,17 +1283,17 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     return self.get_paginated_response(serializer.data)
                 serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
         else:
-            circle_readers = []
-            circle_writers = []
-            if queryset[0].circle_read:
-                circle_readers = list(
-                    User.objects.filter(circles=queryset[0].circle_read).values_list('id', flat=True))
-            if queryset[0].circle_write:
-                circle_writers = list(
-                    User.objects.filter(circles=queryset[0].circle_write).values_list('id', flat=True))
-            # public users must use the public serializer unless in a circle
+            read_collaborators = []
+            write_collaborators = []
+            if queryset[0].read_collaborators:
+                read_collaborators = list(
+                    User.objects.filter(readcollaborators=queryset[0].id).values_list('id', flat=True))
+            if queryset[0].write_collaborators:
+                write_collaborators = list(
+                    User.objects.filter(writecollaborators=queryset[0].id).values_list('id', flat=True))
+            # public users must use the public serializer unless collaborator
             if user.role.is_public:
-                if user.id in circle_readers or user.id in circle_writers:
+                if user.id in read_collaborators or user.id in write_collaborators:
                     if no_page:
                         serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
                     else:
@@ -1313,7 +1313,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
             # partner users can see public fields and event_reference field
             elif (user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager
-                  or user.role.is_partneradmin or user.id in circle_readers or user.id in circle_writers):
+                  or user.role.is_partneradmin or user.id in read_collaborators or user.id in write_collaborators):
                 if no_page:
                     serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
                 else:
@@ -1370,20 +1370,26 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
             return EventSummaryAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
+        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj is not None:
-                    circle_read = obj.circle_read if obj.circle_read is not None else []
-                    circle_write = obj.circle_write if obj.circle_write is not None else []
+                    read_collaborators = []
+                    write_collaborators = []
+                    if obj.read_collaborators:
+                        read_collaborators = list(
+                            User.objects.filter(readcollaborators=obj.id).values_list('id', flat=True))
+                    if obj.write_collaborators:
+                        write_collaborators = list(
+                            User.objects.filter(writecollaborators=obj.id).values_list('id', flat=True))
                     # admins have full access to all fields
                     if user.role.is_superadmin or user.role.is_admin:
                         return EventSummaryAdminSerializer
-                    # owner and org members and shared circles have full access to non-admin fields
+                    # owner and org members and collaborators have full access to non-admin fields
                     elif (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                          or user in circle_read or user in circle_write):
+                          or user in read_collaborators or user in write_collaborators):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
         # everything else must use the public serializer
@@ -1435,10 +1441,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.filter(public=True)
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
-            user_circles = list(Circle.objects.filter(users=user.id).values_list('id', flat=True))
             queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization)
-                | Q(circle_read__in=user_circles) | Q(circle_write__in=user_circles)).distinct()
+                | Q(read_collaborators__in=user.id) | Q(write_collaborators__in=user.id)).distinct()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset
@@ -1732,7 +1737,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         if not user.is_authenticated:
             return queryset.filter(public=True)
 
-        # for pk requests, non-public data can only be returned to the owner or their org or shared circles or admins
+        # for pk requests, non-public data can only be returned to the owner or their org or collaborators or admins
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
@@ -1742,16 +1747,16 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                     if not obj:
                         raise NotFound
                     else:
-                        circle_readers = []
-                        circle_writers = []
-                        if obj.circle_read:
-                            circle_readers = list(
-                                User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
-                        if obj.circle_write:
-                            circle_writers = list(
-                                User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
+                        read_collaborators = []
+                        write_collaborators = []
+                        if obj.read_collaborators:
+                            read_collaborators = list(
+                                User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+                        if obj.write_collaborators:
+                            write_collaborators = list(
+                                User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                                or user.id in circle_readers or user.id in circle_writers
+                                or user.id in read_collaborators or user.id in write_collaborators
                                 or user.role.is_superadmin or user.role.is_admin):
                             return queryset
                         else:
@@ -1769,23 +1774,23 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
             return EventDetailAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or shared circles
+        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = Event.objects.filter(id=pk).first()
                 if obj is not None:
-                    circle_readers = []
-                    circle_writers = []
-                    if obj.circle_read:
-                        circle_readers = list(
-                            User.objects.filter(circles=obj.circle_read).values_list('id', flat=True))
-                    if obj.circle_write:
-                        circle_writers = list(
-                            User.objects.filter(circles=obj.circle_write).values_list('id', flat=True))
-                    # owner and org members and shared circles have full access to non-admin fields
+                    read_collaborators = []
+                    write_collaborators = []
+                    if obj.read_collaborators:
+                        read_collaborators = list(
+                            User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+                    if obj.write_collaborators:
+                        write_collaborators = list(
+                            User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
+                    # owner and org members and collaborators have full access to non-admin fields
                     if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.id in circle_readers or user.id in circle_writers):
+                            or user.id in read_collaborators or user.id in write_collaborators):
                         return EventDetailSerializer
             return EventDetailPublicSerializer
         # everything else must use the public serializer
