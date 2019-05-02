@@ -1072,6 +1072,8 @@ class EventSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
+        request_method = self.context['request'].method
+
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
@@ -1184,11 +1186,7 @@ class EventSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
-        # get the old (current) collaborator ID list for this event
-        old_read_users = User.objects.filter(readevents=instance.id)
-        old_write_users = User.objects.filter(writeevents=instance.id)
-
-        # pull out user ID list from the request
+        # pull out read and write collaborators ID lists from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
             new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
@@ -1200,28 +1198,43 @@ class EventSerializer(serializers.ModelSerializer):
         else:
             new_write_user_ids = []
 
-        # remove users from the read list if they are also in the write list (these lists are already unique sets)
-        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
-        new_read_users = User.objects.filter(id__in=new_read_user_ids)
-        new_write_users = User.objects.filter(id__in=new_write_user_ids)
+        # update the read_collaborators list if new_read_collaborators submitted
+        if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
+            # get the old (current) read collaborator ID list for this event
+            old_read_users = User.objects.filter(readevents=instance.id)
+            # remove users from the read list if they are also in the write list (these lists are already unique sets)
+            new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+            # get the new (submitted) read collaborator ID list for this event
+            new_read_users = User.objects.filter(id__in=new_read_user_ids)
 
-        # identify and delete relates where user IDs are present in old list but not new list
-        delete_read_users = list(set(old_read_users) - set(new_read_users))
-        for user_id in delete_read_users:
-            delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
-            delete_user.delete()
-        delete_write_users = list(set(old_write_users) - set(new_write_users))
-        for user_id in delete_write_users:
-            delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
-            delete_user.delete()
+            # identify and delete relates where user IDs are present in old read list but not new read list
+            delete_read_users = list(set(old_read_users) - set(new_read_users))
+            for user_id in delete_read_users:
+                delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
 
-        # identify and create relates where user IDs are present in new list but not old list
-        add_read_users = list(set(new_read_users) - set(old_read_users))
-        for user_id in add_read_users:
-            EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
-        add_write_users = list(set(new_write_users) - set(old_write_users))
-        for user_id in add_write_users:
-            EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+            # identify and create relates where user IDs are present in new read list but not old read list
+            add_read_users = list(set(new_read_users) - set(old_read_users))
+            for user_id in add_read_users:
+                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
+        # update the write_collaborators list if new_write_user_ids submitted
+        if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
+            # get the old (current) write collaborator ID list for this event
+            old_write_users = User.objects.filter(writeevents=instance.id)
+            # get the new (submitted) write collaborator ID list for this event
+            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+            # identify and delete relates where user IDs are present in old write list but not new write list
+            delete_write_users = list(set(old_write_users) - set(new_write_users))
+            for user_id in delete_write_users:
+                delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new write list but not old write list
+            add_write_users = list(set(new_write_users) - set(old_write_users))
+            for user_id in add_write_users:
+                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -1922,6 +1935,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
+        request_method = self.context['request'].method
+
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
@@ -2034,11 +2049,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
-        # get the old (current) collaborator ID list for this event
-        old_read_users = User.objects.filter(readevents=instance.id)
-        old_write_users = User.objects.filter(writeevents=instance.id)
-
-        # pull out user ID list from the request
+        # pull out read and write collaborators ID lists from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
             new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
@@ -2050,28 +2061,43 @@ class EventAdminSerializer(serializers.ModelSerializer):
         else:
             new_write_user_ids = set([])
 
-        # remove users from the read list if they are also in the write list (these lists are already unique sets)
-        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
-        new_read_users = User.objects.filter(id__in=new_read_user_ids)
-        new_write_users = User.objects.filter(id__in=new_write_user_ids)
+        # update the read_collaborators list if new_read_collaborators submitted
+        if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
+            # get the old (current) read collaborator ID list for this event
+            old_read_users = User.objects.filter(readevents=instance.id)
+            # remove users from the read list if they are also in the write list (these lists are already unique sets)
+            new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+            # get the new (submitted) read collaborator ID list for this event
+            new_read_users = User.objects.filter(id__in=new_read_user_ids)
 
-        # identify and delete relates where user IDs are present in old list but not new list
-        delete_read_users = list(set(old_read_users) - set(new_read_users))
-        for user_id in delete_read_users:
-            delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
-            delete_user.delete()
-        delete_write_users = list(set(old_write_users) - set(new_write_users))
-        for user_id in delete_write_users:
-            delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
-            delete_user.delete()
+            # identify and delete relates where user IDs are present in old read list but not new read list
+            delete_read_users = list(set(old_read_users) - set(new_read_users))
+            for user_id in delete_read_users:
+                delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
 
-        # identify and create relates where user IDs are present in new list but not old list
-        add_read_users = list(set(new_read_users) - set(old_read_users))
-        for user_id in add_read_users:
-            EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
-        add_write_users = list(set(new_write_users) - set(old_write_users))
-        for user_id in add_write_users:
-            EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+            # identify and create relates where user IDs are present in new read list but not old read list
+            add_read_users = list(set(new_read_users) - set(old_read_users))
+            for user_id in add_read_users:
+                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
+        # update the write_collaborators list if new_write_user_ids submitted
+        if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
+            # get the old (current) write collaborator ID list for this event
+            old_write_users = User.objects.filter(writeevents=instance.id)
+            # get the new (submitted) write collaborator ID list for this event
+            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+            # identify and delete relates where user IDs are present in old write list but not new write list
+            delete_write_users = list(set(old_write_users) - set(new_write_users))
+            for user_id in delete_write_users:
+                delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new write list but not old write list
+            add_write_users = list(set(new_write_users) - set(old_write_users))
+            for user_id in add_write_users:
+                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -4097,15 +4123,8 @@ class CircleSerlializer(serializers.ModelSerializer):
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
-        # get the old (current) user ID list for this circle
-        old_users = User.objects.filter(circles=instance.id)
-
         # pull out user ID list from the request
-        if 'new_users' in self.initial_data:
-            new_user_ids = self.initial_data['new_users']
-            new_users = User.objects.filter(id__in=new_user_ids)
-        else:
-            new_users = []
+        new_user_ids = validated_data.pop('new_users') if 'new_users' in validated_data else new_user_ids = []
 
         # update the Circle object
         instance.name = validated_data.get('name', instance.name)
@@ -4113,16 +4132,25 @@ class CircleSerlializer(serializers.ModelSerializer):
         instance.modified_by = user
         instance.save()
 
-        # identify and delete relates where user IDs are present in old list but not new list
-        delete_users = list(set(old_users) - set(new_users))
-        for user_id in delete_users:
-            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
-            delete_user.delete()
+        request_method = self.context['request'].method
 
-        # identify and create relates where user IDs are present in new list but not old list
-        add_users = list(set(new_users) - set(old_users))
-        for user_id in add_users:
-            CircleUser.objects.create(user=user_id, circle=instance, created_by=user, modified_by=user)
+        # update circle users if new_users submitted
+        if request_method == 'PUT' or (new_user_ids and request_method == 'PATCH'):
+            # get the old (current) user list for this circle
+            old_users = User.objects.filter(circles=instance.id)
+            # get the new (submitted) user list for this circle
+            new_users = User.objects.filter(id__in=new_user_ids)
+
+            # identify and delete relates where user IDs are present in old list but not new list
+            delete_users = list(set(old_users) - set(new_users))
+            for user_id in delete_users:
+                delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+                delete_user.delete()
+
+            # identify and add relates where user IDs are present in new list but not old list
+            add_users = list(set(new_users) - set(old_users))
+            for user_id in add_users:
+                CircleUser.objects.create(user=user_id, circle=instance, created_by=user, modified_by=user)
 
         return instance
 
