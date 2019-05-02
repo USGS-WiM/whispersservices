@@ -1208,11 +1208,11 @@ class EventSerializer(serializers.ModelSerializer):
         # identify and delete relates where user IDs are present in old list but not new list
         delete_read_users = list(set(old_read_users) - set(new_read_users))
         for user_id in delete_read_users:
-            delete_user = EventReadUser.objects.filter(user=user_id, circle=instance)
+            delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
             delete_user.delete()
         delete_write_users = list(set(old_write_users) - set(new_write_users))
         for user_id in delete_write_users:
-            delete_user = EventWriteUser.objects.filter(user=user_id, circle=instance)
+            delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
             delete_user.delete()
 
         # identify and create relates where user IDs are present in new list but not old list
@@ -2058,11 +2058,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # identify and delete relates where user IDs are present in old list but not new list
         delete_read_users = list(set(old_read_users) - set(new_read_users))
         for user_id in delete_read_users:
-            delete_user = EventReadUser.objects.filter(user=user_id, circle=instance)
+            delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
             delete_user.delete()
         delete_write_users = list(set(old_write_users) - set(new_write_users))
         for user_id in delete_write_users:
-            delete_user = EventWriteUser.objects.filter(user=user_id, circle=instance)
+            delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
             delete_user.delete()
 
         # identify and create relates where user IDs are present in new list but not old list
