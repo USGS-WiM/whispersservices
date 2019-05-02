@@ -4124,7 +4124,10 @@ class CircleSerlializer(serializers.ModelSerializer):
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
         # pull out user ID list from the request
-        new_user_ids = validated_data.pop('new_users') if 'new_users' in validated_data else new_user_ids = []
+        if 'new_users' in validated_data:
+            new_user_ids = validated_data.get('new_users')
+        else:
+            new_user_ids = []
 
         # update the Circle object
         instance.name = validated_data.get('name', instance.name)
