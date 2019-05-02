@@ -1608,12 +1608,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
             new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
         else:
-            new_read_user_ids_prelim = []
+            new_read_user_ids_prelim = set([])
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
             new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
         else:
-            new_write_user_ids = []
+            new_write_user_ids = set([])
 
         # remove users from the read list if they are also in the write list (these lists are already unique sets)
         new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
@@ -2043,12 +2043,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
             new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
         else:
-            new_read_user_ids_prelim = []
+            new_read_user_ids_prelim = set([])
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
             new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
         else:
-            new_write_user_ids = []
+            new_write_user_ids = set([])
 
         # remove users from the read list if they are also in the write list (these lists are already unique sets)
         new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
