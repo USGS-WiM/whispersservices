@@ -757,12 +757,12 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out user ID list from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
         else:
             new_read_user_ids_prelim = []
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
         else:
             new_write_user_ids = []
 
@@ -1619,12 +1619,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out user ID list from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
         else:
             new_read_user_ids_prelim = set([])
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
         else:
             new_write_user_ids = set([])
 

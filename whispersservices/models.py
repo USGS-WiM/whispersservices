@@ -595,7 +595,7 @@ class AdministrativeLevelLocality(AdminPermissionsHistoryModel):
     Table for looking up local names for adminstrative levels based on country
     """
 
-    country = models.ForeignKey('Country', models.CASCADE, related_name='country')
+    country = models.ForeignKey('Country', models.CASCADE, related_name='adminstrativelevellocalities')
     admin_level_one_name = models.CharField(max_length=128, blank=True, default='')
     admin_level_two_name = models.CharField(max_length=128, blank=True, default='')
 
@@ -1039,7 +1039,7 @@ class ServiceRequest(PermissionsHistoryModel):
     request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
                                          related_name='servicerequests')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='servicerequests_responder')
+                                    related_name='servicerequests')
     created_time = models.TimeField(auto_now_add=True)
     comments = GenericRelation('Comment', related_name='servicerequests')
 
@@ -1328,7 +1328,7 @@ class Organization(AdminPermissionsHistoryNameModel):
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations')
     phone = models.CharField(max_length=128, blank=True, default='')
-    parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='child_organizations')
+    parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='organizations')
     do_not_publish = models.BooleanField(default=False)
     laboratory = models.BooleanField(default=False)
 
