@@ -2796,7 +2796,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             # if lat/lng is present, use it to get the intersecting flyway
             if ('latitude' in validated_data and validated_data['latitude'] is not None
                     and 'longitude' in validated_data and validated_data['longitude'] is not None):
-                payload.update({'geometry': validated_data['longitude'] + ',' + validated_data['latitude']})
+                payload.update({'geometry': str(validated_data['longitude']) + ',' + str(validated_data['latitude'])})
             # otherwise if county is present, look up the county centroid, then use it to get the intersecting flyway
             elif validated_data['administrative_level_two']:
                 geonames_payload = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2',
