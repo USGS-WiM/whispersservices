@@ -1124,7 +1124,8 @@ class EventSerializer(serializers.ModelSerializer):
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                if (spec.dead_count is not None and spec.dead_count > 0
+                                        and not spec.dead_count_estimated > spec.dead_count):
                                     est_count_gt_known_count = False
                             elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
@@ -1987,7 +1988,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                if (spec.dead_count is not None and spec.dead_count > 0
+                                        and not spec.dead_count_estimated > spec.dead_count):
                                     est_count_gt_known_count = False
                             elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
