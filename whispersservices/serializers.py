@@ -2227,7 +2227,7 @@ class EventGroupSerializer(serializers.ModelSerializer):
             user = None
 
         # create the related comment
-        comment_type = CommentType.objects.filter(name='Biologically Equivalent (Public)').first()
+        comment_type = CommentType.objects.filter(name='Event Group').first()
         Comment.objects.create(content_object=eventgroup, comment=new_comment,
                                comment_type=comment_type, created_by=user, modified_by=user)
 
