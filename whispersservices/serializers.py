@@ -29,12 +29,12 @@ def determine_permission_source(user, obj):
     elif user.organization.id == obj.created_by.organization.id:
         permission_source = 'organization'
     elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
-        if obj.read_collaborators:
-            read_collaborators = list(User.objects.filter(readevents=obj.id).values_list('id', flat=True))
-            permission_source = 'read_collaborators' if len(read_collaborators) > 0 else ''
-        elif obj.write_collaborators:
-            write_collaborators = list(User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
-            permission_source = 'write_collaborators' if len(write_collaborators) > 0 else ''
+        write_collaborators = list(User.objects.filter(writeevents__in=[obj.id]).values_list('id', flat=True))
+        read_collaborators = list(User.objects.filter(readevents__in=[obj.id]).values_list('id', flat=True))
+        if user.id in write_collaborators:
+            permission_source = 'write_collaborators'
+        elif user.id in read_collaborators:
+            permission_source = 'read_collaborators'
         else:
             permission_source = ''
     else:

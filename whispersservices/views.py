@@ -3,7 +3,7 @@ from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, authentication, filters
@@ -1287,10 +1287,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             write_collaborators = []
             if queryset[0].read_collaborators:
                 read_collaborators = list(
-                    User.objects.filter(readcollaborators=queryset[0].id).values_list('id', flat=True))
+                    User.objects.filter(eventreadusers=queryset[0].id).values_list('id', flat=True))
             if queryset[0].write_collaborators:
                 write_collaborators = list(
-                    User.objects.filter(writecollaborators=queryset[0].id).values_list('id', flat=True))
+                    User.objects.filter(eventwriteusers=queryset[0].id).values_list('id', flat=True))
             # public users must use the public serializer unless collaborator
             if user.role.is_public:
                 if user.id in read_collaborators or user.id in write_collaborators:
@@ -1380,10 +1380,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     write_collaborators = []
                     if obj.read_collaborators:
                         read_collaborators = list(
-                            User.objects.filter(readcollaborators=obj.id).values_list('id', flat=True))
+                            User.objects.filter(eventreadusers=obj.id).values_list('id', flat=True))
                     if obj.write_collaborators:
                         write_collaborators = list(
-                            User.objects.filter(writecollaborators=obj.id).values_list('id', flat=True))
+                            User.objects.filter(eventwriteusers=obj.id).values_list('id', flat=True))
                     # admins have full access to all fields
                     if user.role.is_superadmin or user.role.is_admin:
                         return EventSummaryAdminSerializer
@@ -1442,8 +1442,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # user-specific event requests can only return data owned by the user or the user's org, or shared with the user
         elif get_user_events:
             queryset = queryset.filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization)
-                | Q(read_collaborators__in=user.id) | Q(write_collaborators__in=user.id)).distinct()
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset
