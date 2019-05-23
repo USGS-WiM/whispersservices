@@ -1001,32 +1001,38 @@ class EventSerializer(serializers.ModelSerializer):
                             if new_species_diagnoses is not None:
                                 for spec_diag in new_species_diagnoses:
                                     if spec_diag is not None:
-                                        new_species_diagnosis_organizations = spec_diag.pop(
-                                            'new_species_diagnosis_organizations', None)
-                                        spec_diag['location_species'] = location_species
-                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
-                                            pk=spec_diag['diagnosis']).first()
-                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
-                                            pk=spec_diag['cause']).first()
-                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
-                                            pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
-                                                                                            modified_by=user,
-                                                                                            **spec_diag)
+                                        # ensure this species diagnosis does not already exist
+                                        existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                            location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                                        species_diagnosis.priority = calculate_priority_species_diagnosis(
-                                            species_diagnosis)
-                                        species_diagnosis.save()
+                                        if len(existing_spec_diag) == 0:
 
-                                        # create the child organizations for this species diagnosis
-                                        if new_species_diagnosis_organizations is not None:
-                                            for org_id in new_species_diagnosis_organizations:
-                                                if org_id is not None:
-                                                    org = Organization.objects.filter(pk=org_id).first()
-                                                    if org is not None:
-                                                        SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org,
-                                                            created_by=user, modified_by=user)
+                                            new_species_diagnosis_organizations = spec_diag.pop(
+                                                'new_species_diagnosis_organizations', None)
+                                            spec_diag['location_species'] = location_species
+                                            spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                                pk=spec_diag['diagnosis']).first()
+                                            spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                                pk=spec_diag['cause']).first()
+                                            spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                                pk=spec_diag['basis']).first()
+                                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                                modified_by=user,
+                                                                                                **spec_diag)
+
+                                            species_diagnosis.priority = calculate_priority_species_diagnosis(
+                                                species_diagnosis)
+                                            species_diagnosis.save()
+
+                                            # create the child organizations for this species diagnosis
+                                            if new_species_diagnosis_organizations is not None:
+                                                for org_id in new_species_diagnosis_organizations:
+                                                    if org_id is not None:
+                                                        org = Organization.objects.filter(pk=org_id).first()
+                                                        if org is not None:
+                                                            SpeciesDiagnosisOrganization.objects.create(
+                                                                species_diagnosis=species_diagnosis, organization=org,
+                                                                created_by=user, modified_by=user)
 
                             location_species.priority = calculate_priority_location_species(location_species)
                             location_species.save()
@@ -1865,32 +1871,38 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             if new_species_diagnoses is not None:
                                 for spec_diag in new_species_diagnoses:
                                     if spec_diag is not None:
-                                        new_species_diagnosis_organizations = spec_diag.pop(
-                                            'new_species_diagnosis_organizations', None)
-                                        spec_diag['location_species'] = location_species
-                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
-                                            pk=spec_diag['diagnosis']).first()
-                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
-                                            pk=spec_diag['cause']).first()
-                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
-                                            pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
-                                                                                            modified_by=user,
-                                                                                            **spec_diag)
+                                        # ensure this species diagnosis does not already exist
+                                        existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                            location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                                        species_diagnosis.priority = calculate_priority_species_diagnosis(
-                                            species_diagnosis)
-                                        species_diagnosis.save()
+                                        if len(existing_spec_diag) == 0:
 
-                                        # create the child organizations for this species diagnosis
-                                        if new_species_diagnosis_organizations is not None:
-                                            for org_id in new_species_diagnosis_organizations:
-                                                if org_id is not None:
-                                                    org = Organization.objects.filter(pk=org_id).first()
-                                                    if org is not None:
-                                                        SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org,
-                                                            created_by=user, modified_by=user)
+                                            new_species_diagnosis_organizations = spec_diag.pop(
+                                                'new_species_diagnosis_organizations', None)
+                                            spec_diag['location_species'] = location_species
+                                            spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                                pk=spec_diag['diagnosis']).first()
+                                            spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                                pk=spec_diag['cause']).first()
+                                            spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                                pk=spec_diag['basis']).first()
+                                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                                modified_by=user,
+                                                                                                **spec_diag)
+
+                                            species_diagnosis.priority = calculate_priority_species_diagnosis(
+                                                species_diagnosis)
+                                            species_diagnosis.save()
+
+                                            # create the child organizations for this species diagnosis
+                                            if new_species_diagnosis_organizations is not None:
+                                                for org_id in new_species_diagnosis_organizations:
+                                                    if org_id is not None:
+                                                        org = Organization.objects.filter(pk=org_id).first()
+                                                        if org is not None:
+                                                            SpeciesDiagnosisOrganization.objects.create(
+                                                                species_diagnosis=species_diagnosis, organization=org,
+                                                                created_by=user, modified_by=user)
 
                             location_species.priority = calculate_priority_location_species(location_species)
                             location_species.save()
@@ -2865,27 +2877,33 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 if new_species_diagnoses is not None:
                     for spec_diag in new_species_diagnoses:
                         if spec_diag is not None:
-                            new_species_diagnosis_organizations = spec_diag.pop(
-                                'new_species_diagnosis_organizations', None)
-                            spec_diag['location_species'] = location_species
-                            spec_diag['diagnosis'] = Diagnosis.objects.filter(pk=spec_diag['diagnosis']).first()
-                            spec_diag['cause'] = DiagnosisCause.objects.filter(pk=spec_diag['cause']).first()
-                            spec_diag['basis'] = DiagnosisBasis.objects.filter(pk=spec_diag['basis']).first()
-                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user, modified_by=user,
-                                                                                **spec_diag)
+                            # ensure this species diagnosis does not already exist
+                            existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                            species_diagnosis.priority = calculate_priority_species_diagnosis(species_diagnosis)
-                            species_diagnosis.save()
+                            if len(existing_spec_diag) == 0:
 
-                            # create the child organizations for this species diagnosis
-                            if new_species_diagnosis_organizations is not None:
-                                for org_id in new_species_diagnosis_organizations:
-                                    if org_id is not None:
-                                        org = Organization.objects.filter(pk=org_id).first()
-                                        if org is not None:
-                                            SpeciesDiagnosisOrganization.objects.create(
-                                                species_diagnosis=species_diagnosis, organization=org,
-                                                created_by=user, modified_by=user)
+                                new_species_diagnosis_organizations = spec_diag.pop(
+                                    'new_species_diagnosis_organizations', None)
+                                spec_diag['location_species'] = location_species
+                                spec_diag['diagnosis'] = Diagnosis.objects.filter(pk=spec_diag['diagnosis']).first()
+                                spec_diag['cause'] = DiagnosisCause.objects.filter(pk=spec_diag['cause']).first()
+                                spec_diag['basis'] = DiagnosisBasis.objects.filter(pk=spec_diag['basis']).first()
+                                species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user, modified_by=user,
+                                                                                    **spec_diag)
+
+                                species_diagnosis.priority = calculate_priority_species_diagnosis(species_diagnosis)
+                                species_diagnosis.save()
+
+                                # create the child organizations for this species diagnosis
+                                if new_species_diagnosis_organizations is not None:
+                                    for org_id in new_species_diagnosis_organizations:
+                                        if org_id is not None:
+                                            org = Organization.objects.filter(pk=org_id).first()
+                                            if org is not None:
+                                                SpeciesDiagnosisOrganization.objects.create(
+                                                    species_diagnosis=species_diagnosis, organization=org,
+                                                    created_by=user, modified_by=user)
 
                 location_species.priority = calculate_priority_location_species(location_species)
                 location_species.save()
