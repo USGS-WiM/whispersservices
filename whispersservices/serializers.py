@@ -1041,17 +1041,17 @@ class EventSerializer(serializers.ModelSerializer):
                     evt_location.save()
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').first()
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
+            ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
@@ -1072,7 +1072,7 @@ class EventSerializer(serializers.ModelSerializer):
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending, undetermined]]
 
         return event
 
@@ -1911,17 +1911,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     evt_location.save()
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').first()
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
+            ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
                 for event_diagnosis in new_event_diagnoses:
@@ -1942,7 +1942,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 # Now that we have the new event diagnoses created,
                 # check for existing Pending or Undetermined records and delete them
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending, undetermined]]
 
         return event
 
