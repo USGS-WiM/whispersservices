@@ -829,6 +829,14 @@ class EventDiagnosis(PermissionsHistoryModel):
     major = models.BooleanField(default=False)
     priority = models.IntegerField(null=True)
 
+    # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
+    # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+    # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+    def save(self, *args, **kwargs):
+        if self.diagnosis.name in ['Pending', 'Undetermined']:
+            self.suspect = False
+        super(EventDiagnosis, self).save(*args, **kwargs)
+
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
@@ -888,14 +896,20 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses')
 
-    # override the save method to calculate the parent event's affected_count
+    # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
+    # and to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
+
+        # all "Pending" and "Undetermined" diagnosis must be confirmed (not suspect) = false, even if no lab OR
+        # some other way of coding this such that we never see "Pending suspect" or "Undetermined suspect" on front end
+        if self.diagnosis.name in ['Pending', 'Undetermined']:
+            self.suspect = False
 
         # If diagnosis is confirmed and pooled is selected,
         # then automatically list 1 for number_positive if number_positive was zero or null.
         # If diagnosis is suspect and pooled is selected,
         # then automatically list 1 for number_suspect if number_suspect was zero or null.
-        if not self.suspect and self.pooled:
+        if self.suspect and self.pooled:
             if self.positive_count is None or self.positive_count == 0:
                 self.positive_count = 1
             if self.suspect_count is None or self.suspect_count == 0:
@@ -956,7 +970,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     matching_eventdiagnosis.suspect = True
                     matching_eventdiagnosis.save()
 
-    # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
+    # override the delete method to ensure that when all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
     def delete(self, *args, **kwargs):
         event = self.location_species.event_location.event

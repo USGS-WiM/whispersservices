@@ -3399,6 +3399,14 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         message_complete = "Diagnosis from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
         diagnosis = None
+        eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
+
+        # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
+        if eventdiags and diagnosis.name == 'Pending':
+            message = "A Pending diagnosis for Event Diagnosis is not allowed"
+            message += " when other event diagnoses already exist for this event."
+            raise serializers.ValidationError(message)
+
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
@@ -3425,11 +3433,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             if 'diagnosis' not in data or data['diagnosis'] is None:
                 data['diagnosis'] = self.instance.diagnosis
 
-        # check that submitted diagnoses are also in this event's species diagnoses
-        if diagnosis is not None and ((not event_specdiags or diagnosis.id not in event_specdiags)
-                                      and diagnosis.name not in ['Pending', 'Undetermined']):
-                message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
-                raise serializers.ValidationError(message)
+        # check that submitted diagnosis is also in this event's species diagnoses
+        if ((not event_specdiags or diagnosis.id not in event_specdiags)
+                and diagnosis.name not in ['Pending', 'Undetermined']):
+            message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
+            raise serializers.ValidationError(message)
 
         return data
 
