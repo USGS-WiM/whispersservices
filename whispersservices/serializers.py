@@ -3400,13 +3400,6 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
         diagnosis = None
         eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
-
-        # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
-        if eventdiags and diagnosis.name == 'Pending':
-            message = "A Pending diagnosis for Event Diagnosis is not allowed"
-            message += " when other event diagnoses already exist for this event."
-            raise serializers.ValidationError(message)
-
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
@@ -3416,6 +3409,13 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
 
             diagnosis = data['diagnosis']
+
+            # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
+            if eventdiags and diagnosis.name == 'Pending':
+                message = "A Pending diagnosis for Event Diagnosis is not allowed"
+                message += " when other event diagnoses already exist for this event."
+                raise serializers.ValidationError(message)
+
             event_specdiags = SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
 
@@ -3426,6 +3426,13 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
 
             diagnosis = data['diagnosis'] if 'diagnosis' in data else self.instance.diagnosis
+
+            # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
+            if eventdiags and diagnosis.name == 'Pending':
+                message = "A Pending diagnosis for Event Diagnosis is not allowed"
+                message += " when other event diagnoses already exist for this event."
+                raise serializers.ValidationError(message)
+
             event_specdiags = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=self.instance.event.id).values_list(
                 'diagnosis', flat=True).distinct())
