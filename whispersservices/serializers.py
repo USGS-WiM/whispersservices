@@ -1069,10 +1069,9 @@ class EventSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created,
-                # check for existing Pending or Undetermined records and delete them
+                # Now that we have the new event diagnoses created, check for existing Pending record and delete it
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending, undetermined]]
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
@@ -1939,10 +1938,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created,
-                # check for existing Pending or Undetermined records and delete them
+                # Now that we have the new event diagnoses created, check for existing Pending record and delete it
                 event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending, undetermined]]
+                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
@@ -3450,11 +3448,6 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
 
-        # TODO: Check on this... the rule seeme pointless unless a user can manually assign Undetermined, which seemingly contradicts other rules
-        # # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-        # if validated_data['event'].complete and validated_data['diagnosis'] == undetermined.id:
-        #     [evt_diag.delete() for evt_diag in get_event_diagnoses()]
-
         # ensure this new event diagnosis has the correct suspect value
         # (false if any matching species diagnoses are false, otherwise true)
         event = validated_data['event']
@@ -3468,9 +3461,9 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         event_diagnosis.save()
 
         # Now that we have the new event diagnoses created,
-        # check for existing Pending or Undetermined records and delete them
+        # check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3496,10 +3489,9 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         ).values_list('suspect', flat=True)
         instance.suspect = False if False in matching_specdiags_suspect else True
 
-        # Now that we have the new event diagnoses created,
-        # check for existing Pending or Undetermined records and delete them
+        # Now that we have the new event diagnoses created, check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
@@ -3615,12 +3607,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # For new validated_data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
         # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
-        # (TODO: NOTE following rule is valid and enforceable right now:)
-        # never see "Pending suspect" or "Undetermined suspect" on front end.
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        # if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-        #     validated_data['suspect'] = False
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
 
@@ -3685,13 +3671,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             if len([lab_id for lab_id in my_labs_ids if lab_id in loc_specdiags_labs_ids]) > 0:
                 message = "A diagnosis can only be used once for a location-species-laboratory combination."
                 raise serializers.ValidationError(message)
-
-        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        # if instance.diagnosis in [pending, undetermined]:
-        #     instance.suspect = False
 
         instance.save()
 
