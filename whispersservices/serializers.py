@@ -831,10 +831,15 @@ class EventSerializer(serializers.ModelSerializer):
                 if new_comments is not None:
                     for comment in new_comments:
                         if comment is not None:
-                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
+                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            else:
+                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment.comment)
+                            service_request_comments.append(comment['comment'])
 
                 # construct and send the request email
                 service_request_email = construct_service_request_email(service_request.event.id,
@@ -1699,10 +1704,15 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 if new_comments is not None:
                     for comment in new_comments:
                         if comment is not None:
-                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
+                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            else:
+                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment.comment)
+                            service_request_comments.append(comment['comment'])
 
                 # construct and send the request email
                 service_request_email = construct_service_request_email(service_request.event.id,
@@ -3837,10 +3847,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if not comment_type:
+                            comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                    else:
+                        comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     comment = Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                      comment_type=comment_type, created_by=user, modified_by=user)
-                    service_request_comments.append(comment.comment)
+                    service_request_comments.append(comment['comment'])
 
         # construct and send the request email
         service_request_email = construct_service_request_email(service_request.event.id,
