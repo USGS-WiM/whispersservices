@@ -1,6 +1,7 @@
 from django.conf.urls import url, include
 from whispersservices import views
 from rest_framework.routers import DefaultRouter
+from rest_framework.documentation import include_docs_urls
 
 
 router = DefaultRouter()
@@ -57,5 +58,6 @@ router.register(r'searches', views.SearchViewSet, 'searches')
 urlpatterns = [
     url(r'^', include(router.urls)),
     url(r'^api-auth/', include('rest_framework.urls', namespace='rest_framework')),
-    url(r'^auth/$', views.AuthView.as_view(), name='authenticate')
+    url(r'^auth/$', views.AuthView.as_view(), name='authenticate'),
+    url(r'^docs/', include_docs_urls(title='WHISPers API', authentication_classes=())),
 ]

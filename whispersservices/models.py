@@ -71,7 +71,7 @@ class PermissionsHistoryModel(HistoryModel):
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
         # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
         # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
-        if not request.user.is_authenticated:
+        if not request or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
@@ -79,7 +79,7 @@ class PermissionsHistoryModel(HistoryModel):
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or a manager/admin member of the creator's organization can update
-        if not request.user.is_authenticated:
+        if not request or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
@@ -89,7 +89,7 @@ class PermissionsHistoryModel(HistoryModel):
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
-        if not request.user.is_authenticated:
+        if not request or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
@@ -129,14 +129,14 @@ class AdminPermissionsHistoryModel(HistoryModel):
     @staticmethod
     def has_write_permission(request):
         # Only superadmins or admins can write (create, update, delete)
-        if not request.user.is_authenticated:
+        if not request or not request.user.is_authenticated:
             return False
         else:
             return request.user.role.is_superadmin or request.user.role.is_admin
 
     def has_object_write_permission(self, request):
         # Only superadmins or admins can write (create, update, delete)
-        if not request.user.is_authenticated:
+        if not request or not request.user.is_authenticated:
             return False
         else:
             return request.user.role.is_superadmin or request.user.role.is_admin

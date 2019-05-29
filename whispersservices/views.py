@@ -54,6 +54,13 @@ PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMETER = ','
 
 
+def get_request_user(request):
+    if request:
+        return request.user
+    else:
+        return None
+
+
 def construct_email(request_data, requester_email, message):
     # construct and send the request email
     subject = "Assistance Request"
@@ -113,7 +120,9 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            return super().paginate_queryset(*args, **kwargs)
+        elif 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
@@ -128,7 +137,9 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            return super().paginate_queryset(*args, **kwargs)
+        elif 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
@@ -141,6 +152,25 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
 
 
 class EventViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all events.
+
+    create:
+    Creates a new event.
+    
+    read:
+    Returns an event by id.
+    
+    update:
+    Updates an event.
+    
+    partial_update:
+    Updates parts of an event.
+    
+    delete:
+    Deletes an event.
+    """
 
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
@@ -165,11 +195,11 @@ class EventViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         queryset = Event.objects.all()
 
         # all requests from anonymous or public users must only return public data
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return queryset.filter(public=True)
         # admins have full access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
@@ -206,9 +236,9 @@ class EventViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventPublicSerializer
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
@@ -255,6 +285,25 @@ class EventViewSet(HistoryViewSet):
 
 
 class EventEventGroupViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event event groups.
+
+    create:
+    Creates a new event event group.
+    
+    read:
+    Returns an event event group by id.
+    
+    update:
+    Updates an event event group.
+    
+    partial_update:
+    Updates parts of an event event group.
+    
+    delete:
+    Deletes an event event group.
+    """
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to eventgroups can be deleted
@@ -266,9 +315,9 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
@@ -278,9 +327,9 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventEventGroupPublicSerializer
         # admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
@@ -291,12 +340,31 @@ class EventEventGroupViewSet(HistoryViewSet):
 
 
 class EventGroupViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event groups.
+
+    create:
+    Creates a new event group.
+    
+    read:
+    Returns an event group by id.
+    
+    update:
+    Updates an event group.
+    
+    partial_update:
+    Updates parts of an event group.
+    
+    delete:
+    Deletes an event group.
+    """
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin:
@@ -306,9 +374,9 @@ class EventGroupViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventGroupPublicSerializer
         # authenticated non-public users have access to all fields
         else:
@@ -316,13 +384,32 @@ class EventGroupViewSet(HistoryViewSet):
 
 
 class EventGroupCategoryViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event group categories.
+
+    create:
+    Creates a new event group category.
+    
+    read:
+    Returns an event group category by id.
+    
+    update:
+    Updates an event group category.
+    
+    partial_update:
+    Updates parts of an event group category.
+    
+    delete:
+    Deletes an event group category.
+    """
     serializer_class = EventGroupCategorySerializer
 
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
@@ -332,26 +419,123 @@ class EventGroupCategoryViewSet(HistoryViewSet):
 
 
 class EventTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event types.
+
+    create:
+    Creates a new event type.
+    
+    read:
+    Returns an event type by id.
+    
+    update:
+    Updates an event type.
+    
+    partial_update:
+    Updates parts of an event type.
+    
+    delete:
+    Deletes an event type.
+    """
     queryset = EventType.objects.all()
     serializer_class = EventTypeSerializer
 
 
 class StaffViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all staff.
+
+    create:
+    Creates a new staff member.
+    
+    read:
+    Returns a staff member by id.
+    
+    update:
+    Updates a staff member.
+    
+    partial_update:
+    Updates parts of a staff member.
+    
+    delete:
+    Deletes a staff member.
+    """
     queryset = Staff.objects.all()
     serializer_class = StaffSerializer
 
 
 class LegalStatusViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all legal statuses.
+
+    create:
+    Creates a new legal status.
+    
+    read:
+    Returns a legal status by id.
+    
+    update:
+    Updates a legal status.
+    
+    partial_update:
+    Updates parts of a legal status.
+    
+    delete:
+    Deletes a legal status.
+    """
     queryset = LegalStatus.objects.all()
     serializer_class = LegalStatusSerializer
 
 
 class EventStatusViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event statuses.
+
+    create:
+    Creates a new event status.
+    
+    read:
+    Returns an event status by id.
+    
+    update:
+    Updates an event status.
+    
+    partial_update:
+    Updates parts of an event status.
+    
+    delete:
+    Deletes an event status.
+    """
     queryset = EventStatus.objects.all()
     serializer_class = EventStatusSerializer
 
 
 class EventAbstractViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event abstracts.
+
+    create:
+    Creates a new event abstract.
+    
+    read:
+    Returns an event abstract by id.
+    
+    update:
+    Updates an event abstract.
+    
+    partial_update:
+    Updates parts of an event abstract.
+    
+    delete:
+    Deletes an event abstract.
+    """
+    # not visible in api
+
     serializer_class = EventAbstractSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -364,13 +548,32 @@ class EventAbstractViewSet(HistoryViewSet):
 
     def get_queryset(self):
         queryset = EventAbstract.objects.all()
-        contains = self.request.query_params.get('contains', None)
+        contains = self.request.query_params.get('contains', None) if self.request else None
         if contains is not None:
             queryset = queryset.filter(text__contains=contains)
         return queryset
 
 
 class EventCaseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event cases.
+
+    create:
+    Creates a new event case.
+    
+    read:
+    Returns an event case by id.
+    
+    update:
+    Updates an event case.
+    
+    partial_update:
+    Updates parts of an event case.
+    
+    delete:
+    Deletes an event case.
+    """
     queryset = EventCase.objects.all()
     serializer_class = EventCaseSerializer
 
@@ -384,6 +587,25 @@ class EventCaseViewSet(HistoryViewSet):
 
 
 class EventLabsiteViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event lab sites.
+
+    create:
+    Creates a new event lab site.
+    
+    read:
+    Returns an event lab site by id.
+    
+    update:
+    Updates an event lab site.
+    
+    partial_update:
+    Updates parts of an event lab site.
+    
+    delete:
+    Deletes an event lab site.
+    """
     queryset = EventLabsite.objects.all()
     serializer_class = EventLabsiteSerializer
 
@@ -397,6 +619,25 @@ class EventLabsiteViewSet(HistoryViewSet):
 
 
 class EventOrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event organizations.
+
+    create:
+    Creates a new event organization.
+    
+    read:
+    Returns an event organization by id.
+    
+    update:
+    Updates an event organization.
+    
+    partial_update:
+    Updates parts of an event organization.
+    
+    delete:
+    Deletes an event organization.
+    """
     queryset = EventOrganization.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -409,9 +650,9 @@ class EventOrganizationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventOrganizationPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -430,6 +671,25 @@ class EventOrganizationViewSet(HistoryViewSet):
 
 
 class EventContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event contacts.
+
+    create:
+    Creates a new event contact.
+    
+    read:
+    Returns an event contact by id.
+    
+    update:
+    Updates an event contact.
+    
+    partial_update:
+    Updates parts of an event contact.
+    
+    delete:
+    Deletes an event contact.
+    """
     queryset = EventContact.objects.all()
     serializer_class = EventContactSerializer
 
@@ -450,6 +710,25 @@ class EventContactViewSet(HistoryViewSet):
 
 
 class EventLocationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event locations.
+
+    create:
+    Creates a new event location.
+    
+    read:
+    Returns an event location by id.
+    
+    update:
+    Updates an event location.
+    
+    partial_update:
+    Updates parts of an event location.
+    
+    delete:
+    Deletes an event location.
+    """
     queryset = EventLocation.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -462,9 +741,9 @@ class EventLocationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventLocationPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -483,6 +762,25 @@ class EventLocationViewSet(HistoryViewSet):
 
 
 class EventLocationContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event location contacts.
+
+    create:
+    Creates a new event location contact.
+    
+    read:
+    Returns an event contact by id.
+    
+    update:
+    Updates an event location contact.
+    
+    partial_update:
+    Updates parts of an event location contact.
+    
+    delete:
+    Deletes an event location contact.
+    """
     queryset = EventLocationContact.objects.all()
     serializer_class = EventLocationContactSerializer
 
@@ -496,15 +794,53 @@ class EventLocationContactViewSet(HistoryViewSet):
 
 
 class CountryViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all countries.
+
+    create:
+    Creates a new country.
+    
+    read:
+    Returns a country by id.
+    
+    update:
+    Updates a country.
+    
+    partial_update:
+    Updates parts of a country.
+    
+    delete:
+    Deletes a country.
+    """
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
 
 
 class AdministrativeLevelOneViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level ones.
+
+    create:
+    Creates an new administrative level one.
+    
+    read:
+    Returns an administrative level one by id.
+    
+    update:
+    Updates an administrative level one.
+    
+    partial_update:
+    Updates parts of an administrative level one.
+    
+    delete:
+    Deletes an administrative level one.
+    """
 
     def get_queryset(self):
         queryset = AdministrativeLevelOne.objects.all()
-        country = self.request.query_params.get('country', None)
+        country = self.request.query_params.get('country', None) if self.request else None
         if country is not None and country != '':
             if LIST_DELIMETER in country:
                 country_list = country.split(',')
@@ -514,13 +850,35 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return AdministrativeLevelOneSlimSerializer
         else:
             return AdministrativeLevelOneSerializer
 
 
 class AdministrativeLevelTwoViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level twos.
+
+    create:
+    Creates a new administrative level two.
+    
+    request_new:
+    Request to have a new administrative level two added.
+    
+    read:
+    Returns a administrative level two by id.
+    
+    update:
+    Updates an administrative level two.
+    
+    partial_update:
+    Updates parts of an administrative level two.
+    
+    delete:
+    Deletes an administrative level two.
+    """
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -542,23 +900,80 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return AdministrativeLevelTwoSlimSerializer
         else:
             return AdministrativeLevelTwoSerializer
 
 
 class AdministrativeLevelLocalityViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all administrative level localities.
+
+    create:
+    Creates a new administrative level locality.
+    
+    read:
+    Returns an administrative level locality by id.
+    
+    update:
+    Updates an administrative level locality.
+    
+    partial_update:
+    Updates parts of an administrative level locality.
+    
+    delete:
+    Deletes an administrative level locality.
+    """
     queryset = AdministrativeLevelLocality.objects.all()
     serializer_class = AdministrativeLevelLocalitySerializer
 
 
 class LandOwnershipViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all landownerships.
+
+    create:
+    Creates a new landownership.
+    
+    read:
+    Returns a landownership by id.
+    
+    update:
+    Updates a landownership.
+    
+    partial_update:
+    Updates parts of a landownership.
+    
+    delete:
+    Deletes a landownership.
+    """
     queryset = LandOwnership.objects.all()
     serializer_class = LandOwnershipSerializer
 
 
 class EventLocationFlywayViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event location flyways.
+
+    create:
+    Creates an event location flyway.
+    
+    read:
+    Returns an event location flyway by id.
+    
+    update:
+    Updates an event location flyway.
+    
+    partial_update:
+    Updates parts of an event location flyway.
+    
+    delete:
+    Deletes an event location flyway.
+    """
     queryset = EventLocationFlyway.objects.all()
     serializer_class = EventLocationFlywaySerializer
 
@@ -572,6 +987,25 @@ class EventLocationFlywayViewSet(HistoryViewSet):
 
 
 class FlywayViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all flyways.
+
+    create:
+    Creates a flyway.
+    
+    read:
+    Returns a flyway by id.
+    
+    update:
+    Updates a flyway.
+    
+    partial_update:
+    Updates parts of a flyway.
+    
+    delete:
+    Deletes a flyway.
+    """
     queryset = Flyway.objects.all()
     serializer_class = FlywaySerializer
 
@@ -584,6 +1018,25 @@ class FlywayViewSet(HistoryViewSet):
 
 
 class LocationSpeciesViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all location species.
+
+    create:
+    Creates a location species.
+    
+    read:
+    Returns a location species by id.
+    
+    update:
+    Updates a location species.
+    
+    partial_update:
+    Updates parts of a location species.
+    
+    delete:
+    Deletes a location species.
+    """
     queryset = LocationSpecies.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -596,9 +1049,9 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return LocationSpeciesPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -617,6 +1070,28 @@ class LocationSpeciesViewSet(HistoryViewSet):
 
 
 class SpeciesViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species.
+
+    create:
+    Creates a species.
+    
+    request_new:
+    Request to have a new species added.
+    
+    read:
+    Returns a species by id.
+    
+    update:
+    Updates a species.
+    
+    partial_update:
+    Updates parts of a species.
+    
+    delete:
+    Deletes a species.
+    """
     queryset = Species.objects.all()
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -628,18 +1103,56 @@ class SpeciesViewSet(HistoryViewSet):
         return construct_email(request.data, request.user.email, message)
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return SpeciesSlimSerializer
         else:
             return SpeciesSerializer
 
 
 class AgeBiasViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all age biasses.
+
+    create:
+    Creates an age bias.
+    
+    read:
+    Returns an age bias by id.
+    
+    update:
+    Updates an age bias.
+    
+    partial_update:
+    Updates parts of an age bias.
+    
+    delete:
+    Deletes an age bias.
+    """
     queryset = AgeBias.objects.all()
     serializer_class = AgeBiasSerializer
 
 
 class SexBiasViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all sex biasses.
+
+    create:
+    Creates a sex bias.
+    
+    read:
+    Returns a sex bias by id.
+    
+    update:
+    Updates a sex bias.
+    
+    partial_update:
+    Updates parts of a sex bias.
+    
+    delete:
+    Deletes a sex bias.
+    """
     queryset = SexBias.objects.all()
     serializer_class = SexBiasSerializer
 
@@ -652,11 +1165,33 @@ class SexBiasViewSet(HistoryViewSet):
 
 
 class DiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnoses.
+
+    create:
+    Creates a diagnosis.
+
+    request_new:
+    Request to have a new diagnosis added.
+    
+    read:
+    Returns a diagnosis by id.
+    
+    update:
+    Updates a diagnosis.
+    
+    partial_update:
+    Updates parts of a diagnosis.
+    
+    delete:
+    Deletes a diagnosis.
+    """
     serializer_class = DiagnosisSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new diagnosis:"
@@ -665,7 +1200,7 @@ class DiagnosisViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
         queryset = Diagnosis.objects.all()
-        diagnosis_type = self.request.query_params.get('diagnosis_type', None)
+        diagnosis_type = self.request.query_params.get('diagnosis_type', None) if self.request else None
         if diagnosis_type is not None and diagnosis_type != '':
             if LIST_DELIMETER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
@@ -676,11 +1211,49 @@ class DiagnosisViewSet(HistoryViewSet):
 
 
 class DiagnosisTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis types.
+
+    create:
+    Creates a diagnosis type.
+    
+    read:
+    Returns a diagnosis type by id.
+    
+    update:
+    Updates a diagnosis type.
+    
+    partial_update:
+    Updates parts of a diagnosis type.
+    
+    delete:
+    Deletes a diagnosis type.
+    """
     queryset = DiagnosisType.objects.all()
     serializer_class = DiagnosisTypeSerializer
 
 
 class EventDiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all event diagnoses.
+
+    create:
+    Creates an event diagnosis.
+    
+    read:
+    Returns an event diagnosis by id.
+    
+    update:
+    Updates an event diagnosis.
+    
+    partial_update:
+    Updates parts of an event diagnosis.
+    
+    delete:
+    Deletes an event diagnosis.
+    """
     queryset = EventDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -693,9 +1266,9 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return EventDiagnosisPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -714,6 +1287,25 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species diagnoses.
+
+    create:
+    Creates a species diagnosis.
+    
+    read:
+    Returns a species diagnosis by id.
+    
+    update:
+    Updates a species diagnosis.
+    
+    partial_update:
+    Updates parts of a species diagnosis.
+    
+    delete:
+    Deletes a species diagnosis.
+    """
     queryset = SpeciesDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
@@ -726,9 +1318,9 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return SpeciesDiagnosisPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -747,6 +1339,25 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
 
 
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all species diagnosis organization.
+
+    create:
+    Creates a species diagnosis organization.
+    
+    read:
+    Returns a species diagnosis organization by id.
+    
+    update:
+    Updates a species diagnosis organization.
+    
+    partial_update:
+    Updates parts of a species diagnosis organization.
+    
+    delete:
+    Deletes a species diagnosis organization.
+    """
     queryset = SpeciesDiagnosisOrganization.objects.all()
     serializer_class = SpeciesDiagnosisOrganizationSerializer
 
@@ -760,11 +1371,49 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
 
 
 class DiagnosisBasisViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis bases.
+
+    create:
+    Creates a diagnosis basis.
+    
+    read:
+    Returns a diagnosis basis by id.
+    
+    update:
+    Updates a diagnosis basis.
+    
+    partial_update:
+    Updates parts of a diagnosis basis.
+    
+    delete:
+    Deletes a diagnosis basis.
+    """
     queryset = DiagnosisBasis.objects.all()
     serializer_class = DiagnosisBasisSerializer
 
 
 class DiagnosisCauseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all diagnosis causes.
+
+    create:
+    Creates a diagnosis cause.
+    
+    read:
+    Returns a diagnosis cause by id.
+    
+    update:
+    Updates a diagnosis cause.
+    
+    partial_update:
+    Updates parts of a diagnosis cause.
+    
+    delete:
+    Deletes a diagnosis cause.
+    """
     queryset = DiagnosisCause.objects.all()
     serializer_class = DiagnosisCauseSerializer
 
@@ -777,16 +1426,73 @@ class DiagnosisCauseViewSet(HistoryViewSet):
 
 
 class ServiceRequestViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service requests.
+
+    create:
+    Creates a service request.
+    
+    read:
+    Returns a service request by id.
+    
+    update:
+    Updates a service request.
+    
+    partial_update:
+    Updates parts of a service request.
+    
+    delete:
+    Deletes a service request.
+    """
     queryset = ServiceRequest.objects.all()
     serializer_class = ServiceRequestSerializer
 
 
 class ServiceRequestTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service request types.
+
+    create:
+    Creates a service request type.
+    
+    read:
+    Returns a service request type by id.
+    
+    update:
+    Updates a service request type.
+    
+    partial_update:
+    Updates parts of a service request type.
+    
+    delete:
+    Deletes a service request type.
+    """
     queryset = ServiceRequestType.objects.all()
     serializer_class = ServiceRequestTypeSerializer
 
 
 class ServiceRequestResponseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all service request responses.
+
+    create:
+    Creates a service request response.
+    
+    read:
+    Returns a service request response by id.
+    
+    update:
+    Updates a service request response.
+    
+    partial_update:
+    Updates parts of a service request response.
+    
+    delete:
+    Deletes a service request response.
+    """
     queryset = ServiceRequestResponse.objects.all()
     serializer_class = ServiceRequestResponseSerializer
 
@@ -799,22 +1505,79 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 
 class CommentViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all comments.
+
+    create:
+    Creates a comment.
+    
+    read:
+    Returns a comment by id.
+    
+    update:
+    Updates a comment.
+    
+    partial_update:
+    Updates parts of a comment.
+    
+    delete:
+    Deletes a comment.
+    """
     serializer_class = CommentSerializer
 
     def get_queryset(self):
         queryset = Comment.objects.all()
-        contains = self.request.query_params.get('contains', None)
+        contains = self.request.query_params.get('contains', None) if self.request else None
         if contains is not None:
             queryset = queryset.filter(comment__contains=contains)
         return queryset
 
 
 class CommentTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all comment types.
+
+    create:
+    Creates a comment type.
+    
+    read:
+    Returns a comment type by id.
+    
+    update:
+    Updates a comment type.
+    
+    partial_update:
+    Updates parts of a comment type.
+    
+    delete:
+    Deletes a comment type.
+    """
     queryset = CommentType.objects.all()
     serializer_class = CommentTypeSerializer
 
 
 class ArtifactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all artifacts.
+
+    create:
+    Creates an artifact.
+    
+    read:
+    Returns an artifact by id.
+    
+    update:
+    Updates an artifact.
+    
+    partial_update:
+    Updates parts of an artifact.
+    
+    delete:
+    Deletes an artifact.
+    """
     queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer
 
@@ -827,12 +1590,34 @@ class ArtifactViewSet(HistoryViewSet):
 
 
 class UserViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all artifacts.
+
+    create:
+    Creates an artifact.
+
+    request_new:
+    Request to have a new user added.
+    
+    read:
+    Returns an artifact by id.
+    
+    update:
+    Updates an artifact.
+    
+    partial_update:
+    Updates parts of an artifact.
+    
+    delete:
+    Deletes an artifact.
+    """
     serializer_class = UserSerializer
 
     # anyone can request a new user, but an email address is required if the request comes from a non-user
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             words = request.data.split(" ")
             email_addresses = [word for word in words if '@' in word]
             if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
@@ -877,9 +1662,9 @@ class UserViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return UserPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
@@ -898,10 +1683,10 @@ class UserViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return User.objects.none()
         # admins and superadmins can see everything
         elif user.role.is_superadmin or user.role.is_admin:
@@ -934,31 +1719,74 @@ class UserViewSet(HistoryViewSet):
 
 
 class AuthView(views.APIView):
+    """
+    create:
+    Determines if the submitted username and password match a user and whether the user is active
+    """
+
     authentication_classes = (CustomBasicAuthentication,)
     serializer_class = UserSerializer
 
     def post(self, request):
-        user = request.user
-        if user.is_authenticated:
+        user = request.user if request is not None else None
+        if user and user.is_authenticated:
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
         return Response(self.serializer_class(user).data)
 
 
 class RoleViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all roles.
+
+    create:
+    Creates a role.
+    
+    read:
+    Returns a role by id.
+    
+    update:
+    Updates a role.
+    
+    partial_update:
+    Updates parts of a role.
+    
+    delete:
+    Deletes a role.
+    """
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
 
 
 class CircleViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all circles.
+
+    create:
+    Creates a circle.
+    
+    read:
+    Returns a circle by id.
+    
+    update:
+    Updates a circle.
+    
+    partial_update:
+    Updates parts of a circle.
+    
+    delete:
+    Deletes a circle.
+    """
     serializer_class = CircleSerlializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return Circle.objects.none()
         # admins and superadmins can see everything
         elif user.role.is_superadmin or user.role.is_admin:
@@ -972,10 +1800,32 @@ class CircleViewSet(HistoryViewSet):
 
 
 class OrganizationViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all organizations.
+
+    create:
+    Creates a organization.
+
+    request_new:
+    Request to have a new organization added.
+    
+    read:
+    Returns a organization by id.
+    
+    update:
+    Updates a organization.
+    
+    partial_update:
+    Updates parts of a organization.
+    
+    delete:
+    Deletes a organization.
+    """
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
         message = "Please add a new organization:"
@@ -983,18 +1833,16 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
-        slim = False
-        if 'slim' in self.request.query_params:
-            slim = True
+        user = get_request_user(self.request)
+        slim = True if self.request is not None and 'slim' in self.request.query_params else False
         # all requests from anonymous or public users must use the public serializer
-        if not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated or user.role.is_public:
             return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
         # admins have access to all fields
         if user.role.is_superadmin or user.role.is_admin:
             return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
         # partner requests only have access to a more limited list of fields
-        if user.role.is_admin or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+        if user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
             return OrganizationSerializer if not slim else OrganizationSlimSerializer
         # all other requests are rejected
         else:
@@ -1004,23 +1852,24 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         queryset = Organization.objects.all()
 
-        users = self.request.query_params.get('users', None)
-        if users is not None and users != '':
-            users_list = users.split(',')
-            queryset = queryset.filter(users__in=users_list)
-        contacts = self.request.query_params.get('contacts', None)
-        if contacts is not None and contacts != '':
-            contacts_list = contacts.split(',')
-            queryset = queryset.filter(contacts__in=contacts_list)
-        laboratory = self.request.query_params.get('laboratory', None)
-        if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
-            queryset = queryset.filter(laboratory__exact=laboratory)
+        if self.request:
+            users = self.request.query_params.get('users', None)
+            if users is not None and users != '':
+                users_list = users.split(',')
+                queryset = queryset.filter(users__in=users_list)
+            contacts = self.request.query_params.get('contacts', None)
+            if contacts is not None and contacts != '':
+                contacts_list = contacts.split(',')
+                queryset = queryset.filter(contacts__in=contacts_list)
+            laboratory = self.request.query_params.get('laboratory', None)
+            if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
+                queryset = queryset.filter(laboratory__exact=laboratory)
 
         # all requests from anonymous users must only return published data
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return queryset.filter(do_not_publish=False)
         # for pk requests, unpublished data can only be returned to the owner or their org or admins
         elif self.action in PK_REQUESTS:
@@ -1042,13 +1891,35 @@ class OrganizationViewSet(HistoryViewSet):
 
 
 class ContactViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all contacts.
+
+    create:
+    Creates a contact.
+
+    user_contacts:
+    Returns contacts owned by a user.
+    
+    read:
+    Returns a contact by id.
+    
+    update:
+    Updates a contact.
+    
+    partial_update:
+    Updates parts of a contact.
+    
+    delete:
+    Deletes a contact.
+    """
 
     @action(detail=False)
     def user_contacts(self, request):
         # limit data to what the user owns and what the user's org owns
-        query_params = self.request.query_params
+        query_params = self.request.query_params if request is not None else None
         queryset = self.build_queryset(query_params, get_user_contacts=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params is not None else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1059,40 +1930,46 @@ class ContactViewSet(HistoryViewSet):
                 queryset = queryset.order_by('id')
         else:
             queryset = queryset.order_by('id')
-        slim = True if 'slim' in self.request.query_params else False
 
-        if 'no_page' in self.request.query_params:
-            if slim:
-                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
-            else:
-                serializer = ContactSerializer(queryset, many=True, context={'request': request})
+        if not request:
+            serializer = ContactSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
+
         else:
-            page = self.paginate_queryset(queryset)
-            if page is not None:
+            slim = True if 'slim' in self.request.query_params else False
+
+            if 'no_page' in self.request.query_params:
                 if slim:
-                    serializer = ContactSlimSerializer(page, many=True, context={'request': request})
+                    serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
                 else:
-                    serializer = ContactSerializer(page, many=True, context={'request': request})
-                return self.get_paginated_response(serializer.data)
-            if slim:
-                serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+                    serializer = ContactSerializer(queryset, many=True, context={'request': request})
+                return Response(serializer.data, status=200)
             else:
-                serializer = ContactSerializer(queryset, many=True, context={'request': request})
-            return Response(serializer.data, status=200)
+                page = self.paginate_queryset(queryset)
+                if page is not None:
+                    if slim:
+                        serializer = ContactSlimSerializer(page, many=True, context={'request': request})
+                    else:
+                        serializer = ContactSerializer(page, many=True, context={'request': request})
+                    return self.get_paginated_response(serializer.data)
+                if slim:
+                    serializer = ContactSlimSerializer(queryset, many=True, context={'request': request})
+                else:
+                    serializer = ContactSerializer(queryset, many=True, context={'request': request})
+                return Response(serializer.data, status=200)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_contacts=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_contacts):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return Contact.objects.none()
         # public users cannot see anything
         elif user.role.is_public:
@@ -1126,26 +2003,70 @@ class ContactViewSet(HistoryViewSet):
         return queryset
 
     def get_serializer_class(self):
-        if 'slim' in self.request.query_params:
+        if self.request and 'slim' in self.request.query_params:
             return ContactSlimSerializer
         else:
             return ContactSerializer
 
 
 class ContactTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all contact types.
+
+    create:
+    Creates a contact type.
+    
+    read:
+    Returns a contact type by id.
+    
+    update:
+    Updates a contact type.
+    
+    partial_update:
+    Updates parts of a contact type.
+    
+    delete:
+    Deletes a contact type.
+    """
     queryset = ContactType.objects.all()
     serializer_class = ContactTypeSerializer
 
 
 class SearchViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all searches.
+
+    create:
+    Creates a search.
+
+    top_ten:
+    Returns a list of the top 10 searches.
+
+    user_searches:
+    Returns a count of searches created by users.
+    
+    read:
+    Returns a search by id.
+    
+    update:
+    Updates a search.
+    
+    partial_update:
+    Updates parts of a search.
+    
+    delete:
+    Deletes a search.
+    """
     serializer_class = SearchSerializer
 
     @action(detail=False)
     def user_searches(self, request):
         # limit data to what the user owns and what the user's org owns
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_searches=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1157,7 +2078,14 @@ class SearchViewSet(HistoryViewSet):
         else:
             queryset = queryset.order_by('id')
 
-        if 'no_page' in self.request.query_params:
+        if not self.request:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = SearchSerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        elif 'no_page' in self.request.query_params:
             serializer = SearchSerializer(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
         else:
@@ -1178,22 +2106,22 @@ class SearchViewSet(HistoryViewSet):
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
-        if 'no_page' in self.request.query_params:
+        if self.request and 'no_page' in self.request.query_params:
             return None
         return super().paginate_queryset(*args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_searches=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_searches):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # anonymous users cannot see anything
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
         elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
@@ -1230,23 +2158,39 @@ class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
+    """
+    list:
+    Returns a list of all event summaries.
+
+    get_count:
+    Returns a count of all event summaries.
+    
+    get_user_events_count:
+    Returns a count of events created by a user.
+    
+    user_events:
+    Returns events create by a user.
+    
+    read:
+    Returns an event summary by id.
+    """
 
     @action(detail=False)
     def get_count(self, request):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return Response({"count": self.build_queryset(query_params, get_user_events=False).count()})
 
     @action(detail=False)
     def get_user_events_count(self, request):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return Response({"count": self.build_queryset(query_params, get_user_events=True).count()})
 
     @action(detail=False)
     def user_events(self, request):
         # limit data to what the user owns, what the user's org owns, and what has been shared with the user
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_events=True)
-        ordering_param = query_params.get('ordering', None)
+        ordering_param = query_params.get('ordering', None) if query_params else None
         if ordering_param is not None:
             fields = [field.strip() for field in ordering_param.split(',')]
             ordering = filters.OrderingFilter.remove_invalid_fields(
@@ -1257,13 +2201,13 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 queryset = queryset.order_by('id')
         else:
             queryset = queryset.order_by('id')
-        user = self.request.user
-        no_page = True if 'no_page' in self.request.query_params else False
-        serializer = None
+
+        user = get_request_user(self.request)
+        no_page = True if self.request and 'no_page' in self.request.query_params else False
 
         # determine the appropriate serializer to ensure the requester sees only permitted data
         # anonymous user must use the public serializer
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             if no_page:
                 serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
             else:
@@ -1337,7 +2281,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
-        frmt = self.request.query_params.get('format', None)
+        frmt = self.request.query_params.get('format', None) if self.request else None
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
@@ -1348,7 +2292,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
-        renderer_format = self.request.accepted_renderer.format
+        renderer_format = self.request.accepted_renderer.format if self.request else ''
         if renderer_format == 'csv':
             fileextension = '.csv'
             filename = 'event_summary_'
@@ -1360,12 +2304,12 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        frmt = self.request.query_params.get('format', None)
-        user = self.request.user
+        frmt = self.request.query_params.get('format', None) if self.request else None
+        user = get_request_user(self.request)
 
         if frmt is not None and frmt == 'csv':
             return FlatEventSummaryPublicSerializer
-        elif not user.is_authenticated:
+        elif not user or not user.is_authenticated:
             return EventSummaryPublicSerializer
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
@@ -1399,13 +2343,13 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        query_params = self.request.query_params
+        query_params = self.request.query_params if self.request else None
         return self.build_queryset(query_params, get_user_events=False)
 
     # build a queryset using query_params
     # NOTE: this is being done in its own method to adhere to the DRY Principle
     def build_queryset(self, query_params, get_user_events):
-        user = self.request.user
+        user = get_request_user(self.request)
 
         # first get or create the search and increment its count
         if query_params:
@@ -1417,24 +2361,24 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     del ordered_query_params[param]
             if len(ordered_query_params) > 0:
                 admin_user = User.objects.get(pk=1)
-                if not user.is_authenticated:
+                if not user or not user.is_authenticated:
                     search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
                 else:
                     search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
                 if not search:
-                    if not user.is_authenticated:
+                    if not user or not user.is_authenticated:
                         search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
                     else:
                         search = Search.objects.create(data=ordered_query_params, created_by=user)
                 search.count += 1
-                search.modified_by = admin_user if not user.is_authenticated else user
+                search.modified_by = admin_user if not user or not user.is_authenticated else user
                 search.save()
 
         # then proceed to build the queryset
         queryset = Event.objects.all()
 
         # anonymous users can only see public data
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             if get_user_events:
                 return queryset.none()
             else:
@@ -1698,6 +2642,16 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):
+    """
+    list:
+    Returns a list of all event details.
+    
+    read:
+    Returns an event detail.
+    
+    flat:
+    Returns a flattened response for an event detail by id.
+    """
 
     @action(detail=True)
     def flat(self, request, pk):
@@ -1708,7 +2662,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
-        frmt = self.request.query_params.get('format', None)
+        frmt = self.request.query_params.get('format', None) if self.request else None
         if frmt is not None and frmt == 'csv':
             renderer_classes = (CSVEventDetailRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
@@ -1719,7 +2673,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     # see https://github.com/mjumbewu/django-rest-framework-csv/issues/15
     def finalize_response(self, request, *args, **kwargs):
         response = super(viewsets.ReadOnlyModelViewSet, self).finalize_response(request, *args, **kwargs)
-        renderer_format = self.request.accepted_renderer.format
+        renderer_format = self.request.accepted_renderer.format if self.request else ''
         if renderer_format == 'csv':
             fileextension = '.csv'
             filename = 'event_details_'
@@ -1731,10 +2685,10 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
-        user = self.request.user
+        user = get_request_user(self.request)
         queryset = Event.objects.all()
 
-        if not user.is_authenticated:
+        if not user or not user.is_authenticated:
             return queryset.filter(public=True)
 
         # for pk requests, non-public data can only be returned to the owner or their org or collaborators or admins
@@ -1768,8 +2722,8 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = self.request.user
-        if not user.is_authenticated:
+        user = get_request_user(self.request)
+        if not user or not user.is_authenticated:
             return EventDetailPublicSerializer
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:

@@ -9,3 +9,4 @@ pytz==2018.5
 six==1.11.0
 unicodecsv==0.14.1
 requests==2.20.1
+coreapi 2.3.3
