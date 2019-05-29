@@ -1059,6 +1059,7 @@ class EventSerializer(serializers.ModelSerializer):
             ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
+                new_event_diagnoses_created = []
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = event_diagnosis.pop('diagnosis', None)
                     if diagnosis_id in valid_diagnosis_ids:
@@ -1074,9 +1075,11 @@ class EventSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created, check for existing Pending record and delete it
-                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
+                        new_event_diagnoses_created.append(event_diagnosis)
+                # If any new event diagnoses were created, check for existing Pending record and delete it
+                if len(new_event_diagnoses_created) > 0:
+                    event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                    [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
@@ -1933,6 +1936,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
+                new_event_diagnoses_created = []
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
                     if diagnosis_id in valid_diagnosis_ids:
@@ -1948,9 +1952,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created, check for existing Pending record and delete it
-                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
+                        new_event_diagnoses_created.append(event_diagnosis)
+                # If any new event diagnoses were created, check for existing Pending record and delete it
+                if len(new_event_diagnoses_created) > 0:
+                    event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                    [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
