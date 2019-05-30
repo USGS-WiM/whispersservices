@@ -12,12 +12,34 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 # TODO: implement required field validations for nested objects
 # TODO: consider implementing type checking for nested objects
+# TODO: turn every ListField into a set to prevent errors caused by duplicates
 
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
 FLYWAYS_API = 'https://services.arcgis.com/'
 FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+
+
+def determine_permission_source(user, obj):
+    if not user.is_authenticated:
+        permission_source = ''
+    elif user.id == obj.created_by.id:
+        permission_source = 'user'
+    elif user.organization.id == obj.created_by.organization.id:
+        permission_source = 'organization'
+    elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
+        write_collaborators = list(User.objects.filter(writeevents__in=[obj.id]).values_list('id', flat=True))
+        read_collaborators = list(User.objects.filter(readevents__in=[obj.id]).values_list('id', flat=True))
+        if user.id in write_collaborators:
+            permission_source = 'write_collaborators'
+        elif user.id in read_collaborators:
+            permission_source = 'read_collaborators'
+        else:
+            permission_source = ''
+    else:
+        permission_source = ''
+    return permission_source
 
 
 def construct_service_request_email(event_id, requester_org_name, request_type_name, requester_email, comments):
@@ -390,19 +412,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
@@ -425,22 +435,12 @@ class EventSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    new_read_collaborators = serializers.ListField(write_only=True, required=False)
+    new_write_collaborators = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     def create(self, validated_data):
         # TODO: figure out if this logic is necessary
@@ -754,7 +754,33 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
 
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
+        else:
+            new_write_user_ids = []
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+
         event = Event.objects.create(**validated_data)
+
+        # create the child collaborators for this event
+        if new_read_user_ids is not None:
+            for read_user_id in new_read_user_ids:
+                read_user = User.objects.get(id=read_user_id)
+                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+
+        if new_write_user_ids is not None:
+            for write_user_id in new_write_user_ids:
+                write_user = User.objects.get(id=write_user_id)
+                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -805,10 +831,15 @@ class EventSerializer(serializers.ModelSerializer):
                 if new_comments is not None:
                     for comment in new_comments:
                         if comment is not None:
-                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
+                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            else:
+                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment.comment)
+                            service_request_comments.append(comment['comment'])
 
                 # construct and send the request email
                 service_request_email = construct_service_request_email(service_request.event.id,
@@ -975,32 +1006,38 @@ class EventSerializer(serializers.ModelSerializer):
                             if new_species_diagnoses is not None:
                                 for spec_diag in new_species_diagnoses:
                                     if spec_diag is not None:
-                                        new_species_diagnosis_organizations = spec_diag.pop(
-                                            'new_species_diagnosis_organizations', None)
-                                        spec_diag['location_species'] = location_species
-                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
-                                            pk=spec_diag['diagnosis']).first()
-                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
-                                            pk=spec_diag['cause']).first()
-                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
-                                            pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
-                                                                                            modified_by=user,
-                                                                                            **spec_diag)
+                                        # ensure this species diagnosis does not already exist
+                                        existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                            location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                                        species_diagnosis.priority = calculate_priority_species_diagnosis(
-                                            species_diagnosis)
-                                        species_diagnosis.save()
+                                        if len(existing_spec_diag) == 0:
 
-                                        # create the child organizations for this species diagnosis
-                                        if new_species_diagnosis_organizations is not None:
-                                            for org_id in new_species_diagnosis_organizations:
-                                                if org_id is not None:
-                                                    org = Organization.objects.filter(pk=org_id).first()
-                                                    if org is not None:
-                                                        SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org,
-                                                            created_by=user, modified_by=user)
+                                            new_species_diagnosis_organizations = spec_diag.pop(
+                                                'new_species_diagnosis_organizations', None)
+                                            spec_diag['location_species'] = location_species
+                                            spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                                pk=spec_diag['diagnosis']).first()
+                                            spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                                pk=spec_diag['cause']).first()
+                                            spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                                pk=spec_diag['basis']).first()
+                                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                                modified_by=user,
+                                                                                                **spec_diag)
+
+                                            species_diagnosis.priority = calculate_priority_species_diagnosis(
+                                                species_diagnosis)
+                                            species_diagnosis.save()
+
+                                            # create the child organizations for this species diagnosis
+                                            if new_species_diagnosis_organizations is not None:
+                                                for org_id in new_species_diagnosis_organizations:
+                                                    if org_id is not None:
+                                                        org = Organization.objects.filter(pk=org_id).first()
+                                                        if org is not None:
+                                                            SpeciesDiagnosisOrganization.objects.create(
+                                                                species_diagnosis=species_diagnosis, organization=org,
+                                                                created_by=user, modified_by=user)
 
                             location_species.priority = calculate_priority_location_species(location_species)
                             location_species.save()
@@ -1009,19 +1046,20 @@ class EventSerializer(serializers.ModelSerializer):
                     evt_location.save()
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').first()
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
+            ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
+                new_event_diagnoses_created = []
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = event_diagnosis.pop('diagnosis', None)
                     if diagnosis_id in valid_diagnosis_ids:
@@ -1037,15 +1075,18 @@ class EventSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created,
-                # check for existing Pending or Undetermined records and delete them
-                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
+                        new_event_diagnoses_created.append(event_diagnosis)
+                # If any new event diagnoses were created, check for existing Pending record and delete it
+                if len(new_event_diagnoses_created) > 0:
+                    event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                    [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
+        request_method = self.context['request'].method
+
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
@@ -1056,21 +1097,21 @@ class EventSerializer(serializers.ModelSerializer):
         if instance.complete:
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
-            if new_complete is None or (new_complete and (user == instance.created_by or (
-                    user.organization == instance.created_by.organization and (
+            if new_complete is None or (new_complete and (user.id == instance.created_by.id or (
+                    user.organization.id == instance.created_by.organization.id and (
                     user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(message)
             elif (user != instance.created_by
-                  or (user.organization != instance.created_by.organization
+                  or (user.organization.id != instance.created_by.organization.id
                       and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
                 raise serializers.ValidationError(message)
 
-        if not instance.complete and new_complete and (user == instance.created_by or (
-                user.organization == instance.created_by.organization and (
+        if not instance.complete and new_complete and (user.id == instance.created_by.id or (
+                user.organization.id == instance.created_by.organization.id and (
                 user.role.is_partneradmin or user.role.is_partnermanager))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
@@ -1096,7 +1137,8 @@ class EventSerializer(serializers.ModelSerializer):
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                if (spec.dead_count is not None and spec.dead_count > 0
+                                        and not spec.dead_count_estimated > spec.dead_count):
                                     est_count_gt_known_count = False
                             elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
@@ -1158,13 +1200,61 @@ class EventSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
+        # pull out read and write collaborators ID lists from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = []
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = []
+
+        # update the read_collaborators list if new_read_collaborators submitted
+        if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
+            # get the old (current) read collaborator ID list for this event
+            old_read_users = User.objects.filter(readevents=instance.id)
+            # remove users from the read list if they are also in the write list (these lists are already unique sets)
+            new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+            # get the new (submitted) read collaborator ID list for this event
+            new_read_users = User.objects.filter(id__in=new_read_user_ids)
+
+            # identify and delete relates where user IDs are present in old read list but not new read list
+            delete_read_users = list(set(old_read_users) - set(new_read_users))
+            for user_id in delete_read_users:
+                delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new read list but not old read list
+            add_read_users = list(set(new_read_users) - set(old_read_users))
+            for user_id in add_read_users:
+                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
+        # update the write_collaborators list if new_write_user_ids submitted
+        if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
+            # get the old (current) write collaborator ID list for this event
+            old_write_users = User.objects.filter(writeevents=instance.id)
+            # get the new (submitted) write collaborator ID list for this event
+            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+            # identify and delete relates where user IDs are present in old write list but not new write list
+            delete_write_users = list(set(old_write_users) - set(new_write_users))
+            for user_id in delete_write_users:
+                delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new write list but not old write list
+            add_write_users = list(set(new_write_users) - set(old_write_users))
+            for user_id in add_write_users:
+                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
         instance.complete = validated_data.get('complete', instance.complete)
         instance.public = validated_data.get('public', instance.public)
-        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
-        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # affected_count
@@ -1199,11 +1289,12 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'circle_read', 'circle_write',
-                  'organizations', 'contacts', 'comments', 'new_event_diagnoses', 'new_organizations', 'new_comments',
-                  'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date', 'created_by',
-                  'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'service_request_email',
-                  'permissions', 'permission_source',)
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+                  'write_collaborators', 'organizations', 'contacts', 'comments', 'new_event_diagnoses',
+                  'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
+                  'new_service_request', 'new_read_collaborators', 'new_write_collaborators', 'created_date',
+                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'service_request_email', 'permissions', 'permission_source',)
 
 
 class EventAdminSerializer(serializers.ModelSerializer):
@@ -1222,22 +1313,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
     new_event_locations = serializers.ListField(write_only=True, required=False)
     new_eventgroups = serializers.ListField(write_only=True, required=False)
     new_service_request = serializers.JSONField(write_only=True, required=False)
+    new_read_collaborators = serializers.ListField(write_only=True, required=False)
+    new_write_collaborators = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     def create(self, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
@@ -1549,7 +1630,33 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out child service request from the request
         new_service_request = validated_data.pop('new_service_request', None)
 
+        # pull out user ID list from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
+        else:
+            new_read_user_ids_prelim = set([])
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
+        else:
+            new_write_user_ids = set([])
+
+        # remove users from the read list if they are also in the write list (these lists are already unique sets)
+        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+
         event = Event.objects.create(**validated_data)
+
+        # create the child collaborators for this event
+        if new_read_user_ids is not None:
+            for read_user_id in new_read_user_ids:
+                read_user = User.objects.get(id=read_user_id)
+                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+
+        if new_write_user_ids is not None:
+            for write_user_id in new_write_user_ids:
+                write_user = User.objects.get(id=write_user_id)
+                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -1600,10 +1707,15 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 if new_comments is not None:
                     for comment in new_comments:
                         if comment is not None:
-                            comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
+                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            else:
+                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment.comment)
+                            service_request_comments.append(comment['comment'])
 
                 # construct and send the request email
                 service_request_email = construct_service_request_email(service_request.event.id,
@@ -1722,8 +1834,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
                         if flyway is None and 'geometry' in payload:
                             r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
-                            flyway_name = r.json()['features'][0]['attributes']['NAME'].replace(' Flyway', '')
-                            flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+                            r_features = r.json()['features']
+                            if len(r_features) > 0:
+                                flyway_name = r_features[0]['attributes']['NAME'].replace(' Flyway', '')
+                                flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
                     evt_location = EventLocation.objects.create(created_by=user, modified_by=user, **event_location)
 
@@ -1769,32 +1883,38 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             if new_species_diagnoses is not None:
                                 for spec_diag in new_species_diagnoses:
                                     if spec_diag is not None:
-                                        new_species_diagnosis_organizations = spec_diag.pop(
-                                            'new_species_diagnosis_organizations', None)
-                                        spec_diag['location_species'] = location_species
-                                        spec_diag['diagnosis'] = Diagnosis.objects.filter(
-                                            pk=spec_diag['diagnosis']).first()
-                                        spec_diag['cause'] = DiagnosisCause.objects.filter(
-                                            pk=spec_diag['cause']).first()
-                                        spec_diag['basis'] = DiagnosisBasis.objects.filter(
-                                            pk=spec_diag['basis']).first()
-                                        species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
-                                                                                            modified_by=user,
-                                                                                            **spec_diag)
+                                        # ensure this species diagnosis does not already exist
+                                        existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                            location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                                        species_diagnosis.priority = calculate_priority_species_diagnosis(
-                                            species_diagnosis)
-                                        species_diagnosis.save()
+                                        if len(existing_spec_diag) == 0:
 
-                                        # create the child organizations for this species diagnosis
-                                        if new_species_diagnosis_organizations is not None:
-                                            for org_id in new_species_diagnosis_organizations:
-                                                if org_id is not None:
-                                                    org = Organization.objects.filter(pk=org_id).first()
-                                                    if org is not None:
-                                                        SpeciesDiagnosisOrganization.objects.create(
-                                                            species_diagnosis=species_diagnosis, organization=org,
-                                                            created_by=user, modified_by=user)
+                                            new_species_diagnosis_organizations = spec_diag.pop(
+                                                'new_species_diagnosis_organizations', None)
+                                            spec_diag['location_species'] = location_species
+                                            spec_diag['diagnosis'] = Diagnosis.objects.filter(
+                                                pk=spec_diag['diagnosis']).first()
+                                            spec_diag['cause'] = DiagnosisCause.objects.filter(
+                                                pk=spec_diag['cause']).first()
+                                            spec_diag['basis'] = DiagnosisBasis.objects.filter(
+                                                pk=spec_diag['basis']).first()
+                                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user,
+                                                                                                modified_by=user,
+                                                                                                **spec_diag)
+
+                                            species_diagnosis.priority = calculate_priority_species_diagnosis(
+                                                species_diagnosis)
+                                            species_diagnosis.save()
+
+                                            # create the child organizations for this species diagnosis
+                                            if new_species_diagnosis_organizations is not None:
+                                                for org_id in new_species_diagnosis_organizations:
+                                                    if org_id is not None:
+                                                        org = Organization.objects.filter(pk=org_id).first()
+                                                        if org is not None:
+                                                            SpeciesDiagnosisOrganization.objects.create(
+                                                                species_diagnosis=species_diagnosis, organization=org,
+                                                                created_by=user, modified_by=user)
 
                             location_species.priority = calculate_priority_location_species(location_species)
                             location_species.save()
@@ -1803,19 +1923,20 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     evt_location.save()
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').first()
-        undetermined = Diagnosis.objects.filter(name='Undetermined').first()
+        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if x['diagnosis'] in [pending.id, undetermined.id]]
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
             valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=event.id
-            ).exclude(id__in=[pending.id, undetermined.id]).values_list('diagnosis', flat=True).distinct())
+            ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
             # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
             if valid_diagnosis_ids is not None:
+                new_event_diagnoses_created = []
                 for event_diagnosis in new_event_diagnoses:
                     diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
                     if diagnosis_id in valid_diagnosis_ids:
@@ -1831,15 +1952,18 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                                         created_by=user, modified_by=user)
                         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
                         event_diagnosis.save()
-                # Now that we have the new event diagnoses created,
-                # check for existing Pending or Undetermined records and delete them
-                event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-                [diag.delete() for diag in event_diagnoses if diag.diagnosis.id in [pending.id, undetermined.id]]
+                        new_event_diagnoses_created.append(event_diagnosis)
+                # If any new event diagnoses were created, check for existing Pending record and delete it
+                if len(new_event_diagnoses_created) > 0:
+                    event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+                    [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
         return event
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
     def update(self, instance, validated_data):
+        request_method = self.context['request'].method
+
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
         else:
@@ -1890,7 +2014,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                         for spec in location_species:
                             if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.dead_count > 0 and not spec.dead_count_estimated > spec.dead_count:
+                                if (spec.dead_count is not None and spec.dead_count > 0
+                                        and not spec.dead_count_estimated > spec.dead_count):
                                     est_count_gt_known_count = False
                             elif spec.dead_count is not None and spec.dead_count > 0:
                                 species_count_is_valid.append(True)
@@ -1952,6 +2077,56 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if 'new_service_requests' in validated_data:
             validated_data.pop('new_service_requests')
 
+        # pull out read and write collaborators ID lists from the request
+        if 'new_read_collaborators' in validated_data:
+            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+        else:
+            new_read_user_ids_prelim = set([])
+        if 'new_write_collaborators' in validated_data:
+            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+        else:
+            new_write_user_ids = set([])
+
+        # update the read_collaborators list if new_read_collaborators submitted
+        if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
+            # get the old (current) read collaborator ID list for this event
+            old_read_users = User.objects.filter(readevents=instance.id)
+            # remove users from the read list if they are also in the write list (these lists are already unique sets)
+            new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
+            # get the new (submitted) read collaborator ID list for this event
+            new_read_users = User.objects.filter(id__in=new_read_user_ids)
+
+            # identify and delete relates where user IDs are present in old read list but not new read list
+            delete_read_users = list(set(old_read_users) - set(new_read_users))
+            for user_id in delete_read_users:
+                delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new read list but not old read list
+            add_read_users = list(set(new_read_users) - set(old_read_users))
+            for user_id in add_read_users:
+                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
+        # update the write_collaborators list if new_write_user_ids submitted
+        if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
+            # get the old (current) write collaborator ID list for this event
+            old_write_users = User.objects.filter(writeevents=instance.id)
+            # get the new (submitted) write collaborator ID list for this event
+            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+
+            # identify and delete relates where user IDs are present in old write list but not new write list
+            delete_write_users = list(set(old_write_users) - set(new_write_users))
+            for user_id in delete_write_users:
+                delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
+                delete_user.delete()
+
+            # identify and create relates where user IDs are present in new write list but not old write list
+            add_write_users = list(set(new_write_users) - set(old_write_users))
+            for user_id in add_write_users:
+                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
         instance.event_reference = validated_data.get('event_reference', instance.event_reference)
@@ -1962,8 +2137,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
         instance.legal_status = validated_data.get('legal_status', instance.legal_status)
         instance.legal_number = validated_data.get('legal_number', instance.legal_number)
         instance.public = validated_data.get('public', instance.public)
-        instance.circle_read = validated_data.get('circle_read', instance.circle_read)
-        instance.circle_write = validated_data.get('circle_write', instance.circle_write)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
         # affected_count
@@ -2000,10 +2173,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                   'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'circle_read', 'circle_write', 'eventgroups', 'organizations', 'contacts', 'comments',
-                  'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
-                  'new_service_request', 'created_date', 'created_by', 'created_by_string', 'modified_date',
-                  'modified_by', 'modified_by_string', 'service_request_email', 'permissions', 'permission_source',)
+                  'read_collaborators', 'write_collaborators', 'eventgroups', 'organizations', 'contacts', 'comments',
+                  'new_read_collaborators', 'new_write_collaborators','new_event_diagnoses', 'new_organizations',
+                  'new_comments', 'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date',
+                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'service_request_email', 'permissions', 'permission_source',)
 
 
 class EventEventGroupPublicSerializer(serializers.ModelSerializer):
@@ -2053,10 +2227,97 @@ class EventGroupPublicSerializer(serializers.ModelSerializer):
 class EventGroupSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    comments = CommentSerializer(many=True, read_only=True)
+    new_comment = serializers.CharField(write_only=True, required=True, allow_blank=False)
+    new_events = serializers.ListField(write_only=True, required=True)
+
+    def create(self, validated_data):
+        if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
+            raise serializers.ValidationError("An EventGroup must have at least two Events")
+
+        # pull out event ID list from the request
+        new_event_ids = set(validated_data.pop('new_events', []))
+        event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
+        not_event_ids = list(new_event_ids - event_ids)
+        if not_event_ids:
+            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+
+        # pull out comment from the request
+        new_comment = validated_data.pop("new_comment")
+
+        eventgroup = EventGroup.objects.create(**validated_data)
+
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        # create the related comment
+        comment_type = CommentType.objects.filter(name='Event Group').first()
+        Comment.objects.create(content_object=eventgroup, comment=new_comment,
+                               comment_type=comment_type, created_by=user, modified_by=user)
+
+        # create the related event-eventgroups
+        for event_id in new_event_ids:
+            event = Event.objects.filter(id=event_id).first()
+            if event:
+                EventEventGroup.objects.create(eventgroup=eventgroup, event=event, created_by=user, modified_by=user)
+
+        return eventgroup
+
+    def update(self, instance, validated_data):
+        if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
+            raise serializers.ValidationError("An EventGroup must have at least two Events")
+
+        # pull out event ID list from the request
+        new_event_ids = set(validated_data.pop('new_events', []))
+        event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
+        not_event_ids = list(new_event_ids - event_ids)
+        if not_event_ids:
+            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        else:
+            user = None
+
+        # update the comment
+        new_comment = validated_data.pop("new_comment", None)
+        if new_comment:
+            content_type = ContentType.objects.get_for_model(self.Meta.model)
+            comment = Comment.objects.filter(object_id=instance.id, content_type=content_type).first()
+            comment.comment = new_comment
+            comment.save()
+
+        if new_event_ids:
+            # get the old (current) event ID list for this Event Group
+            old_event_ids = list(EventEventGroup.objects.filter(
+                eventgroup=instance.id).values_list('event_id', flat=True))
+
+            # identify and delete relates where event IDs are present in old list but not new list
+            delete_event_ids = list(set(old_event_ids) - set(new_event_ids))
+            for event_id in delete_event_ids:
+                delete_event = EventEventGroup.objects.filter(eventgroup=instance.id, event=event_id)
+                delete_event.delete()
+
+            # identify and create relates where sample IDs are present in new list but not old list
+            add_event_ids = list(set(new_event_ids) - set(old_event_ids))
+            for event_id in add_event_ids:
+                event = Event.objects.filter(id=event_id).first()
+                if event:
+                    EventEventGroup.objects.create(eventgroup=instance, event=event, created_by=user, modified_by=user)
+
+        instance.category = validated_data.get('category', instance.category)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+
+        instance.save()
+
+        return instance
 
     class Meta:
         model = EventGroup
-        fields = ('id', 'name', 'category', 'events', 'comments', 'created_date', 'created_by', 'created_by_string',
+        fields = ('id', 'name', 'category', 'comments', 'events', "new_events", 'new_comment',
+                  'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
@@ -2561,7 +2822,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             # if lat/lng is present, use it to get the intersecting flyway
             if ('latitude' in validated_data and validated_data['latitude'] is not None
                     and 'longitude' in validated_data and validated_data['longitude'] is not None):
-                payload.update({'geometry': validated_data['longitude'] + ',' + validated_data['latitude']})
+                payload.update({'geometry': str(validated_data['longitude']) + ',' + str(validated_data['latitude'])})
             # otherwise if county is present, look up the county centroid, then use it to get the intersecting flyway
             elif validated_data['administrative_level_two']:
                 geonames_payload = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2',
@@ -2630,27 +2891,33 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 if new_species_diagnoses is not None:
                     for spec_diag in new_species_diagnoses:
                         if spec_diag is not None:
-                            new_species_diagnosis_organizations = spec_diag.pop(
-                                'new_species_diagnosis_organizations', None)
-                            spec_diag['location_species'] = location_species
-                            spec_diag['diagnosis'] = Diagnosis.objects.filter(pk=spec_diag['diagnosis']).first()
-                            spec_diag['cause'] = DiagnosisCause.objects.filter(pk=spec_diag['cause']).first()
-                            spec_diag['basis'] = DiagnosisBasis.objects.filter(pk=spec_diag['basis']).first()
-                            species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user, modified_by=user,
-                                                                                **spec_diag)
+                            # ensure this species diagnosis does not already exist
+                            existing_spec_diag = SpeciesDiagnosis.objects.filter(
+                                location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
-                            species_diagnosis.priority = calculate_priority_species_diagnosis(species_diagnosis)
-                            species_diagnosis.save()
+                            if len(existing_spec_diag) == 0:
 
-                            # create the child organizations for this species diagnosis
-                            if new_species_diagnosis_organizations is not None:
-                                for org_id in new_species_diagnosis_organizations:
-                                    if org_id is not None:
-                                        org = Organization.objects.filter(pk=org_id).first()
-                                        if org is not None:
-                                            SpeciesDiagnosisOrganization.objects.create(
-                                                species_diagnosis=species_diagnosis, organization=org,
-                                                created_by=user, modified_by=user)
+                                new_species_diagnosis_organizations = spec_diag.pop(
+                                    'new_species_diagnosis_organizations', None)
+                                spec_diag['location_species'] = location_species
+                                spec_diag['diagnosis'] = Diagnosis.objects.filter(pk=spec_diag['diagnosis']).first()
+                                spec_diag['cause'] = DiagnosisCause.objects.filter(pk=spec_diag['cause']).first()
+                                spec_diag['basis'] = DiagnosisBasis.objects.filter(pk=spec_diag['basis']).first()
+                                species_diagnosis = SpeciesDiagnosis.objects.create(created_by=user, modified_by=user,
+                                                                                    **spec_diag)
+
+                                species_diagnosis.priority = calculate_priority_species_diagnosis(species_diagnosis)
+                                species_diagnosis.save()
+
+                                # create the child organizations for this species diagnosis
+                                if new_species_diagnosis_organizations is not None:
+                                    for org_id in new_species_diagnosis_organizations:
+                                        if org_id is not None:
+                                            org = Organization.objects.filter(pk=org_id).first()
+                                            if org is not None:
+                                                SpeciesDiagnosisOrganization.objects.create(
+                                                    species_diagnosis=species_diagnosis, organization=org,
+                                                    created_by=user, modified_by=user)
 
                 location_species.priority = calculate_priority_location_species(location_species)
                 location_species.save()
@@ -3146,6 +3413,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         message_complete = "Diagnosis from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
         diagnosis = None
+        eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
@@ -3155,6 +3423,13 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
 
             diagnosis = data['diagnosis']
+
+            # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
+            if eventdiags and diagnosis.name == 'Pending':
+                message = "A Pending diagnosis for Event Diagnosis is not allowed"
+                message += " when other event diagnoses already exist for this event."
+                raise serializers.ValidationError(message)
+
             event_specdiags = SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=data['event'].id).values_list('diagnosis', flat=True).distinct()
 
@@ -3165,6 +3440,13 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
 
             diagnosis = data['diagnosis'] if 'diagnosis' in data else self.instance.diagnosis
+
+            # check that submitted diagnosis is not Pending if even one EventDiagnosis for this event already exists
+            if eventdiags and diagnosis.name == 'Pending':
+                message = "A Pending diagnosis for Event Diagnosis is not allowed"
+                message += " when other event diagnoses already exist for this event."
+                raise serializers.ValidationError(message)
+
             event_specdiags = list(SpeciesDiagnosis.objects.filter(
                 location_species__event_location__event=self.instance.event.id).values_list(
                 'diagnosis', flat=True).distinct())
@@ -3172,20 +3454,15 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             if 'diagnosis' not in data or data['diagnosis'] is None:
                 data['diagnosis'] = self.instance.diagnosis
 
-        # check that submitted diagnoses are also in this event's species diagnoses
-        if diagnosis is not None and ((not event_specdiags or diagnosis.id not in event_specdiags)
-                                      and diagnosis.name not in ['Pending', 'Undetermined']):
-                message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
-                raise serializers.ValidationError(message)
+        # check that submitted diagnosis is also in this event's species diagnoses
+        if ((not event_specdiags or diagnosis.id not in event_specdiags)
+                and diagnosis.name not in ['Pending', 'Undetermined']):
+            message = "A diagnosis for Event Diagnosis must match a diagnosis of a Species Diagnosis of this event."
+            raise serializers.ValidationError(message)
 
         return data
 
     def create(self, validated_data):
-
-        # TODO: Check on this... the rule seeme pointless unless a user can manually assign Undetermined, which seemingly contradicts other rules
-        # # If have "Undetermined" at the event level, should have no other diagnoses at event level.
-        # if validated_data['event'].complete and validated_data['diagnosis'] == undetermined.id:
-        #     [evt_diag.delete() for evt_diag in get_event_diagnoses()]
 
         # ensure this new event diagnosis has the correct suspect value
         # (false if any matching species diagnoses are false, otherwise true)
@@ -3200,9 +3477,9 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         event_diagnosis.save()
 
         # Now that we have the new event diagnoses created,
-        # check for existing Pending or Undetermined records and delete them
+        # check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3228,10 +3505,9 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         ).values_list('suspect', flat=True)
         instance.suspect = False if False in matching_specdiags_suspect else True
 
-        # Now that we have the new event diagnoses created,
-        # check for existing Pending or Undetermined records and delete them
+        # Now that we have the new event diagnoses created, check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name in ['Pending', 'Undetermined']]
+        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
@@ -3347,12 +3623,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
         # For new validated_data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
         # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
-        # (TODO: NOTE following rule is valid and enforceable right now:)
-        # never see "Pending suspect" or "Undetermined suspect" on front end.
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        # if 'diagnosis' in validated_data and validated_data['diagnosis'] in [pending, undetermined]:
-        #     validated_data['suspect'] = False
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
 
@@ -3417,13 +3687,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             if len([lab_id for lab_id in my_labs_ids if lab_id in loc_specdiags_labs_ids]) > 0:
                 message = "A diagnosis can only be used once for a location-species-laboratory combination."
                 raise serializers.ValidationError(message)
-
-        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-        # pending = Diagnosis.objects.filter(name='Pending').first().id
-        # undetermined = Diagnosis.objects.filter(name='Undetermined').first().id
-        # if instance.diagnosis in [pending, undetermined]:
-        #     instance.suspect = False
 
         instance.save()
 
@@ -3590,11 +3853,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    # TODO: comment type should always be 'Service Request' regardless of what user may specify
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if not comment_type:
+                            comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                    else:
+                        comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     comment = Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                      comment_type=comment_type, created_by=user, modified_by=user)
-                    service_request_comments.append(comment.comment)
+                    service_request_comments.append(comment['comment'])
 
         # construct and send the request email
         service_request_email = construct_service_request_email(service_request.event.id,
@@ -3671,7 +3938,14 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 ######
 
 
-# TODO: impose minimum security requirements on passwords
+class UserPublicSerializer(serializers.ModelSerializer):
+    organization_string = serializers.StringRelatedField(source='organization')
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
+
+
 # Password must be at least 12 characters long.
 # Password cannot contain your username.
 # Password cannot have been used in previous 20 passwords.
@@ -3697,6 +3971,33 @@ class UserSerializer(serializers.ModelSerializer):
                 data['organization'] = Organization.objects.filter(name='Public').first()
             if 'password' not in data and self.context['request'].method == 'POST':
                 raise serializers.ValidationError("password is required")
+            elif 'password' in data:
+                password = data['password']
+                details = []
+                char_type_requirements_met = []
+                symbols = '~!@#$%^&*'
+
+                if len(password) < 12:
+                    details.append("Password must be at least 12 characters long.")
+                if self.initial_data['username'] in password:
+                    details.append("Password cannot contain username.")
+                if any(character.islower() for character in password):
+                    char_type_requirements_met.append('lowercase')
+                if any(character.isupper() for character in password):
+                    char_type_requirements_met.append('uppercase')
+                if any(character.isdigit() for character in password):
+                    char_type_requirements_met.append('number')
+                if any(character in password for character in symbols):
+                    char_type_requirements_met.append('special')
+                if len(char_type_requirements_met) < 3:
+                    message = "Password must satisfy three of the following requirements: "
+                    message += "Contain lowercase letters (a, b, c, ..., z); "
+                    message += "Contain uppercase letters (A, B, C, ..., Z); "
+                    message += "Contain numbers (0, 1, 2, ..., 9); "
+                    message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
+                    details.append(message)
+                if details:
+                    raise serializers.ValidationError(details)
         return data
 
     # currently only public users can be created through the API
@@ -3821,6 +4122,7 @@ class CircleSerlializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_users = serializers.ListField(write_only=True)
+    users = UserSerializer(many=True, read_only=True)
 
     # on create, also create child objects (circle-user M:M relates)
     def create(self, validated_data):
@@ -3856,37 +4158,43 @@ class CircleSerlializer(serializers.ModelSerializer):
         if not user:
             raise serializers.ValidationError("User could not be identified, please contact the administrator.")
 
-        # get the old (current) user ID list for this circle
-        old_users = User.objects.filter(circles=instance.id)
-
         # pull out user ID list from the request
-        if 'new_users' in self.initial_data:
-            new_user_ids = self.initial_data['new_users']
-            new_users = User.objects.filter(id__in=new_user_ids)
+        if 'new_users' in validated_data:
+            new_user_ids = validated_data.get('new_users')
         else:
-            new_users = []
+            new_user_ids = []
 
         # update the Circle object
         instance.name = validated_data.get('name', instance.name)
+        instance.description = validated_data.get('description', instance.description)
         instance.modified_by = user
         instance.save()
 
-        # identify and delete relates where user IDs are present in old list but not new list
-        delete_users = list(set(old_users) - set(new_users))
-        for user_id in delete_users:
-            delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
-            delete_user.delete()
+        request_method = self.context['request'].method
 
-        # identify and create relates where user IDs are present in new list but not old list
-        add_users = list(set(new_users) - set(old_users))
-        for user_id in add_users:
-            CircleUser.objects.create(user=user_id, circle=instance, created_by=user, modified_by=user)
+        # update circle users if new_users submitted
+        if request_method == 'PUT' or (new_user_ids and request_method == 'PATCH'):
+            # get the old (current) user list for this circle
+            old_users = User.objects.filter(circles=instance.id)
+            # get the new (submitted) user list for this circle
+            new_users = User.objects.filter(id__in=new_user_ids)
+
+            # identify and delete relates where user IDs are present in old list but not new list
+            delete_users = list(set(old_users) - set(new_users))
+            for user_id in delete_users:
+                delete_user = CircleUser.objects.filter(user=user_id, circle=instance)
+                delete_user.delete()
+
+            # identify and add relates where user IDs are present in new list but not old list
+            add_users = list(set(new_users) - set(old_users))
+            for user_id in add_users:
+                CircleUser.objects.create(user=user_id, circle=instance, created_by=user, modified_by=user)
 
         return instance
 
     class Meta:
         model = Circle
-        fields = ('id', 'name', 'description', 'new_users',
+        fields = ('id', 'name', 'description', 'users', 'new_users',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -3945,16 +4253,7 @@ class ContactSerializer(serializers.ModelSerializer):
     owner_organization_string = serializers.SerializerMethodField()
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Contact
@@ -3997,16 +4296,7 @@ class SearchSerializer(serializers.ModelSerializer):
     permission_source = serializers.SerializerMethodField()
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     # def create(self, validated_data):
     #     user = self.context['request'].user
@@ -4244,19 +4534,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
@@ -4368,19 +4646,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -4496,19 +4762,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
         return unique_flyways
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -4694,19 +4948,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         return pub_orgs
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
@@ -4733,6 +4975,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
     eventgroups = EventGroupPublicSerializer(many=True)
+    read_collaborators = UserPublicSerializer(many=True)
+    write_collaborators = UserPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4779,26 +5023,15 @@ class EventDetailSerializer(serializers.ModelSerializer):
         return eventdiagnoses
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'eventgroups', 'eventdiagnoses',
-                  'eventlocations', 'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
-                  'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
+                  'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
 
@@ -4823,6 +5056,8 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
     eventgroups = EventGroupSerializer(many=True)
+    read_collaborators = UserPublicSerializer(many=True)
+    write_collaborators = UserPublicSerializer(many=True)
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4869,29 +5104,18 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         return eventdiagnoses
 
     def get_permission_source(self, obj):
-        user = self.context['request'].user
-        if not user.is_authenticated:
-            permission_source = ''
-        elif user.id == obj.created_by.id:
-            permission_source = 'user'
-        elif user.organization.id == obj.created_by.organization.id:
-            permission_source = 'organization'
-        elif obj.circle_read is not None and obj.circle_write is not None and (
-                user in obj.circle_read or user in obj.circle_write):
-            permission_source = 'circle'
-        else:
-            permission_source = ''
-        return permission_source
+        return determine_permission_source(self.context['request'].user, obj)
 
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups',
-                  'eventdiagnoses', 'eventlocations', 'eventorganizations', 'comments', 'servicerequests',
-                  'created_date', 'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
-                  'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
-                  'modified_by_string', 'permissions', 'permission_source',)
+                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                  'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                  'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
+                  'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'permissions', 'permission_source',)
 
 
 class FlatEventDetailSerializer(serializers.Serializer):

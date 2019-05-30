@@ -82,8 +82,9 @@ class PermissionsHistoryModel(HistoryModel):
         if not request or not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or (request.user.organization.id == self.created_by.organization.id
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     def has_object_destroy_permission(self, request):
@@ -91,8 +92,9 @@ class PermissionsHistoryModel(HistoryModel):
         if not request or not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-                    or (request.user.organization == self.created_by.organization
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or (request.user.organization.id == self.created_by.organization.id
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     class Meta:
@@ -178,10 +180,12 @@ class Event(PermissionsHistoryModel):
     legal_number = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of legal case identifier')
     quality_check = models.DateField(null=True, help_text='The date an NWHC staff and event owner make changes and check the record')
     public = models.BooleanField(default=True, help_text='A boolean value indicating if an event is public or not')
-    circle_read = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='readevents')
-    circle_write = models.ForeignKey('Circle', models.PROTECT, null=True, related_name='writeevents')
-    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', help_text='A foreign key integer identifying the user who last modified the object')
-    organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events')
+    read_collaborators = models.ManyToManyField(
+        'User', through='EventReadUser', through_fields=('event', 'user'), related_name='readevents')
+    write_collaborators = models.ManyToManyField(
+        'User', through='EventWriteUser', through_fields=('event', 'user'), related_name='writeevents')
+    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', , help_text='A foreign key integer identifying the user who last modified the object')
+    organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
 
@@ -255,7 +259,7 @@ class EventGroup(AdminPermissionsHistoryModel):
     def name(self):
         return "G" + str(self.id)
 
-    category = models.IntegerField(null=True)
+    category = models.ForeignKey('EventGroupCategory', models.CASCADE)
     comments = GenericRelation('Comment', related_name='eventgroups')
 
     def __str__(self):
@@ -591,7 +595,7 @@ class AdministrativeLevelLocality(AdminPermissionsHistoryModel):
     Table for looking up local names for adminstrative levels based on country
     """
 
-    country = models.ForeignKey('Country', models.CASCADE, related_name='country', help_text='A foreign key integer value identifying the country to which this administrative level locality belongs')
+    country = models.ForeignKey('Country', models.CASCADE, related_name='adminstrativelevellocalities', help_text='A foreign key integer value identifying the country to which this administrative level locality belongs')
     admin_level_one_name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of the administrative level one')
     admin_level_two_name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of the administrative level two')
 
@@ -826,6 +830,14 @@ class EventDiagnosis(PermissionsHistoryModel):
     major = models.BooleanField(default=False, help_text='A boolean value indicating if the event diagnosis is major or not')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event diagnosis priority')
 
+    # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
+    # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+    # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+    def save(self, *args, **kwargs):
+        if self.diagnosis.name in ['Pending', 'Undetermined']:
+            self.suspect = False
+        super(EventDiagnosis, self).save(*args, **kwargs)
+
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
 
@@ -885,14 +897,20 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
 
-    # override the save method to calculate the parent event's affected_count
+    # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
+    # and to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
+
+        # all "Pending" and "Undetermined" diagnosis must be confirmed (not suspect) = false, even if no lab OR
+        # some other way of coding this such that we never see "Pending suspect" or "Undetermined suspect" on front end
+        if self.diagnosis.name in ['Pending', 'Undetermined']:
+            self.suspect = False
 
         # If diagnosis is confirmed and pooled is selected,
         # then automatically list 1 for number_positive if number_positive was zero or null.
         # If diagnosis is suspect and pooled is selected,
         # then automatically list 1 for number_suspect if number_suspect was zero or null.
-        if not self.suspect and self.pooled:
+        if self.suspect and self.pooled:
             if self.positive_count is None or self.positive_count == 0:
                 self.positive_count = 1
             if self.suspect_count is None or self.suspect_count == 0:
@@ -953,7 +971,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     matching_eventdiagnosis.suspect = True
                     matching_eventdiagnosis.save()
 
-    # override the delete method to ensure that wen all speciesdiagnoses with a particular diagnosis are deleted,
+    # override the delete method to ensure that when all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
     def delete(self, *args, **kwargs):
         event = self.location_species.event_location.event
@@ -1036,7 +1054,7 @@ class ServiceRequest(PermissionsHistoryModel):
     request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
                                          related_name='servicerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='servicerequests_responder', help_text='A foreign key integer value identifying the user that responded to the request')
+                                    related_name='servicerequests')
     created_time = models.TimeField(auto_now_add=True, help_text='The time this service request was submitted')
     comments = GenericRelation('Comment', related_name='servicerequests', help_text='An alphanumeric value for the comment of the service submission request')
 
@@ -1161,9 +1179,8 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     @staticmethod
     def has_write_permission(request):
@@ -1176,18 +1193,16 @@ class User(AbstractUser):
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or an admin member of the creator's organization can delete
         if not request.user.is_authenticated:
             return False
         else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user == self
-                    or (request.user.organization == self.organization
-                        and request.user.role.is_partneradmin))
+            return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
+                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
@@ -1247,6 +1262,38 @@ class Role(AdminPermissionsHistoryNameModel):
         ordering = ['id']
 
 
+class EventReadUser(PermissionsHistoryModel):
+    """
+    Table to allow many-to-many relationship between Events and Read-Only Users.
+    """
+
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventreadusers')
+    user = models.ForeignKey('User', models.CASCADE, related_name='eventreadusers')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventreaduser"
+        ordering = ['id']
+
+
+class EventWriteUser(PermissionsHistoryModel):
+    """
+    Table to allow many-to-many relationship between Events and Read+Write Users.
+    """
+
+    event = models.ForeignKey('Event', models.CASCADE, related_name='eventwriteusers')
+    user = models.ForeignKey('User', models.CASCADE, related_name='eventwriteusers')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_eventwriteuser"
+        ordering = ['id']
+
+
 class Circle(PermissionsHistoryNameModel):
     """
     Circle of Trust
@@ -1291,13 +1338,12 @@ class Organization(AdminPermissionsHistoryNameModel):
     address_one = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the address one of this organization')
     address_two = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the address two of this organization')
     city = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the city of this organization')
-    postal_code = models.CharField(max_length=128, blank=True,
-                                   default='', help_text='An alphanumeric value of the postal code of this organization')  # models.BigIntegerField(null=True, blank=True)
+    postal_code = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the postal code of this organization')
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.PROTECT, null=True, related_name='organizations', help_text='A foreign key integer value identifying the administrative level one to which this organization belongs')
     country = models.ForeignKey('Country', models.PROTECT, null=True, related_name='organizations', help_text='A foreign key integer value identifying the country to which this organization belongs')
     phone = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the phone number of this organization')
-    parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='child_organizations')
+    parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='organizations')
     do_not_publish = models.BooleanField(default=False, help_text='A boolean value indicating if an organization is supposed to be published or not')
     laboratory = models.BooleanField(default=False, help_text='A boolean value indicating if an organization has a laboratory or not')
 

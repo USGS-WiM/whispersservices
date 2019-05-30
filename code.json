@@ -1,0 +1,51 @@
+[
+  {
+    "name": "whispersservices_django",
+    "organization": "U.S. Geological Survey",
+    "description": "Web services for WHISPers (Wildlife Health Information Sharing Partnership event reporting system)",
+    "version": "v0.134.0",
+    "status": "Beta",
+
+    "permissions": {
+      "usageType": "openSource",
+      "licenses": [
+        {
+          "name": "Public Domain",
+          "URL": "https://github.com/USGS-WiM/whispersservices_django/blob/master/LICENSE.md"
+        }
+      ]
+    },
+
+    "homepageURL": "https://wim.usgs.gov",
+    "downloadURL": "https://github.com/USGS-WiM/whispersservices_django/archive/master.zip",
+    "disclaimerURL": "https://github.com/USGS-WiM/whispersservices_django/blob/master/DISCLAIMER.md",
+    "repositoryUrl": "https://github.com/USGS-WiM/whispersservices_django",
+    "vcs": "git",
+
+    "laborHours": null,
+
+    "tags": [
+      "whispers",
+      "wildlife",
+      "health",
+      "lab",
+      "laboratory",
+      "web",
+      "services",
+      "api"
+    ],
+
+    "languages": [
+      "python"
+    ],
+
+    "contact": {
+      "name": "Aaron Stephenson",
+      "email": "astephenson@usgs.gov"
+    },
+
+    "date": {
+      "metadataLastUpdated": "2019-04-25"
+    }
+  }
+]
