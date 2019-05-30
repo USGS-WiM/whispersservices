@@ -857,8 +857,10 @@ class EventDiagnosis(PermissionsHistoryModel):
 def delete_event_diagnosis(sender, instance, **kwargs):
 
     # only continue if parent Event still exists
-    if not instance.event.DoesNotExist:
-        if not EventDiagnosis.objects.filter(event=instance.event.id):
+    event = Event.objects.filter(id=instance.event.id).first()
+    if event:
+        evt_diags = EventDiagnosis.objects.filter(event=instance.event.id)
+        if not len(evt_diags) > 0:
             new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
             new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
             # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this

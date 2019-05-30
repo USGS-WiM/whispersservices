@@ -1049,8 +1049,8 @@ class EventSerializer(serializers.ModelSerializer):
         pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
         undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
-        # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
+        # remove Pending if in the list because it should never be submitted by the user
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
@@ -1926,8 +1926,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
         pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
         undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
-        # remove Pending or Undetermined if in the list because one or the other already exists from event save
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in [pending, undetermined]]
+        # remove Pending if in the list because it should never be submitted by the user
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
 
         if new_event_diagnoses:
             # Can only use diagnoses that are already used by this event's species diagnoses
