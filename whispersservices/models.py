@@ -184,7 +184,7 @@ class Event(PermissionsHistoryModel):
         'User', through='EventReadUser', through_fields=('event', 'user'), related_name='readevents')
     write_collaborators = models.ManyToManyField(
         'User', through='EventWriteUser', through_fields=('event', 'user'), related_name='writeevents')
-    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', , help_text='A foreign key integer identifying the user who last modified the object')
+    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', help_text='A foreign key integer identifying the user who last modified the object')
     organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
@@ -519,9 +519,9 @@ class EventLocationContact(PermissionsHistoryModel):
     Table to allow many-to-many relationship between Event Locations and Contacts.
     """
 
-    event_location = models.ForeignKey('EventLocation', models.CASCADE)
-    contact = models.ForeignKey('Contact', models.CASCADE)
-    contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts')
+    event_location = models.ForeignKey('EventLocation', models.CASCADE, help_text='A foreign key integer value identifying the event location')
+    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value identifying the contact')
+    contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts', help_text='A foreign key integer value identifying the contact type for this event location contact')
 
     def __str__(self):
         return str(self.id)
@@ -662,7 +662,7 @@ class LocationSpecies(PermissionsHistoryModel):
     """
     #species = models.CharField(unique=True, help_text=_("unique alphanumeric identifier"))
 
-    event_location = models.ForeignKey('EventLocation', models.CASCADE, related_name='locationspecies')
+    event_location = models.ForeignKey('EventLocation', models.CASCADE, related_name='locationspecies', help_text='A foreign key integer value identifying the event location')
     species = models.ForeignKey('Species', models.PROTECT, related_name='locationspecies', help_text='Animal species')
     population_count = models.IntegerField(null=True, help_text='An integer value indicating the population count')
     sick_count = models.IntegerField(null=True, help_text='An integer value indicating the sick count')
@@ -788,7 +788,7 @@ class Diagnosis(AdminPermissionsHistoryNameModel):
     def has_request_new_permission(request):
         return True
 
-    diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses')
+    diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses', help_text='A foreign key integer value identifying the diagnosis type')
 
     def __str__(self):
         return self.name
