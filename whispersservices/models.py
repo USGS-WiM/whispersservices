@@ -1464,7 +1464,7 @@ class FlatEventDetails(models.Model):
     location_priority = models.IntegerField()
     county = models.CharField(max_length=128)
     state = models.CharField(max_length=128)
-    nation = models.CharField(max_length=128)
+    country = models.CharField(max_length=128)
     location_start = models.DateField()
     location_end = models.DateField()
     location_species_id = models.IntegerField()

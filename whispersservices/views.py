@@ -2151,10 +2151,11 @@ class SearchViewSet(HistoryViewSet):
 
 
 class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
-    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'states', 'counties',  'species', 'eventdiagnoses']
+    header = ['id', 'type', 'affected', 'start_date', 'end_date', 'countries', 'states', 'counties',  'species',
+              'eventdiagnoses']
     labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
-              'end_date': 'Event End Date', 'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)',
-              'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
+              'end_date': 'Event End Date', 'countries': "Countries", 'states': 'States (or equivalent)',
+              'counties': 'Counties (or equivalent)', 'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
 
 
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
@@ -2618,7 +2619,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
     # header = ['event_id', 'event_reference', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
     header = ['event_id', 'event_type', 'complete', 'organization', 'start_date', 'end_date',
-              'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'nation',
+              'affected_count', 'event_diagnosis', 'location_id', 'location_priority', 'county', 'state', 'country',
               'location_start', 'location_end', 'location_species_id', 'species_priority', 'species_name', 'population',
               'sick', 'dead', 'estimated_sick', 'estimated_dead', 'captive', 'age_bias', 'sex_bias',
               # 'species_diagnosis_id', 'species_diagnosis_priority', 'speciesdx', 'causal', 'suspect', 'number_tested',
@@ -2629,7 +2630,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'complete': 'WHISPers Record Status', 'organization': 'Organization', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'affected_count': 'Number Affected', 'event_diagnosis': 'Event Diagnosis',
               'location_id': 'Location ID', 'location_priority': 'Location Priority',
-              'county': 'County (or equivalent)', 'state': 'State (or equivalent)', 'nation': 'Nation',
+              'county': 'County (or equivalent)', 'state': 'State (or equivalent)', 'country': 'Country',
               'location_start': 'Location Start Date', 'location_end': 'Location End Date',
               'location_species_id': 'Location Species ID', 'species_priority': 'Species Priority',
               'species_name': 'Species', 'population': 'Population', 'sick': 'Known Sick', 'dead': 'Known Dead',
@@ -2638,7 +2639,7 @@ class CSVEventDetailRenderer(csv_renderers.CSVRenderer):
               'species_diagnosis_priority': 'Species Diagnosis Priority', 'speciesdx': 'Species Diagnosis',
               # 'causal': 'Significance of Diagnosis for Species', 'suspect': 'Species Diagnosis Suspect',
               'suspect': 'Species Diagnosis Suspect',
-              'number_tested': 'Number Assessed', 'number_positive': 'Number Confirmed', 'lab': 'Lab'}
+              'number_tested': 'Number Assessed', 'number_positive': 'Number with this Diagnosis', 'lab': 'Lab'}
 
 
 class EventDetailViewSet(ReadOnlyHistoryViewSet):

@@ -69,7 +69,7 @@ CREATE VIEW "public"."flat_event_details" AS  SELECT e.id AS event_id,
           WHERE (al1.id = el.administrative_level_one_id)) AS state,
     ( SELECT c.name
            FROM whispers_country c
-          WHERE (c.id = el.country_id)) AS nation,
+          WHERE (c.id = el.country_id)) AS country,
     el.start_date AS location_start,
     el.end_date AS location_end,
     ls.id AS location_species_id,
