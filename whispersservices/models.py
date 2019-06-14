@@ -223,6 +223,48 @@ class Event(PermissionsHistoryModel):
             EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, priority=1,
                                           created_by=self.created_by, modified_by=self.modified_by)
 
+        # calculate event start_date and end_date and affected_count based on child locations
+        locations = EventLocation.objects.filter(event=self.id).values('id', 'start_date', 'end_date')
+
+        # start_date and end_date
+        # Start date: Earliest date from locations to be used.
+        # End date: If 1 or more location end dates is null then leave blank, otherwise use latest date from locations.
+        if len(locations) > 0:
+            start_dates = [loc['start_date'] for loc in locations if loc['start_date'] is not None]
+            self.start_date = min(start_dates) if len(start_dates) > 0 else None
+            end_dates = [loc['end_date'] for loc in locations]
+            if len(end_dates) < 1 or None in end_dates:
+                self.end_date = None
+            else:
+                self.end_date = max(end_dates)
+        else:
+            self.start_date = None
+            self.end_date = None
+
+        # affected_count
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = self.event_type.id
+        if event_type_id not in [1, 2]:
+            self.affected_count = None
+        else:
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                self.affected_count = sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
+                self.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+
     def __str__(self):
         return str(self.id)
 
