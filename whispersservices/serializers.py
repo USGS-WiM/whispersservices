@@ -14,6 +14,7 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: consider implementing type checking for nested objects
 # TODO: turn every ListField into a set to prevent errors caused by duplicates
 
+FULL_EVENT_CHAIN_CREATE = False
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
@@ -451,10 +452,15 @@ class EventSerializer(serializers.ModelSerializer):
         return determine_permission_source(self.context['request'].user, obj)
 
     def create(self, validated_data):
+        FULL_EVENT_CHAIN_CREATE = True
+        print("FULL_EVENT_CHAIN_CREATE")
+
         # TODO: figure out if this logic is necessary
         #  see: https://www.django-rest-framework.org/api-guide/requests/#user
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -574,7 +580,7 @@ class EventSerializer(serializers.ModelSerializer):
                             r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                             content = decode_json(r)
                             if ('geonames' in content and content['geonames'] is not None
-                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames']):
+                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                 alpha3 = content['geonames'][0]['isoAlpha3']
                                 country = Country.objects.filter(abbreviation=alpha3).first()
                         else:
@@ -837,6 +843,32 @@ class EventSerializer(serializers.ModelSerializer):
 ###
 ###
 
+        # create the child event_locations for this event
+        if new_event_locations is not None:
+            is_valid = True
+            valid_data = []
+            errors = []
+            for event_location in new_event_locations:
+                if event_location is not None:
+                    # use event to populate event field on event_location
+                    event_location['event'] = event.id
+                    event_location['created_by'] = event.created_by.id
+                    evt_loc_serializer = EventLocationSerializer(data=event_location)
+                    if evt_loc_serializer.is_valid():
+                        valid_data.append(evt_loc_serializer)
+                    else:
+                        is_valid = False
+                        errors.append(evt_loc_serializer.errors)
+            if is_valid:
+                # now that all items are proven valid, save and return them to the user
+                for item in valid_data:
+                    item.save()
+            else:
+                # delete this event (related collaborators, organizations, eventgroups, service requests,
+                # contacts, and comments will be cascade deleted automatically if any exist)
+                # event.delete()
+                raise serializers.ValidationError(errors)
+
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
@@ -871,7 +903,8 @@ class EventSerializer(serializers.ModelSerializer):
             for comment in new_comments:
                 if comment is not None:
                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
+                    Comment.objects.create(content_object=event, comment=comment['comment'],
+                                           comment_type=comment_type,
                                            created_by=user, modified_by=user)
 
         # create the child eventgroups for this event
@@ -882,62 +915,6 @@ class EventSerializer(serializers.ModelSerializer):
                     if eventgroup is not None:
                         EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
-
-        # Create the child service requests for this event
-        if new_service_request is not None:
-            if ('request_type' in new_service_request and new_service_request['request_type'] is not None
-                    and new_service_request['request_type'] in [1, 2]):
-                new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
-                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                created_by=user, modified_by=user)
-                service_request_comments = []
-
-                # create the child comments for this service request
-                if new_comments is not None:
-                    for comment in new_comments:
-                        if comment is not None:
-                            if 'comment_type' in comment and comment['comment_type'] is not None:
-                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                if not comment_type:
-                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            else:
-                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment['comment'])
-
-                # construct and send the request email
-                service_request_email = construct_service_request_email(service_request.event.id,
-                                                                        user.organization.name,
-                                                                        service_request.request_type.name, user.email,
-                                                                        service_request_comments)
-                if settings.ENVIRONMENT not in ['production', 'test']:
-                    event.service_request_email = service_request_email.__dict__
-
-        # create the child event_locations for this event
-        if new_event_locations is not None:
-            is_valid = True
-            valid_data = []
-            errors = []
-            for event_location in new_event_locations:
-                if event_location is not None:
-                    # use event to populate event field on event_location
-                    event_location['event'] = event
-                    evt_loc_serializer = EventLocationSerializer(data=event_location)
-                    if evt_loc_serializer.is_valid():
-                        valid_data.append(evt_loc_serializer)
-                    else:
-                        is_valid = False
-                        errors.append(evt_loc_serializer.errors)
-            if is_valid:
-                # now that all items are proven valid, save and return them to the user
-                for item in valid_data:
-                    item.save()
-            else:
-                # delete this event (related collaborators, organizations, eventgroups, service requests,
-                # contacts, and comments will be cascade deleted automatically)
-                event.delete()
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
@@ -975,6 +952,39 @@ class EventSerializer(serializers.ModelSerializer):
                     event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
                     [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
 
+        # Create the child service requests for this event
+        if new_service_request is not None:
+            if ('request_type' in new_service_request and new_service_request['request_type'] is not None
+                    and new_service_request['request_type'] in [1, 2]):
+                new_comments = new_service_request.pop('new_comments', None)
+                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
+                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                created_by=user, modified_by=user)
+                service_request_comments = []
+
+                # create the child comments for this service request
+                if new_comments is not None:
+                    for comment in new_comments:
+                        if comment is not None:
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
+                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            else:
+                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
+                            service_request_comments.append(comment['comment'])
+
+                # construct and send the request email
+                service_request_email = construct_service_request_email(service_request.event.id,
+                                                                        user.organization.name,
+                                                                        service_request.request_type.name,
+                                                                        user.email,
+                                                                        service_request_comments)
+                if settings.ENVIRONMENT not in ['production', 'test']:
+                    event.service_request_email = service_request_email.__dict__
+
         return event
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
@@ -983,6 +993,8 @@ class EventSerializer(serializers.ModelSerializer):
 
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -1336,7 +1348,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                             content = decode_json(r)
                             if ('geonames' in content and content['geonames'] is not None
-                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames']):
+                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                 alpha3 = content['geonames'][0]['isoAlpha3']
                                 country = Country.objects.filter(abbreviation=alpha3).first()
                         else:
@@ -1736,7 +1748,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                      verify=settings.SSL_CERT)
                                     content = decode_json(r)
                                     if ('geonames' in content and content['geonames'] is not None
-                                            and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames']):
+                                            and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                         alpha3 = content['geonames'][0]['isoAlpha3']
                                         event_location['country'] = Country.objects.filter(abbreviation=alpha3).first()
                                 else:
@@ -2495,10 +2507,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
         message_complete = "Locations from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
-        # if this is a new EventLocation check if the Event is complete
-        if 'request' in self.context and self.context['request'].method == 'POST':
+        # if this is a new EventLocation
+        if not self.instance:
+            # check if the Event is complete
             if data['event'].complete:
                 raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
             else:
                 # 1. Not every location needs a start date at initiation, but at least one location must.
                 # 2. Not every location needs a species at initiation, but at least one location must.
@@ -2600,13 +2614,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
                             r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                             content = decode_json(r)
                             if ('geonames' in content and content['geonames'] is not None
-                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames']):
+                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                 alpha3 = content['geonames'][0]['isoAlpha3']
                                 country = Country.objects.filter(abbreviation=alpha3).first()
                         else:
                             country = Country.objects.filter(abbreviation=country_code).first()
+                        # TODO: create separate case for when no country found
                         if not country or data['country'].id != country.id:
                             latlng_matches_county = False
+                        # TODO: check submitted admin L1 and L2 against lat/lng, not just ids
                         elif ('administrative_level_one' in data
                               and data['administrative_level_one'] is not None):
                             admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
@@ -2734,16 +2750,23 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-        # else this is an existing EventLocation so check if this is an update and if parent Event is complete
-        elif self.context['request'].method in ['PUT', 'PATCH']:
+        # else this is an existing EventLocation
+        elif self.instance:
+            # check if this is an update and if parent Event is complete
             if self.instance.event.complete:
                 raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
+            else:
+                pass
+                # TODO: put business rules here
 
         return data
 
     def create(self, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -2810,7 +2833,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
                         content = decode_json(r)
                         if ('geonames' in content and content['geonames'] is not None
-                                and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames']):
+                                and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                             alpha3 = content['geonames'][0]['isoAlpha3']
                             validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
                     else:
@@ -2862,6 +2885,36 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # validated_data['modified_by'] = user
         evt_location = EventLocation.objects.create(**validated_data)
 
+        # Create EventLocationSpecies
+        if new_location_species is not None:
+            is_valid = True
+            valid_data = []
+            errors = []
+            for new_location_spec in new_location_species:
+                if new_location_spec is not None:
+                    new_location_spec['event_location'] = evt_location.id
+                    new_location_spec['created_by'] = evt_location.created_by.id
+                    loc_spec_serializer = LocationSpeciesSerializer(data=new_location_spec)
+                    if loc_spec_serializer.is_valid():
+                        valid_data.append(loc_spec_serializer)
+                    else:
+                        is_valid = False
+                        errors.append(loc_spec_serializer.errors)
+            if is_valid:
+                # now that all items are proven valid, save and return them to the user
+                for item in valid_data:
+                    item.save()
+            else:
+                if FULL_EVENT_CHAIN_CREATE:
+                    print("FULL_EVENT_CHAIN_CREATE delete")
+                    # delete the parent event, which will also delete this event location thru a cascade
+                    evt_location.event.delete()
+                else:
+                    # delete this event location
+                    # (related contacts and comments will be cascade deleted automatically if any exist)
+                    evt_location.delete()
+                raise serializers.ValidationError(errors)
+
         if flyway is not None:
             EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
                                                created_by=user, modified_by=user)
@@ -2886,29 +2939,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
                 EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
-        # Create EventLocationSpecies
-        if new_location_species is not None:
-            is_valid = True
-            valid_data = []
-            response_errors = []
-            for new_location_spec in new_location_species:
-                if new_location_spec is not None:
-                    new_location_spec['event_location'] = evt_location
-                    loc_spec_serializer = LocationSpeciesSerializer(data=new_location_spec)
-                    if loc_spec_serializer.is_valid():
-                        valid_data.append(loc_spec_serializer)
-                    else:
-                        is_valid = False
-                        response_errors.append(loc_spec_serializer.errors)
-            if is_valid:
-                # now that all items are proven valid, save and return them to the user
-                for item in valid_data:
-                    item.save()
-            else:
-                # delete this event location (related contacts and comments will be cascade deleted automatically)
-                evt_location.delete()
-                # TODO: figure out how to know if part of the larger event create chain and if so delete parent objects
-
         # calculate the priority value:
         evt_location.priority = calculate_priority_event_location(evt_location)
         evt_location.save()
@@ -2919,6 +2949,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -3137,10 +3169,12 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         message_complete = "Species from a location from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
-        # if this is a new LocationSpecies check if the Event is complete
-        if 'request' in self.context and self.context['request'].method == 'POST':
+        # if this is a new LocationSpecies
+        if not self.instance:
+            #  check if the Event is complete
             if data['event_location'].event.complete:
                 raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
             else:
                 # 1. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
                 # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
@@ -3204,13 +3238,26 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-        # else this is an existing LocationSpecies so check if this is an update and if parent Event is complete
-        elif self.context['request'].method in ['PUT', 'PATCH'] and self.instance.event_location.event.complete:
-            raise serializers.ValidationError(message_complete)
+        # else this is an existing LocationSpecies
+        elif self.instance:
+            # check if this is an update and if parent Event is complete
+            if self.instance.event_location.event.complete:
+                raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
+            else:
+                pass
+                # TODO: put business rules here
 
         return data
 
     def create(self, validated_data):
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
+        else:
+            user = None
+
         new_species_diagnoses = validated_data.pop('new_species_diagnoses', None)
 
         location_species = LocationSpecies.objects.create(**validated_data)
@@ -3226,7 +3273,8 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                         location_species=location_species.id, diagnosis=spec_diag['diagnosis'])
 
                     if len(existing_spec_diag) == 0:
-                        spec_diag['location_species'] = location_species
+                        spec_diag['location_species'] = location_species.id
+                        spec_diag['created_by'] = location_species.created_by.id
                         spec_diag_serializer = SpeciesDiagnosisSerializer(data=spec_diag)
                         if spec_diag_serializer.is_valid():
                             valid_data.append(spec_diag_serializer)
@@ -3238,9 +3286,14 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 for item in valid_data:
                     item.save()
             else:
-                # delete this location species
-                location_species.delete()
-                # TODO: figure out how to know if part of the larger event create chain and if so delete parent objects
+                if FULL_EVENT_CHAIN_CREATE:
+                    print("FULL_EVENT_CHAIN_CREATE delete")
+                    # delete the parent event, which will also delete this location species thru a cascade
+                    location_species.event_location.event.delete()
+                else:
+                    # delete this location species
+                    location_species.delete()
+                raise serializers.ValidationError(errors)
 
         # calculate the priority value:
         location_species.priority = calculate_priority_location_species(location_species)
@@ -3251,6 +3304,8 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -3555,17 +3610,25 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         message_complete = "Diagnoses from a species from a location from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
-        # if this is a new SpeciesDiagnosis check if the Event is complete
-        if 'request' in self.context and self.context['request'].method == 'POST':
-
+        # if this is a new SpeciesDiagnosis
+        if not self.instance:
+            # check if this is an update and if parent Event is complete
             if data['location_species'].event_location.event.complete:
                 raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
+            else:
+                pass
+                # TODO: put business rules here
 
-        # else this is an existing SpeciesDiagnosis so check if this is an update and if parent Event is complete
-        elif self.context['request'].method in ['PUT', 'PATCH']:
-
+        # else this is an existing SpeciesDiagnosis
+        elif self.instance:
+            # check if this is an update and if parent Event is complete
             if self.instance.location_species.event_location.event.complete:
                 raise serializers.ValidationError(message_complete)
+            # otherwise the Event is not complete, so apply business rules
+            else:
+                pass
+                # TODO: put business rules here
 
         if data['new_species_diagnosis_organizations'] is not None:
             for org_id in data['new_species_diagnosis_organizations']:
@@ -3578,6 +3641,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 
@@ -3656,6 +3721,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         if 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
+        elif 'created_by' in self.initial_data:
+            user = self.initial_data['created_by']
         else:
             user = None
 

@@ -113,7 +113,8 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     filter_backends = (filters.OrderingFilter,)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, modified_by=self.request.user)
+        sv = serializer.save(created_by=self.request.user, modified_by=self.request.user)
+        print(sv)
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
