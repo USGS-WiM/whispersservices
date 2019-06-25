@@ -2126,7 +2126,7 @@ class SearchViewSet(HistoryViewSet):
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
         elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
-            queryset = Search.objects.all().filter(created_by__exact=user).exclude(name__exact='')
+            queryset = Search.objects.all().filter(created_by__exact=user)
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Search.objects.all()
@@ -2367,11 +2367,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                     search = Search.objects.filter(data=ordered_query_params, created_by=admin_user).first()
                 else:
                     search = Search.objects.filter(data=ordered_query_params, created_by=user).first()
+                # user-owned searches should be deliberately created through the searches endpoint
+                # all other searches are 'anonymous' and should be owned by the admin user
                 if not search:
-                    if not user or not user.is_authenticated:
-                        search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
-                    else:
-                        search = Search.objects.create(data=ordered_query_params, created_by=user)
+                    search = Search.objects.create(data=ordered_query_params, created_by=admin_user)
                 search.count += 1
                 search.modified_by = admin_user if not user or not user.is_authenticated else user
                 search.save()
