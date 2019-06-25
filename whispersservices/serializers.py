@@ -117,6 +117,58 @@ def construct_user_request_email(requester_email, message):
     return email
 
 
+def construct_email(subject, message):
+    # construct and send the email
+    subject = subject
+    body = message
+    from_address = settings.EMAIL_WHISPERS
+    to_list = [settings.EMAIL_WHISPERS, ]
+    bcc_list = []
+    reply_list = []
+    headers = None
+    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
+    if settings.ENVIRONMENT in ['production', 'test']:
+        try:
+            email.send(fail_silently=False)
+        except TypeError:
+            message = "Send email failed, please contact the administrator."
+            raise serializers.ValidationError(message)
+    return email
+
+
+def confirm_geonames_api_responsive(endpoint):
+    responsive = False
+    r = None
+    if endpoint == 'extendedFindNearbyJSON':
+        payload = {'lat': '-90.0', 'lng': '45.0', 'username': GEONAMES_USERNAME}
+        r = requests.get(GEONAMES_API + endpoint, params=payload, verify=settings.SSL_CERT)
+        content = decode_json(r)
+        if 'address' in content or 'geonames' in content:
+            responsive = True
+    elif endpoint == 'countryInfoJSON':
+        payload = {'country': 'US', 'username': GEONAMES_USERNAME}
+        r = requests.get(GEONAMES_API + endpoint, params=payload, verify=settings.SSL_CERT)
+        content = decode_json(r)
+        if ('geonames' in content and content['geonames'] is not None
+                and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
+            responsive = True
+    elif endpoint == 'searchJSON':
+        payload = {'name': 'Dane', 'featureCode': 'ADM2', 'maxRows': 1, 'username': GEONAMES_USERNAME}
+        r = requests.get(GEONAMES_API + endpoint, params=payload, verify=settings.SSL_CERT)
+        content = decode_json(r)
+        if ('geonames' in content and content['geonames'] is not None
+                and len(content['geonames']) > 0
+                and 'lng' in content['geonames'][0] and 'lat' in content['geonames'][0]):
+            responsive = True
+    else:
+        message = "The Geonames API is unresponsive (the following query returned an unexpected format).\r\n\r\n"
+        message += r.url + "\r\n\r\n"
+        message += "This API is used by WHISPers for Event Location validation"
+        message += " and so validation for latitude, longitude, country, and administrative levels was skipped."
+        construct_email("Geonames API Unresponsive", message)
+    return responsive
+
+
 def calculate_priority_event_organization(instance):
 
     # calculate the priority value:
@@ -530,7 +582,8 @@ class EventSerializer(serializers.ModelSerializer):
                         if country.id != admin_l1.country.id:
                             country_admin_is_valid = False
                         if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
-                            admin_l2 = AdministrativeLevelTwo.objects.filter(id=item['administrative_level_two']).first()
+                            admin_l2 = AdministrativeLevelTwo.objects.filter(
+                                id=item['administrative_level_two']).first()
                             if admin_l1.id != admin_l2.administrative_level_one.id:
                                 country_admin_is_valid = False
                     if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
@@ -545,54 +598,62 @@ class EventSerializer(serializers.ModelSerializer):
                     if ('longitude' in item and item['longitude'] is not None
                             and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
                         latlng_is_valid = False
-                    if ('latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                                   'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
-                        content = decode_json(r)
-                        if 'address' not in content and 'geonames' not in content:
-                            latlng_is_valid = False
-                    if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None
-                            and 'country' in item and item['country'] is not None):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
-                        geonames_object_list = decode_json(r)
-                        if 'address' in geonames_object_list:
-                            address = geonames_object_list['address']
-                            if 'name' in address:
-                                address['adminName2'] = address['name']
-                        elif 'geonames' in geonames_object_list:
-                            geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
-                                                     item['fcode'] == 'ADM2']
-                            address = geonames_objects_adm2[0]
-                        else:
-                            # the response from the Geonames web service is in an unexpected format
-                            address = None
-                        if address:
-                            country_code = address['countryCode']
-                            if len(country_code) == 2:
-                                payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
-                                content = decode_json(r)
-                                if ('geonames' in content and content['geonames'] is not None
-                                        and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
-                                    alpha3 = content['geonames'][0]['isoAlpha3']
-                                    country = Country.objects.filter(abbreviation=alpha3).first()
+                    geonames_endpoint = 'extendedFindNearbyJSON'
+                    if confirm_geonames_api_responsive(geonames_endpoint):
+                        if ('latitude' in item and item['latitude'] is not None
+                                and 'longitude' in item and item['longitude'] is not None):
+                            payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                                       'username': GEONAMES_USERNAME}
+                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                            content = decode_json(r)
+                            if 'address' not in content and 'geonames' not in content:
+                                latlng_is_valid = False
+                        if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
+                                and 'longitude' in item and item['longitude'] is not None
+                                and 'country' in item and item['country'] is not None):
+                            payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
+                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                            geonames_object_list = decode_json(r)
+                            if 'address' in geonames_object_list:
+                                address = geonames_object_list['address']
+                                if 'name' in address:
+                                    address['adminName2'] = address['name']
+                            elif 'geonames' in geonames_object_list:
+                                geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
+                                                         item['fcode'] == 'ADM2']
+                                address = geonames_objects_adm2[0]
                             else:
-                                country = Country.objects.filter(abbreviation=country_code).first()
-                            if int(item['country']) != country.id:
-                                latlng_matches_county = False
-                            elif 'administrative_level_one' in item and item['administrative_level_one'] is not None:
-                                adminL1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
-                                if int(item['administrative_level_one']) != adminL1.id:
-                                    latlng_matches_admin_l1 = False
-                                elif 'administrative_level_two' in item and item['administrative_level_two'] is not None:
-                                    admin2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                    adminL2 = AdministrativeLevelTwo.objects.filter(name=admin2).first()
-                                    if int(item['administrative_level_two']) != adminL2.id:
-                                        latlng_matches_admin_21 = False
+                                # the response from the Geonames web service is in an unexpected format
+                                address = None
+                            geonames_endpoint = 'countryInfoJSON'
+                            if address and confirm_geonames_api_responsive(geonames_endpoint):
+                                country_code = address['countryCode']
+                                if len(country_code) == 2:
+                                    payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                                    r = requests.get(GEONAMES_API + geonames_endpoint, params=payload,
+                                                     verify=settings.SSL_CERT)
+                                    content = decode_json(r)
+                                    if ('geonames' in content and content['geonames'] is not None
+                                            and len(content['geonames']) > 0
+                                            and 'isoAlpha3' in content['geonames'][0]):
+                                        alpha3 = content['geonames'][0]['isoAlpha3']
+                                        country = Country.objects.filter(abbreviation=alpha3).first()
+                                else:
+                                    country = Country.objects.filter(abbreviation=country_code).first()
+                                if int(item['country']) != country.id:
+                                    latlng_matches_county = False
+                                elif ('administrative_level_one' in item
+                                      and item['administrative_level_one'] is not None):
+                                    admin_l1 = AdministrativeLevelOne.objects.filter(
+                                        name=address['adminName1']).first()
+                                    if int(item['administrative_level_one']) != admin_l1.id:
+                                        latlng_matches_admin_l1 = False
+                                    elif ('administrative_level_two' in item
+                                          and item['administrative_level_two'] is not None):
+                                        a2 = address['adminName2'] if 'adminName2' in address else address['name']
+                                        admin_l2 = AdministrativeLevelTwo.objects.filter(name=a2).first()
+                                        if int(item['administrative_level_two']) != admin_l2.id:
+                                            latlng_matches_admin_21 = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
                             if 'species' in spec and spec['species'] is not None:
@@ -794,6 +855,7 @@ class EventSerializer(serializers.ModelSerializer):
                     details.append("Each new_location_species requires a significance of diagnosis for species (cause)")
                 if details:
                     raise serializers.ValidationError(details)
+        return data
 
     def create(self, validated_data):
         FULL_EVENT_CHAIN_CREATE = True
@@ -1308,58 +1370,60 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     if ('longitude' in item and item['longitude'] is not None
                             and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
                         latlng_is_valid = False
-                    if ('latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                                   'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload,
-                                         verify=settings.SSL_CERT)
-                        content = decode_json(r)
-                        if 'address' not in content and 'geonames' not in content:
-                            latlng_is_valid = False
-                    if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
-                            and 'longitude' in item and item['longitude'] is not None
-                            and 'country' in item and item['country'] is not None):
-                        payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload,
-                                         verify=settings.SSL_CERT)
-                        geonames_object_list = decode_json(r)
-                        if 'address' in geonames_object_list:
-                            address = geonames_object_list['address']
-                            if 'name' in address:
-                                address['adminName2'] = address['name']
-                        elif 'geonames' in geonames_object_list:
-                            geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
-                                                     item['fcode'] == 'ADM2']
-                            address = geonames_objects_adm2[0]
-                        else:
-                            # the response from the Geonames web service is in an unexpected format
-                            address = None
-                        if address:
-                            country_code = address['countryCode']
-                            if len(country_code) == 2:
-                                payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                                r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload,
-                                                 verify=settings.SSL_CERT)
-                                content = decode_json(r)
-                                if ('geonames' in content and content['geonames'] is not None
-                                        and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
-                                    alpha3 = content['geonames'][0]['isoAlpha3']
-                                    country = Country.objects.filter(abbreviation=alpha3).first()
+                    geonames_endpoint = 'extendedFindNearbyJSON'
+                    if confirm_geonames_api_responsive(geonames_endpoint):
+                        if ('latitude' in item and item['latitude'] is not None
+                                and 'longitude' in item and item['longitude'] is not None):
+                            payload = {'lat': item['latitude'], 'lng': item['longitude'],
+                                       'username': GEONAMES_USERNAME}
+                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                            content = decode_json(r)
+                            if 'address' not in content and 'geonames' not in content:
+                                latlng_is_valid = False
+                        if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
+                                and 'longitude' in item and item['longitude'] is not None
+                                and 'country' in item and item['country'] is not None):
+                            payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
+                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                            geonames_object_list = decode_json(r)
+                            if 'address' in geonames_object_list:
+                                address = geonames_object_list['address']
+                                if 'name' in address:
+                                    address['adminName2'] = address['name']
+                            elif 'geonames' in geonames_object_list:
+                                geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
+                                                         item['fcode'] == 'ADM2']
+                                address = geonames_objects_adm2[0]
                             else:
-                                country = Country.objects.filter(abbreviation=country_code).first()
-                            if int(item['country']) != country.id:
-                                latlng_matches_county = False
-                            elif 'administrative_level_one' in item and item['administrative_level_one'] is not None:
-                                adminL1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
-                                if int(item['administrative_level_one']) != adminL1.id:
-                                    latlng_matches_admin_l1 = False
-                                elif 'administrative_level_two' in item and item[
-                                    'administrative_level_two'] is not None:
-                                    admin2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                    adminL2 = AdministrativeLevelTwo.objects.filter(name=admin2).first()
-                                    if int(item['administrative_level_two']) != adminL2.id:
-                                        latlng_matches_admin_21 = False
+                                # the response from the Geonames web service is in an unexpected format
+                                address = None
+                            geonames_endpoint = 'countryInfoJSON'
+                            if address and confirm_geonames_api_responsive(geonames_endpoint):
+                                country_code = address['countryCode']
+                                if len(country_code) == 2:
+                                    payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                                    r = requests.get(GEONAMES_API + geonames_endpoint, params=payload,
+                                                     verify=settings.SSL_CERT)
+                                    content = decode_json(r)
+                                    if ('geonames' in content and content['geonames'] is not None
+                                            and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
+                                        alpha3 = content['geonames'][0]['isoAlpha3']
+                                        country = Country.objects.filter(abbreviation=alpha3).first()
+                                else:
+                                    country = Country.objects.filter(abbreviation=country_code).first()
+                                if int(item['country']) != country.id:
+                                    latlng_matches_county = False
+                                elif ('administrative_level_one' in item
+                                      and item['administrative_level_one'] is not None):
+                                    admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
+                                    if int(item['administrative_level_one']) != admin_l1.id:
+                                        latlng_matches_admin_l1 = False
+                                    elif 'administrative_level_two' in item and item[
+                                        'administrative_level_two'] is not None:
+                                        a2 = address['adminName2'] if 'adminName2' in address else address['name']
+                                        admin_l2 = AdministrativeLevelTwo.objects.filter(name=a2).first()
+                                        if int(item['administrative_level_two']) != admin_l2.id:
+                                            latlng_matches_admin_21 = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
                             if 'species' in spec and spec['species'] is not None:
@@ -1561,6 +1625,8 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     details.append("Each new_location_species requires a significance of diagnosis for species (cause)")
                 if details:
                     raise serializers.ValidationError(details)
+
+        return data
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
@@ -2393,57 +2459,61 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 if ('longitude' in data and data['longitude'] is not None
                         and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['longitude']))):
                     latlng_is_valid = False
-                if ('latitude' in data and data['latitude'] is not None
-                        and 'longitude' in data and data['longitude'] is not None):
-                    payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
-                    content = decode_json(r)
-                    if 'address' not in content and 'geonames' not in content:
-                        latlng_is_valid = False
-                if (latlng_is_valid and 'latitude' in data and data['latitude'] is not None
-                        and 'longitude' in data and data['longitude'] is not None
-                        and 'country' in data and data['country'] is not None):
-                    payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
-                    geonames_object_list = decode_json(r)
-                    if 'address' in geonames_object_list:
-                        address = geonames_object_list['address']
-                        if 'name' in address:
-                            address['adminName2'] = address['name']
-                    elif 'geonames' in geonames_object_list:
-                        geonames_adm2 = [data for data in geonames_object_list['geonames'] if data['fcode'] == 'ADM2']
-                        address = geonames_adm2[0]
-                    else:
-                        # the response from the Geonames web service is in an unexpected format
-                        address = None
-                    if address:
-                        country_code = address['countryCode']
-                        country = None
-                        if len(country_code) == 2:
-                            payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                            r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
-                            content = decode_json(r)
-                            if ('geonames' in content and content['geonames'] is not None
-                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
-                                alpha3 = content['geonames'][0]['isoAlpha3']
-                                country = Country.objects.filter(abbreviation=alpha3).first()
+                geonames_endpoint = 'extendedFindNearbyJSON'
+                if confirm_geonames_api_responsive(geonames_endpoint):
+                    if ('latitude' in data and data['latitude'] is not None
+                            and 'longitude' in data and data['longitude'] is not None):
+                        payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                        content = decode_json(r)
+                        if 'address' not in content and 'geonames' not in content:
+                            latlng_is_valid = False
+                    if (latlng_is_valid and 'latitude' in data and data['latitude'] is not None
+                            and 'longitude' in data and data['longitude'] is not None
+                            and 'country' in data and data['country'] is not None):
+                        payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
+                        r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                        geonames_object_list = decode_json(r)
+                        if 'address' in geonames_object_list:
+                            address = geonames_object_list['address']
+                            if 'name' in address:
+                                address['adminName2'] = address['name']
+                        elif 'geonames' in geonames_object_list:
+                            gn_adm2 = [data for data in geonames_object_list['geonames'] if data['fcode'] == 'ADM2']
+                            address = gn_adm2[0]
                         else:
-                            country = Country.objects.filter(abbreviation=country_code).first()
-                        # TODO: create separate case for when no country found
-                        if not country or data['country'].id != country.id:
-                            latlng_matches_county = False
-                        # TODO: check submitted admin L1 and L2 against lat/lng, not just ids
-                        elif ('administrative_level_one' in data
-                              and data['administrative_level_one'] is not None):
-                            admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
-                            if data['administrative_level_one'].id != admin_l1.id:
-                                latlng_matches_admin_l1 = False
-                            elif ('administrative_level_two' in data
-                                  and data['administrative_level_two'] is not None):
-                                admin2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                admin_l2 = AdministrativeLevelTwo.objects.filter(name=admin2).first()
-                                if data['administrative_level_two'].id != admin_l2.id:
-                                    latlng_matches_admin_21 = False
+                            # the response from the Geonames web service is in an unexpected format
+                            address = None
+                        geonames_endpoint = 'countryInfoJSON'
+                        if address and confirm_geonames_api_responsive(geonames_endpoint):
+                            country_code = address['countryCode']
+                            country = None
+                            if len(country_code) == 2:
+                                payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                                r = requests.get(GEONAMES_API + geonames_endpoint, params=payload,
+                                                 verify=settings.SSL_CERT)
+                                content = decode_json(r)
+                                if ('geonames' in content and content['geonames'] is not None
+                                        and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
+                                    alpha3 = content['geonames'][0]['isoAlpha3']
+                                    country = Country.objects.filter(abbreviation=alpha3).first()
+                            else:
+                                country = Country.objects.filter(abbreviation=country_code).first()
+                            # TODO: create separate case for when no country found
+                            if not country or data['country'].id != country.id:
+                                latlng_matches_county = False
+                            # TODO: check submitted admin L1 and L2 against lat/lng, not just ids
+                            elif ('administrative_level_one' in data
+                                  and data['administrative_level_one'] is not None):
+                                admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
+                                if data['administrative_level_one'].id != admin_l1.id:
+                                    latlng_matches_admin_l1 = False
+                                elif ('administrative_level_two' in data
+                                      and data['administrative_level_two'] is not None):
+                                    admin2 = address['adminName2'] if 'adminName2' in address else address['name']
+                                    admin_l2 = AdministrativeLevelTwo.objects.filter(name=admin2).first()
+                                    if data['administrative_level_two'].id != admin_l2.id:
+                                        latlng_matches_admin_21 = False
                 if 'new_location_species' in data:
                     for spec in data['new_location_species']:
                         if 'species' in spec and spec['species'] is not None:
@@ -2595,82 +2665,95 @@ class EventLocationSerializer(serializers.ModelSerializer):
             validated_data['name'] = validated_data['gnis_name']
 
         # if event_location has lat/lng but no country/adminlevelone/adminleveltwo, populate missing fields
-        if ('country' not in validated_data or validated_data['country'] is None
-                or 'administrative_level_one' not in validated_data
-                or validated_data['administrative_level_one'] is None
-                or 'administrative_level_two' not in validated_data
-                or validated_data['administrative_level_two'] is None):
-            payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
-                       'username': GEONAMES_USERNAME}
-            r = requests.get(GEONAMES_API + 'extendedFindNearbyJSON', params=payload, verify=settings.SSL_CERT)
-            geonames_object_list = decode_json(r)
-            if 'address' in geonames_object_list:
-                address = geonames_object_list['address']
-                address['adminName2'] = address['name']
-            elif 'geonames' in geonames_object_list:
-                geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if item['fcode'] == 'ADM2']
-                address = geonames_objects_adm2[0]
-            else:
-                # the response from the Geonames web service is in an unexpected format
-                address = None
-            if address:
-                if 'country' not in validated_data or validated_data['country'] is None:
-                    country_code = address['countryCode']
-                    if len(country_code) == 2:
-                        payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                        r = requests.get(GEONAMES_API + 'countryInfoJSON', params=payload, verify=settings.SSL_CERT)
-                        content = decode_json(r)
-                        if ('geonames' in content and content['geonames'] is not None
-                                and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
-                            alpha3 = content['geonames'][0]['isoAlpha3']
-                            validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
-                    else:
-                        validated_data['country'] = Country.objects.filter(abbreviation=country_code).first()
-                if ('administrative_level_one' not in validated_data
-                        or validated_data['administrative_level_one'] is None):
-                    validated_data['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
-                        name=address['adminName1']).first()
-                if ('administrative_level_two' not in validated_data
-                        or validated_data['administrative_level_two'] is None):
-                    admin2 = address['adminName2'] if 'adminName2' in address else address['name']
-                    validated_data['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
-                        name=admin2).first()
-
-        # TODO: implement protection if FWS web service is unavailable
+        geonames_endpoint = 'extendedFindNearbyJSON'
+        if confirm_geonames_api_responsive(geonames_endpoint):
+            if ('country' not in validated_data or validated_data['country'] is None
+                    or 'administrative_level_one' not in validated_data
+                    or validated_data['administrative_level_one'] is None
+                    or 'administrative_level_two' not in validated_data
+                    or validated_data['administrative_level_two'] is None):
+                payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
+                           'username': GEONAMES_USERNAME}
+                r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                geonames_object_list = decode_json(r)
+                if 'address' in geonames_object_list:
+                    address = geonames_object_list['address']
+                    address['adminName2'] = address['name']
+                elif 'geonames' in geonames_object_list:
+                    gn_adm2 = [item for item in geonames_object_list['geonames'] if item['fcode'] == 'ADM2']
+                    address = gn_adm2[0]
+                else:
+                    # the response from the Geonames web service is in an unexpected format
+                    address = None
+                geonames_endpoint = 'countryInfoJSON'
+                if address and confirm_geonames_api_responsive(geonames_endpoint):
+                    if 'country' not in validated_data or validated_data['country'] is None:
+                        country_code = address['countryCode']
+                        if len(country_code) == 2:
+                            payload = {'country': country_code, 'username': GEONAMES_USERNAME}
+                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                            content = decode_json(r)
+                            if ('geonames' in content and content['geonames'] is not None
+                                    and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
+                                alpha3 = content['geonames'][0]['isoAlpha3']
+                                validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
+                        else:
+                            validated_data['country'] = Country.objects.filter(abbreviation=country_code).first()
+                    if ('administrative_level_one' not in validated_data
+                            or validated_data['administrative_level_one'] is None):
+                        validated_data['administrative_level_one'] = AdministrativeLevelOne.objects.filter(
+                            name=address['adminName1']).first()
+                    if ('administrative_level_two' not in validated_data
+                            or validated_data['administrative_level_two'] is None):
+                        admin2 = address['adminName2'] if 'adminName2' in address else address['name']
+                        validated_data['administrative_level_two'] = AdministrativeLevelTwo.objects.filter(
+                            name=admin2).first()
 
         # auto-assign flyway for locations in the USA (exclude territories and minor outlying islands)
-        if (validated_data['country'].id == Country.objects.filter(abbreviation='USA').first().id
-            and validated_data['administrative_level_one'].abbreviation not in
-            ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']):
-            payload = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false', 'outFields': 'NAME', 'f': 'json'}
-            payload.update({'spatialRel': 'esriSpatialRelIntersects'})
-            # if lat/lng is present, use it to get the intersecting flyway
-            if ('latitude' in validated_data and validated_data['latitude'] is not None
-                    and 'longitude' in validated_data and validated_data['longitude'] is not None):
-                payload.update({'geometry': str(validated_data['longitude']) + ',' + str(validated_data['latitude'])})
-            # otherwise if county is present, look up the county centroid, then use it to get the intersecting flyway
-            elif validated_data['administrative_level_two']:
-                geonames_payload = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2',
-                                    'maxRows': 1, 'username': GEONAMES_USERNAME}
-                gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
-                payload.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
-            # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info, flyway cannot be determined
-            # otherwise look up the state centroid, then use it to get the intersecting flyway
-            elif validated_data['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']:
-                geonames_payload = {'adminCode1': validated_data['administrative_level_one'], 'maxRows': 1,
-                                    'username': GEONAMES_USERNAME}
-                gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_payload)
-                payload.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
-            # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
-            elif validated_data['administrative_level_one'].abbreviation == 'HI':
-                flyway = Flyway.objects.filter(name__contains='Pacific').first()
+        # but first test the FWS flyway web service to confirm it is working
+        test_params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false'}
+        test_params.update({'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'})
+        test_params.update({'geometry': '-90.0,45.0'})
+        r = requests.get(FLYWAYS_API, params=test_params, verify=settings.SSL_CERT)
+        fws_flyway_service_responsive = True if 'features' in r.json() else False
+        if fws_flyway_service_responsive:
+            territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
+            geonames_endpoint = 'searchJSON'
+            if (validated_data['country'].id == Country.objects.filter(abbreviation='USA').first().id
+                    and validated_data['administrative_level_one'].abbreviation not in territories):
+                params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false',
+                          'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'}
+                # if lat/lng is present, use it to get the intersecting flyway
+                if ('latitude' in validated_data and validated_data['latitude'] is not None
+                        and 'longitude' in validated_data and validated_data['longitude'] is not None):
+                    geom = str(validated_data['longitude']) + ',' + str(validated_data['latitude'])
+                    params.update({'geometry': geom})
+                # otherwise if county is present, look up the county centroid and use it to get the intersecting flyway
+                # TODO: ensure this is finding county from the correct state from the correct country, and test geonames response contains expected content
+                elif validated_data['administrative_level_two'] and confirm_geonames_api_responsive(geonames_endpoint):
+                    geonames_params = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2'}
+                    geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
+                    gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_params)
+                    params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info, flyway
+                # cannot be determined, otherwise look up the state centroid, then use it to get the intersecting flyway
+                # TODO: ensure this is finding state from the correct country, and test geonames response contains expected content
+                elif (validated_data['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']
+                      and confirm_geonames_api_responsive(geonames_endpoint)):
+                    geonames_params = {'adminCode1': validated_data['administrative_level_one'], 'maxRows': 1}
+                    geonames_params.update({'username': GEONAMES_USERNAME})
+                    gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_params)
+                    params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
+                elif validated_data['administrative_level_one'].abbreviation == 'HI':
+                    flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
-            if flyway is None and 'geometry' in payload:
-                r = requests.get(FLYWAYS_API, params=payload, verify=settings.SSL_CERT)
-                r_features = r.json()['features']
-                if len(r_features) > 0:
-                    flyway_name = r_features[0]['attributes']['NAME'].replace(' Flyway', '')
-                    flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+                if flyway is None and 'geometry' in params:
+                    r = requests.get(FLYWAYS_API, params=params, verify=settings.SSL_CERT)
+                    r_features = r.json()['features']
+                    if len(r_features) > 0:
+                        flyway_name = r_features[0]['attributes']['NAME'].replace(' Flyway', '')
+                        flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
         # create the event_location and return object for use in event_location_contacts object
         # validated_data['created_by'] = user
@@ -4716,7 +4799,18 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailPublicSerializer(many=True)
     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
-    eventgroups = EventGroupPublicSerializer(many=True)
+    eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
+
+    def get_eventgroups(self, obj):
+        pub_groups = []
+        if obj.eventgroups is not None:
+            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
+            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+            for evtgrp in evtgrps:
+                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
+                pub_groups.append(group)
+        return pub_groups
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
@@ -4761,9 +4855,20 @@ class EventDetailSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
-    eventgroups = EventGroupPublicSerializer(many=True)
+    eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
+
+    def get_eventgroups(self, obj):
+        pub_groups = []
+        if obj.eventgroups is not None:
+            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
+            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+            for evtgrp in evtgrps:
+                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
+                pub_groups.append(group)
+        return pub_groups
 
     def get_eventorganizations(self, obj):
         pub_orgs = []
