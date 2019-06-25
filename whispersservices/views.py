@@ -2126,7 +2126,7 @@ class SearchViewSet(HistoryViewSet):
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
         elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
-            queryset = Search.objects.all().filter(created_by__exact=user)
+            queryset = Search.objects.all().filter(created_by__exact=user).exclude(name__exact='')
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Search.objects.all()

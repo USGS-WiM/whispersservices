@@ -2733,7 +2733,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 elif validated_data['administrative_level_two'] and confirm_geonames_api_responsive(geonames_endpoint):
                     geonames_params = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2'}
                     geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
-                    gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_params)
+                    gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
                     params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
                 # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info, flyway
                 # cannot be determined, otherwise look up the state centroid, then use it to get the intersecting flyway
@@ -2742,7 +2742,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                       and confirm_geonames_api_responsive(geonames_endpoint)):
                     geonames_params = {'adminCode1': validated_data['administrative_level_one'], 'maxRows': 1}
                     geonames_params.update({'username': GEONAMES_USERNAME})
-                    gr = requests.get(GEONAMES_API + 'searchJSON', params=geonames_params)
+                    gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
                     params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
                 # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
                 elif validated_data['administrative_level_one'].abbreviation == 'HI':
