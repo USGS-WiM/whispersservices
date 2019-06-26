@@ -1258,12 +1258,30 @@ class EventDiagnosisViewSet(HistoryViewSet):
     queryset = EventDiagnosis.objects.all()
 
     def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
         # if the related event is complete, no relates to diagnoses can be deleted
-        if self.get_object().event.complete:
+        if instance.event.complete:
             message = "Diagnoses from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
-        return super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
+
+        destroyed_event_diagnosis = super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
+
+        # Ensure at least one other EventDiagnosis exists for the parent Event after the EventDiagnosis deletion above,
+        # and if there are no EventDiagnoses left, create a new Pending or Undetermined EventDiagnosis,
+        # depending on the parent Event's complete status
+        evt_diags = EventDiagnosis.objects.filter(event=instance.event.id)
+        if not len(evt_diags) > 0:
+            new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
+            new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(
+                event=instance.event, diagnosis=new_diagnosis, suspect=False, priority=1,
+                created_by=instance.created_by, modified_by=instance.modified_by)
+
+        return destroyed_event_diagnosis
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):

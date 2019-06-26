@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models.signals import post_delete
+from django.db.models.signals import pre_delete, post_delete
 from django.dispatch import receiver
 from datetime import date
 from django.contrib.auth.models import AbstractUser
@@ -890,26 +890,26 @@ class EventDiagnosis(PermissionsHistoryModel):
         ordering = ['event', 'priority']
 
 
-# After an EventDiagnosis is deleted,
-# ensure there is at least one EventDiagnosis for the deleted EventDiagnosis's parent Event,
-# and if there are none left, will need to create a new Pending or Undetermined EventDiagnosis,
-# depending on the Event's complete status
-# However, if Event has been deleted, then don't attempt to create another EventDiagnosis
-@receiver(post_delete, sender=EventDiagnosis)
-def delete_event_diagnosis(sender, instance, **kwargs):
-
-    # only continue if parent Event still exists
-    event = Event.objects.filter(id=instance.event.id).first()
-    if event:
-        evt_diags = EventDiagnosis.objects.filter(event=instance.event.id)
-        if not len(evt_diags) > 0:
-            new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
-            new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
-            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(
-                event=instance.event, diagnosis=new_diagnosis, suspect=False, priority=1,
-                created_by=instance.created_by, modified_by=instance.modified_by)
+# # After an EventDiagnosis is deleted,
+# # ensure there is at least one EventDiagnosis for the deleted EventDiagnosis's parent Event,
+# # and if there are none left, will need to create a new Pending or Undetermined EventDiagnosis,
+# # depending on the Event's complete status
+# # However, if Event has been deleted, then don't attempt to create another EventDiagnosis
+# @receiver(post_delete, sender=EventDiagnosis)
+# def delete_event_diagnosis(sender, instance, **kwargs):
+#
+#     # only continue if parent Event still exists
+#     event = Event.objects.filter(id=instance.event.id).first()
+#     if event:
+#         evt_diags = EventDiagnosis.objects.filter(event=instance.event.id)
+#         if not len(evt_diags) > 0:
+#             new_diagnosis_name = 'Pending' if not instance.event.complete else 'Undetermined'
+#             new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
+#             # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+#             # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+#             EventDiagnosis.objects.create(
+#                 event=instance.event, diagnosis=new_diagnosis, suspect=False, priority=1,
+#                 created_by=instance.created_by, modified_by=instance.modified_by)
 
 
 class SpeciesDiagnosis(PermissionsHistoryModel):
@@ -1026,6 +1026,19 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             diagnosis=diagnosis.id, location_species__event_location__event=event.id)
         if not same_speciesdiagnoses_diagnosis:
             EventDiagnosis.objects.filter(diagnosis=diagnosis.id, event=event.id).delete()
+
+        # Ensure at least one other EventDiagnosis exists for the parent Event after any EventDiagnosis deletions above,
+        # and if there are no EventDiagnoses left, create a new Pending or Undetermined EventDiagnosis,
+        # depending on the parent Event's complete status
+        evt_diags = EventDiagnosis.objects.filter(event=event.id)
+        if not len(evt_diags) > 0:
+            new_diagnosis_name = 'Pending' if not event.complete else 'Undetermined'
+            new_diagnosis = Diagnosis.objects.filter(name=new_diagnosis_name).first()
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(
+                event=event, diagnosis=new_diagnosis, suspect=False, priority=1,
+                created_by=self.created_by, modified_by=self.modified_by)
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
