@@ -3932,9 +3932,11 @@ class UserSerializer(serializers.ModelSerializer):
                 char_type_requirements_met = []
                 symbols = '~!@#$%^&*'
 
+                username = self.initial_data['username'] if 'username' in self.initial_data else self.instance.username
+
                 if len(password) < 12:
                     details.append("Password must be at least 12 characters long.")
-                if self.initial_data['username'] in password:
+                if username in password:
                     details.append("Password cannot contain username.")
                 if any(character.islower() for character in password):
                     char_type_requirements_met.append('lowercase')

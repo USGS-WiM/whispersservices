@@ -113,8 +113,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     filter_backends = (filters.OrderingFilter,)
 
     def perform_create(self, serializer):
-        sv = serializer.save(created_by=self.request.user, modified_by=self.request.user)
-        print(sv)
+        serializer.save(created_by=self.request.user, modified_by=self.request.user)
 
     def perform_update(self, serializer):
         serializer.save(modified_by=self.request.user)
@@ -1688,12 +1687,14 @@ class UserViewSet(HistoryViewSet):
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
             return UserSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
+        # for all non-admins, primary key requests can only be performed by the owner or their org admin or manager
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = User.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.password == obj.password or
+                            (user.organization.id == obj.organization.id and
+                             (user.role.is_partneradmin or user.role.is_partnermanager))):
                     return UserSerializer
             return UserPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer

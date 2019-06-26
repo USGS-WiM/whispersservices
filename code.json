@@ -3,7 +3,7 @@
     "name": "whispersservices_django",
     "organization": "U.S. Geological Survey",
     "description": "Web services for WHISPers (Wildlife Health Information Sharing Partnership event reporting system)",
-    "version": "v0.136.0",
+    "version": "v0.137.0",
     "status": "Beta",
 
     "permissions": {
