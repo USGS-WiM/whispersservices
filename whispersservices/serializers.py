@@ -898,12 +898,6 @@ class EventSerializer(serializers.ModelSerializer):
 
         event = Event.objects.create(**validated_data)
 
-###
-###
-###     Start refactoring here
-###
-###
-
         # create the child event_locations for this event
         if new_event_locations is not None:
             is_valid = True
@@ -982,7 +976,6 @@ class EventSerializer(serializers.ModelSerializer):
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
-        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending if in the list because it should never be submitted by the user
         [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
@@ -1697,12 +1690,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         event = Event.objects.create(**validated_data)
 
-###
-###
-###     Start refactoring here
-###
-###
-
         # create the child event_locations for this event
         if new_event_locations is not None:
             is_valid = True
@@ -1780,7 +1767,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
 
         # create the child event diagnoses for this event
         pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
-        undetermined = Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True)[0]
 
         # remove Pending if in the list because it should never be submitted by the user
         [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
@@ -2444,9 +2430,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # if this is a new EventLocation
         if not self.instance:
             # check if the Event is complete
-            if data['event'].complete:
+            if data['event'].complete and not FULL_EVENT_CHAIN_CREATE:
                 raise serializers.ValidationError(message_complete)
-            # otherwise the Event is not complete, so apply business rules
+            # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
                 # 1. Not every location needs a start date at initiation, but at least one location must.
                 # 2. Not every location needs a species at initiation, but at least one location must.
@@ -3096,9 +3082,9 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         # if this is a new LocationSpecies
         if not self.instance:
             #  check if the Event is complete
-            if data['event_location'].event.complete:
+            if data['event_location'].event.complete and not FULL_EVENT_CHAIN_CREATE:
                 raise serializers.ValidationError(message_complete)
-            # otherwise the Event is not complete, so apply business rules
+            # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
                 # 1. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
                 # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
@@ -3523,9 +3509,9 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # if this is a new SpeciesDiagnosis
         if not self.instance:
             # check if this is an update and if parent Event is complete
-            if data['location_species'].event_location.event.complete:
+            if data['location_species'].event_location.event.complete and not FULL_EVENT_CHAIN_CREATE:
                 raise serializers.ValidationError(message_complete)
-            # otherwise the Event is not complete, so apply business rules
+            # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
                 pass
                 # TODO: put business rules here
