@@ -113,10 +113,16 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
     filter_backends = (filters.OrderingFilter,)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, modified_by=self.request.user)
+        if self.basename != 'users':
+            serializer.save(created_by=self.request.user, modified_by=self.request.user)
+        else:
+            serializer.save()
 
     def perform_update(self, serializer):
-        serializer.save(modified_by=self.request.user)
+        if self.basename != 'users':
+            serializer.save(modified_by=self.request.user)
+        else:
+            serializer.save()
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
@@ -1683,7 +1689,7 @@ class UserViewSet(HistoryViewSet):
         user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
         if not user or not user.is_authenticated or user.role.is_public:
-            return UserPublicSerializer
+            return UserSerializer if self.action == 'create' else UserPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
             return UserSerializer

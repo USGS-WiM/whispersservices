@@ -14,7 +14,6 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: consider implementing type checking for nested objects
 # TODO: turn every ListField into a set to prevent errors caused by duplicates
 
-FULL_EVENT_CHAIN_CREATE = False
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
@@ -858,10 +857,9 @@ class EventSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        # set the global FULL_EVENT_CHAIN_CREATE variable to True in case there is an error somewhere in the chain
+        # set the FULL_EVENT_CHAIN_CREATE variable to True in case there is an error somewhere in the chain
         # and all objects created by this request before the error need to be deleted
-        global FULL_EVENT_CHAIN_CREATE
-        FULL_EVENT_CHAIN_CREATE = not FULL_EVENT_CHAIN_CREATE
+        FULL_EVENT_CHAIN_CREATE = True
 
         # pull out child event diagnoses list from the request
         new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
@@ -909,6 +907,7 @@ class EventSerializer(serializers.ModelSerializer):
                     event_location['event'] = event.id
                     event_location['created_by'] = event.created_by.id
                     event_location['modified_by'] = event.modified_by.id
+                    event_location['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
                     evt_loc_serializer = EventLocationSerializer(data=event_location)
                     if evt_loc_serializer.is_valid():
                         valid_data.append(evt_loc_serializer)
@@ -1186,12 +1185,12 @@ class EventSerializer(serializers.ModelSerializer):
         # pull out read and write collaborators ID lists from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
         else:
             new_read_user_ids_prelim = []
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
         else:
             new_write_user_ids = []
 
@@ -1650,10 +1649,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        # set the global FULL_EVENT_CHAIN_CREATE variable to True in case there is an error somewhere in the chain
+        # set the FULL_EVENT_CHAIN_CREATE variable to True in case there is an error somewhere in the chain
         # and all objects created by this request before the error need to be deleted
-        global FULL_EVENT_CHAIN_CREATE
-        FULL_EVENT_CHAIN_CREATE = not FULL_EVENT_CHAIN_CREATE
+        FULL_EVENT_CHAIN_CREATE = True
 
         # pull out child event diagnoses list from the request
         new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
@@ -1701,6 +1699,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     event_location['event'] = event.id
                     event_location['created_by'] = event.created_by.id
                     event_location['modified_by'] = event.modified_by.id
+                    event_location['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
                     evt_loc_serializer = EventLocationSerializer(data=event_location)
                     if evt_loc_serializer.is_valid():
                         valid_data.append(evt_loc_serializer)
@@ -1781,6 +1780,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     event_diagnosis['event'] = event.id
                     event_diagnosis['created_by'] = event.created_by.id
                     event_diagnosis['modified_by'] = event.modified_by.id
+                    event_diagnosis['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
                     evt_diag_serializer = EventDiagnosisSerializer(data=event_diagnosis)
                     if evt_diag_serializer.is_valid():
                         valid_data.append(evt_diag_serializer)
@@ -1974,12 +1974,12 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # pull out read and write collaborators ID lists from the request
         if 'new_read_collaborators' in validated_data:
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else None
+            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
         else:
             new_read_user_ids_prelim = set([])
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else None
+            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
         else:
             new_write_user_ids = set([])
 
@@ -2422,6 +2422,39 @@ class EventLocationSerializer(serializers.ModelSerializer):
     clinical_signs = serializers.CharField(write_only=True, required=False, allow_blank=True)
     comment = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
+    # find the centroid coordinates (lng/lat) for a state or equivalent
+    def search_geonames_adm1(self, adm1_name, country_code):
+        coords = None
+        geonames_endpoint = 'searchJSON'
+        gn = 'geonames'
+        lng = 'lng'
+        lat = 'lat'
+        geonames_params = {'name': adm1_name, 'featureCode': 'ADM1', 'country': country_code}
+        geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
+        gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
+        grj = gr.json()
+        if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
+            coords = {lng: grj[gn][0][lng], lat: grj[gn][0][lat]}
+        return coords
+
+    # find the centroid coordinates (lng/lat) for a county or equivalent
+    def search_geonames_adm2(self, adm2_name, adm1_name, adm1_code, country_code):
+        geonames_endpoint = 'searchJSON'
+        gn = 'geonames'
+        lng = 'lng'
+        lat = 'lat'
+        geonames_params = {'name': adm2_name, 'featureCode': 'ADM2'}
+        geonames_params.update({'adminCode1': adm1_code, 'country': country_code})
+        geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
+        gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
+        grj = gr.json()
+        if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
+            coords = {lng: grj[gn][0][lng], lat: grj[gn][0][lat]}
+        else:
+            # adm2 search failed so look up the adm1 coordinates as a fallback
+            coords = self.search_geonames_adm1(adm1_name, country_code)
+        return coords
+
     def validate(self, data):
 
         message_complete = "Locations from a complete event may not be changed"
@@ -2430,7 +2463,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # if this is a new EventLocation
         if not self.instance:
             # check if the Event is complete
-            if data['event'].complete and not FULL_EVENT_CHAIN_CREATE:
+            if data['event'].complete and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
@@ -2760,9 +2793,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
         fws_flyway_service_responsive = True if 'features' in r.json() else False
         if fws_flyway_service_responsive:
             territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
-            geonames_endpoint = 'searchJSON'
-            if (validated_data['country'].id == Country.objects.filter(abbreviation='USA').first().id
-                    and validated_data['administrative_level_one'].abbreviation not in territories):
+            country = validated_data['country']
+            admin_l1 = validated_data['administrative_level_one']
+            admin_l2 = validated_data['administrative_level_two']
+            if (country.id == Country.objects.filter(abbreviation='USA').first().id
+                    and admin_l1.abbreviation not in territories):
+                geonames_endpoint = 'searchJSON'
                 params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false',
                           'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'}
                 # if lat/lng is present, use it to get the intersecting flyway
@@ -2771,30 +2807,27 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     geom = str(validated_data['longitude']) + ',' + str(validated_data['latitude'])
                     params.update({'geometry': geom})
                 # otherwise if county is present, look up the county centroid and use it to get the intersecting flyway
-                # TODO: ensure this is finding county from the correct state from the correct country, and test geonames response contains expected content
-                elif validated_data['administrative_level_two'] and confirm_geonames_api_responsive(geonames_endpoint):
-                    geonames_params = {'name': validated_data['administrative_level_two'].name, 'featureCode': 'ADM2'}
-                    geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
-                    gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
-                    params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                elif admin_l2 and confirm_geonames_api_responsive(geonames_endpoint):
+                    coords = self.search_geonames_adm2(
+                        admin_l2.name, admin_l1.name, admin_l1.abbreviation, country.abbreviation)
+                    if coords:
+                        params.update({'geometry': coords['lng'] + ',' + coords['lat']})
                 # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info, flyway
                 # cannot be determined, otherwise look up the state centroid, then use it to get the intersecting flyway
-                # TODO: ensure this is finding state from the correct country, and test geonames response contains expected content
-                elif (validated_data['administrative_level_one'].abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']
+                elif (admin_l1.abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']
                       and confirm_geonames_api_responsive(geonames_endpoint)):
-                    geonames_params = {'adminCode1': validated_data['administrative_level_one'], 'maxRows': 1}
-                    geonames_params.update({'username': GEONAMES_USERNAME})
-                    gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
-                    params.update({'geometry': gr.json()['geonames'][0]['lng'] + ',' + gr.json()['geonames'][0]['lat']})
+                    coords = self.search_geonames_adm1(admin_l1.name, country.abbreviation)
+                    if coords:
+                        params.update({'geometry': coords['lng'] + ',' + coords['lat']})
                 # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
-                elif validated_data['administrative_level_one'].abbreviation == 'HI':
+                elif admin_l1.abbreviation == 'HI':
                     flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
                 if flyway is None and 'geometry' in params:
                     r = requests.get(FLYWAYS_API, params=params, verify=settings.SSL_CERT)
-                    r_features = r.json()['features']
-                    if len(r_features) > 0:
-                        flyway_name = r_features[0]['attributes']['NAME'].replace(' Flyway', '')
+                    rj = r.json()
+                    if 'features' in rj and len(rj['features']) > 0:
+                        flyway_name = rj['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                         flyway = Flyway.objects.filter(name__contains=flyway_name).first()
 
         # create the event_location and return object for use in event_location_contacts object
@@ -2810,6 +2843,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     new_location_spec['event_location'] = evt_location.id
                     new_location_spec['created_by'] = evt_location.created_by.id
                     new_location_spec['modified_by'] = evt_location.modified_by.id
+                    new_location_spec['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
                     loc_spec_serializer = LocationSpeciesSerializer(data=new_location_spec)
                     if loc_spec_serializer.is_valid():
                         valid_data.append(loc_spec_serializer)
@@ -2821,7 +2855,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 for item in valid_data:
                     item.save()
             else:
-                if FULL_EVENT_CHAIN_CREATE:
+                if self.initial_data['FULL_EVENT_CHAIN_CREATE']:
                     # delete the parent event, which will also delete this event location thru a cascade
                     evt_location.event.delete()
                 else:
@@ -3082,7 +3116,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         # if this is a new LocationSpecies
         if not self.instance:
             #  check if the Event is complete
-            if data['event_location'].event.complete and not FULL_EVENT_CHAIN_CREATE:
+            if data['event_location'].event.complete and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
@@ -3175,6 +3209,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                         spec_diag['location_species'] = location_species.id
                         spec_diag['created_by'] = location_species.created_by.id
                         spec_diag['modified_by'] = location_species.modified_by.id
+                        spec_diag['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
                         spec_diag_serializer = SpeciesDiagnosisSerializer(data=spec_diag)
                         if spec_diag_serializer.is_valid():
                             valid_data.append(spec_diag_serializer)
@@ -3186,7 +3221,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 for item in valid_data:
                     item.save()
             else:
-                if FULL_EVENT_CHAIN_CREATE:
+                if self.initial_data['FULL_EVENT_CHAIN_CREATE']:
                     # delete the parent event, which will also delete this location species thru a cascade
                     location_species.event_location.event.delete()
                     # content_type = ContentType.objects.get_for_model(self.Meta.model).model
@@ -3509,7 +3544,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         # if this is a new SpeciesDiagnosis
         if not self.instance:
             # check if this is an update and if parent Event is complete
-            if data['location_species'].event_location.event.complete and not FULL_EVENT_CHAIN_CREATE:
+            if (data['location_species'].event_location.event.complete
+                    and not self.initial_data['FULL_EVENT_CHAIN_CREATE']):
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
@@ -3947,8 +3983,6 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
 
-        created_by = validated_data.pop('created_by', None)
-        modified_by = validated_data.pop('modified_by', None)
         password = validated_data['password']
         message = validated_data.pop('message', None)
 
@@ -3989,8 +4023,6 @@ class UserSerializer(serializers.ModelSerializer):
         user = User.objects.create(**validated_data)
         requesting_user = user if not requesting_user.is_authenticated else requesting_user
 
-        user.created_by = created_by or requesting_user
-        user.modified_by = modified_by or requesting_user
         user.set_password(password)
         user.save()
 
