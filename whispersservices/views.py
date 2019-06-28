@@ -2382,7 +2382,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         if query_params:
             ordered_query_params = OrderedDict(sorted(query_params.items()))
             ordered_query_params_static_keys = ordered_query_params.copy().keys()
-            not_search_params = ['no_page', 'page', 'format', 'slim']
+            not_search_params = ['no_page', 'page', 'page_size', 'format', 'slim', 'ordering']
             for param in ordered_query_params_static_keys:
                 if param in not_search_params:
                     del ordered_query_params[param]
