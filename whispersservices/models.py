@@ -79,11 +79,14 @@ class PermissionsHistoryModel(HistoryModel):
         # Only admins or the creator or a manager/admin member of the creator's organization can update
         if not request or not request.user.is_authenticated:
             return False
-        else:
-            return (request.user.role.is_superadmin or request.user.role.is_admin
+        elif (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
                     or (request.user.organization.id == self.created_by.organization.id
-                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
+                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            return True
+        else:
+            write_collaborators= list(User.objects.filter(writeevents__in=[self.id]).values_list('id', flat=True))
+            return True if request.user.id in write_collaborators else False
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or a manager/admin member of the creator's organization can delete

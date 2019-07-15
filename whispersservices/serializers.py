@@ -989,6 +989,7 @@ class EventSerializer(serializers.ModelSerializer):
                     event_diagnosis['event'] = event.id
                     event_diagnosis['created_by'] = event.created_by.id
                     event_diagnosis['modified_by'] = event.modified_by.id
+                    event_diagnosis['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
                     evt_diag_serializer = EventDiagnosisSerializer(data=event_diagnosis)
                     if evt_diag_serializer.is_valid():
                         valid_data.append(evt_diag_serializer)
@@ -2081,11 +2082,17 @@ class EventEventGroupPublicSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
+        message_complete = "EventEventGroup for a complete event may not be changed"
+        message_complete += " unless the event is first re-opened by the event owner or an administrator."
+
         # TODO: determine if this is true
-        if data['event'].complete:
-            message = "EventEventGroup for a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
+        # if this is a new EventEventGroup check if the Event is complete
+        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE'] and data['event'].complete:
+            raise serializers.ValidationError(message_complete)
+
+        # else this is an existing EventEventGroup, check if parent Event is complete
+        elif self.instance and self.instance.event.complete:
+            raise serializers.ValidationError(message_complete)
 
         return data
 
@@ -2333,10 +2340,16 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if data['event'].complete:
-            message = "Organizations from a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
+        message_complete = "Organizations from a complete event may not be changed"
+        message_complete += " unless the event is first re-opened by the event owner or an administrator."
+
+        # if this is a new EventOrganization check if the Event is complete
+        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE'] and data['event'].complete:
+            raise serializers.ValidationError(message_complete)
+
+        # else this is an existing EventOrganization, check if parent Event is complete
+        elif self.instance and self.instance.event.complete:
+            raise serializers.ValidationError(message_complete)
 
         return data
 
@@ -3417,7 +3430,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
-        if not self.instance:
+        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
             # check if the Event is complete
             if data['event'].complete:
                 raise serializers.ValidationError(message_complete)
