@@ -2087,7 +2087,7 @@ class EventEventGroupPublicSerializer(serializers.ModelSerializer):
 
         # TODO: determine if this is true
         # if this is a new EventEventGroup check if the Event is complete
-        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE'] and data['event'].complete:
+        if not self.instance and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data and data['event'].complete:
             raise serializers.ValidationError(message_complete)
 
         # else this is an existing EventEventGroup, check if parent Event is complete
@@ -2344,7 +2344,7 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
         # if this is a new EventOrganization check if the Event is complete
-        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE'] and data['event'].complete:
+        if not self.instance and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data and data['event'].complete:
             raise serializers.ValidationError(message_complete)
 
         # else this is an existing EventOrganization, check if parent Event is complete
@@ -2476,7 +2476,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         # if this is a new EventLocation
         if not self.instance:
             # check if the Event is complete
-            if data['event'].complete and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
+            if data['event'].complete and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data:
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
@@ -3129,7 +3129,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         # if this is a new LocationSpecies
         if not self.instance:
             #  check if the Event is complete
-            if data['event_location'].event.complete and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
+            if data['event_location'].event.complete and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data:
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
@@ -3430,7 +3430,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
-        if not self.instance and not self.initial_data['FULL_EVENT_CHAIN_CREATE']:
+        if not self.instance and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data:
             # check if the Event is complete
             if data['event'].complete:
                 raise serializers.ValidationError(message_complete)
@@ -3558,7 +3558,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         if not self.instance:
             # check if this is an update and if parent Event is complete
             if (data['location_species'].event_location.event.complete
-                    and not self.initial_data['FULL_EVENT_CHAIN_CREATE']):
+                    and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data):
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
