@@ -271,7 +271,7 @@ class Event(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_event"
-        ordering = ['id']
+        ordering = ['-id']
         # TODO: 'unique together' fields
         # The event record must be uniquely identified by the submission agency, event date, and location.
 

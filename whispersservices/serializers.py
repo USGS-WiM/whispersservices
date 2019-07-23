@@ -2856,7 +2856,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     new_location_spec['event_location'] = evt_location.id
                     new_location_spec['created_by'] = evt_location.created_by.id
                     new_location_spec['modified_by'] = evt_location.modified_by.id
-                    new_location_spec['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
+                    if 'FULL_EVENT_CHAIN_CREATE' in self.initial_data:
+                        new_location_spec['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
                     loc_spec_serializer = LocationSpeciesSerializer(data=new_location_spec)
                     if loc_spec_serializer.is_valid():
                         valid_data.append(loc_spec_serializer)
@@ -3200,6 +3201,68 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
             # check if parent Event is complete
             if self.instance.event_location.event.complete:
                 raise serializers.ValidationError(message_complete)
+            else:
+                # 1. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
+                # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
+                #    estimated_sick, and estimated_dead for at least one species in the event
+                #    at the time of event initiation. (sick + dead + estimated_sick + estimated_dead >= 1)
+                # 3. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
+                # 4. If present, estimated dead must be higher than known dead (estimated_dead > dead).
+                min_species_count = False
+                pop_is_valid = True
+                est_sick_is_valid = True
+                est_dead_is_valid = True
+                details = []
+
+                if self.instance.population_count:
+                    dead_count = 0
+                    sick_count = 0
+                    if self.instance.dead_count_estimated or self.instance.dead_count:
+                        dead_count = max(self.instance.dead_count_estimated or 0, self.instance.dead_count or 0)
+                    if self.instance.sick_count_estimated or self.instance.sick_count:
+                        sick_count = max(self.instance.sick_count_estimated or 0, self.instance.sick_count or 0)
+                    if self.instance.population_count < dead_count + sick_count:
+                        pop_is_valid = False
+
+                if (self.instance.sick_count_estimated and self.instance.sick_count
+                        and not self.instance.sick_count_estimated > self.instance.sick_count):
+                    est_sick_is_valid = False
+                if (self.instance.dead_count_estimated and self.instance.dead_count
+                        and not self.instance.dead_count_estimated > self.instance.dead_count):
+                    est_dead_is_valid = False
+                mm = EventType.objects.filter(name='Mortality/Morbidity').first()
+                mm_locspecs = None
+                if self.instance.event_location.event.event_type.id == mm.id:
+                    locspecs = LocationSpecies.objects.filter(event_location=self.instance.event_location.id)
+                    mm_locspecs = [locspec for locspec in locspecs if
+                                   locspec.event_location.event.event_type.id == mm.id]
+                    if mm_locspecs is None:
+                        if self.instance.dead_count_estimated and self.instance.dead_count_estimated > 0:
+                            min_species_count = True
+                        elif self.instance.dead_count and self.instance.dead_count > 0:
+                            min_species_count = True
+                        elif self.instance.sick_count_estimated and self.instance.sick_count_estimated > 0:
+                            min_species_count = True
+                        elif self.instance.sick_count and self.instance.sick_count > 0:
+                            min_species_count = True
+
+                if not pop_is_valid:
+                    message = "New location_species population_count cannot be less than the sum of dead_count"
+                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
+                    details.append(message)
+                if (self.instance.event_location.event.event_type.id == mm.id
+                        and mm_locspecs is None and not min_species_count):
+                    message = "For Mortality/Morbidity events,"
+                    message += " at least one new_location_species requires at least one species"
+                    message += " count in any of the following fields:"
+                    message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                    details.append(message)
+                if not est_sick_is_valid:
+                    details.append("Estimated sick count must always be more than known sick count.")
+                if not est_dead_is_valid:
+                    details.append("Estimated dead count must always be more than known dead count.")
+                if details:
+                    raise serializers.ValidationError(details)
 
         return data
 
@@ -3222,7 +3285,8 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                         spec_diag['location_species'] = location_species.id
                         spec_diag['created_by'] = location_species.created_by.id
                         spec_diag['modified_by'] = location_species.modified_by.id
-                        spec_diag['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
+                        if 'FULL_EVENT_CHAIN_CREATE' in self.initial_data:
+                            spec_diag['FULL_EVENT_CHAIN_CREATE'] = self.initial_data['FULL_EVENT_CHAIN_CREATE']
                         spec_diag_serializer = SpeciesDiagnosisSerializer(data=spec_diag)
                         if spec_diag_serializer.is_valid():
                             valid_data.append(spec_diag_serializer)
@@ -3264,65 +3328,6 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         instance.age_bias = validated_data.get('age_bias', instance.age_bias)
         instance.sex_bias = validated_data.get('sex_bias', instance.sex_bias)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
-
-        # 1. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
-        # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-        #    and estimated_dead for at least one species in the event at the time of event initiation.
-        #    (sick + dead + estimated_sick + estimated_dead >= 1)
-        # 3. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
-        # 4. If present, estimated dead must be higher than known dead (estimated_dead > dead).
-        min_species_count = False
-        pop_is_valid = True
-        est_sick_is_valid = True
-        est_dead_is_valid = True
-        details = []
-
-        if instance.population_count:
-            dead_count = 0
-            sick_count = 0
-            if instance.dead_count_estimated or instance.dead_count:
-                dead_count = max(instance.dead_count_estimated or 0, instance.dead_count or 0)
-            if instance.sick_count_estimated or instance.sick_count:
-                sick_count = max(instance.sick_count_estimated or 0, instance.sick_count or 0)
-            if instance.population_count < dead_count + sick_count:
-                pop_is_valid = False
-
-        if (instance.sick_count_estimated and instance.sick_count
-                and not instance.sick_count_estimated > instance.sick_count):
-            est_sick_is_valid = False
-        if (instance.dead_count_estimated and instance.dead_count
-                and not instance.dead_count_estimated > instance.dead_count):
-            est_dead_is_valid = False
-        mm = EventType.objects.filter(name='Mortality/Morbidity').first()
-        mm_locspecs = None
-        if instance.event_location.event.event_type.id == mm.id:
-            locspecs = LocationSpecies.objects.filter(event_location=instance.event_location.id)
-            mm_locspecs = [locspec for locspec in locspecs if locspec.event_location.event.event_type.id == mm.id]
-            if mm_locspecs is None:
-                if instance.dead_count_estimated and instance.dead_count_estimated > 0:
-                    min_species_count = True
-                elif instance.dead_count and instance.dead_count > 0:
-                    min_species_count = True
-                elif instance.sick_count_estimated and instance.sick_count_estimated > 0:
-                    min_species_count = True
-                elif instance.sick_count and instance.sick_count > 0:
-                    min_species_count = True
-
-        if not pop_is_valid:
-            message = "New location_species population_count cannot be less than the sum of dead_count"
-            message += " and sick_count (where those counts are the maximum of the estimated or known count)."
-            details.append(message)
-        if instance.event_location.event.event_type.id == mm.id and mm_locspecs is None and not min_species_count:
-            message = "For Mortality/Morbidity events, at least one new_location_species requires at least one species"
-            message += " count in any of the following fields:"
-            message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-            details.append(message)
-        if not est_sick_is_valid:
-            details.append("Estimated sick count must always be more than known sick count.")
-        if not est_dead_is_valid:
-            details.append("Estimated dead count must always be more than known dead count.")
-        if details:
-            raise serializers.ValidationError(details)
 
         # calculate the priority value:
         instance.priority = calculate_priority_location_species(instance)
@@ -3425,14 +3430,13 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         message_complete = "Diagnosis from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
-        diagnosis = None
         eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
-        if not self.instance and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data:
+        if not self.instance:
             # check if the Event is complete
-            if data['event'].complete:
+            if data['event'].complete and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data:
                 raise serializers.ValidationError(message_complete)
 
             else:
@@ -3562,14 +3566,90 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
-                pass
-                # TODO: put business rules here
+                suspect = data['suspect'] if 'suspect' in data and data['suspect'] else None
+                tested_count = data['tested_count'] if 'tested_count' in data and data[
+                    'tested_count'] is not None else None
+                suspect_count = data['suspect_count'] if 'suspect_count' in data and data[
+                    'suspect_count'] is not None else None
+                pos_count = data['positive_count'] if 'positive_count' in data and data[
+                    'positive_count'] is not None else None
+
+                # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
+                # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
+                # If 3 is selected user must provide a lab.
+                if suspect and 'basis' in data and data['basis'] in [1, 2, 4]:
+                    message = "The basis of diagnosis can only be 'Necropsy and/or ancillary tests performed"
+                    message += " at a diagnostic laboratory' when the diagnosis is non-suspect."
+                    raise serializers.ValidationError(message)
+
+                if tested_count is not None:
+                    # Within each species diagnosis, number_with_diagnosis =< number_tested.
+                    if ('diagnosis_count' in data and data['diagnosis_count'] is not None
+                            and not data['diagnosis_count'] <= tested_count):
+                        raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
+                    # TODO: temporarily disabling the following three rule per instructions from cooperator (November 2018)
+                    # Within each species diagnosis, number_positive+number_suspect =< number_tested
+                    # if pos_count and suspect_count and not (pos_count + suspect_count <= tested_count):
+                    #     message = "The positive count and suspect count together cannot be more than the diagnosed count."
+                    #     raise serializers.ValidationError(message)
+                    # elif pos_count and not (pos_count <= tested_count):
+                    #     message = "The positive count cannot be more than the diagnosed count."
+                    #     raise serializers.ValidationError(message)
+                    # elif suspect_count and not (suspect_count <= tested_count):
+                    #     message = "The suspect count together cannot be more than the diagnosed count."
+                    #     raise serializers.ValidationError(message)
+                # Within each species diagnosis, number_with_diagnosis =< number_tested.
+                # here, tested_count was not submitted, so if diagnosis_count was submitted and is not null, raise an error
+                # elif 'diagnosis_count' in data and data['diagnosis_count'] is not None:
+                #     raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
+
+                # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
+                # else diagnosis is suspect (suspect=True) and so number_positive must be zero
+                # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
+                # Only allowed to enter >0 if provide laboratory name.
+                # if not suspect and (not pos_count or pos_count > 0):
+                #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
+
+                # TODO: temporarily disabling this rule
+                # if 'pooled' in data and data['pooled'] and tested_count <= 1:
+                #     raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
+
+                # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
+                # For new data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
+                # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
 
         # else this is an existing SpeciesDiagnosis
         elif self.instance:
             # check if parent Event is complete
             if self.instance.location_species.event_location.event.complete:
                 raise serializers.ValidationError(message_complete)
+            else:
+                # for positive_count, only allowed to enter >0 if provide laboratory name.
+                if self.instance.positive_count and self.instance.positive_count > 0:
+                    # get the old (current) org ID list for this Species Diagnosis
+                    old_org_ids = list(SpeciesDiagnosisOrganization.objects.filter(
+                        species_diagnosis=self.instance.id).values_list('organization_id', flat=True))
+
+                    # pull out org ID list from the request
+                    new_org_ids = data['new_species_diagnosis_organizations']
+
+                    if len(old_org_ids) == 0 or len(new_org_ids) == 0:
+                        message = "The positive count cannot be greater than zero"
+                        message += " if there is no laboratory for this diagnosis."
+                        raise serializers.ValidationError(message)
+
+                # a diagnosis can only be used once for a location-species-labID combination
+                loc_specdiags = SpeciesDiagnosis.objects.filter(
+                    location_species=self.instance.location_species
+                ).values('id', 'diagnosis').exclude(id=self.instance.id)
+                if self.instance.diagnosis.id in [specdiag['diagnosis'] for specdiag in loc_specdiags]:
+                    loc_specdiags_ids = [specdiag['id'] for specdiag in loc_specdiags]
+                    loc_specdiags_labs_ids = set(SpeciesDiagnosisOrganization.objects.filter(
+                        species_diagnosis__in=loc_specdiags_ids).values_list('id', flat=True))
+                    my_labs_ids = [org.id for org in self.instance.organizations.all()]
+                    if len([lab_id for lab_id in my_labs_ids if lab_id in loc_specdiags_labs_ids]) > 0:
+                        message = "A diagnosis can only be used once for a location-species-laboratory combination."
+                        raise serializers.ValidationError(message)
 
         if data['new_species_diagnosis_organizations'] is not None:
             for org_id in data['new_species_diagnosis_organizations']:
@@ -3581,58 +3661,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         new_species_diagnosis_organizations = validated_data.pop('new_species_diagnosis_organizations', None)
-
-        suspect = validated_data['suspect'] if 'suspect' in validated_data and validated_data['suspect'] else None
-        tested_count = validated_data['tested_count'] if 'tested_count' in validated_data and validated_data[
-            'tested_count'] is not None else None
-        suspect_count = validated_data['suspect_count'] if 'suspect_count' in validated_data and validated_data[
-            'suspect_count'] is not None else None
-        pos_count = validated_data['positive_count'] if 'positive_count' in validated_data and validated_data[
-            'positive_count'] is not None else None
-
-        # Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.
-        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
-        # If 3 is selected user must provide a lab.
-        if suspect and 'basis' in validated_data and validated_data['basis'] in [1, 2, 4]:
-            message = "The basis of diagnosis can only be 'Necropsy and/or ancillary tests performed"
-            message += " at a diagnostic laboratory' when the diagnosis is non-suspect."
-            raise serializers.ValidationError(message)
-
-        if tested_count is not None:
-            # Within each species diagnosis, number_with_diagnosis =< number_tested.
-            if ('diagnosis_count' in validated_data and validated_data['diagnosis_count'] is not None
-                    and not validated_data['diagnosis_count'] <= tested_count):
-                raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
-            # TODO: temporarily disabling the following three rule per instructions from cooperator (November 2018)
-            # Within each species diagnosis, number_positive+number_suspect =< number_tested
-            # if pos_count and suspect_count and not (pos_count + suspect_count <= tested_count):
-            #     message = "The positive count and suspect count together cannot be more than the diagnosed count."
-            #     raise serializers.ValidationError(message)
-            # elif pos_count and not (pos_count <= tested_count):
-            #     message = "The positive count cannot be more than the diagnosed count."
-            #     raise serializers.ValidationError(message)
-            # elif suspect_count and not (suspect_count <= tested_count):
-            #     message = "The suspect count together cannot be more than the diagnosed count."
-            #     raise serializers.ValidationError(message)
-        # Within each species diagnosis, number_with_diagnosis =< number_tested.
-        # here, tested_count was not submitted, so if diagnosis_count was submitted and is not null, raise an error
-        # elif 'diagnosis_count' in validated_data and validated_data['diagnosis_count'] is not None:
-        #     raise serializers.ValidationError("The diagnosed count cannot be more than the tested count.")
-
-        # If diagnosis is non-suspect (suspect=False), then number_positive must be null or greater than zero,
-        # else diagnosis is suspect (suspect=True) and so number_positive must be zero
-        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
-        # Only allowed to enter >0 if provide laboratory name.
-        # if not suspect and (not pos_count or pos_count > 0):
-        #     raise serializers.ValidationError("The positive count cannot be zero when the diagnosis is non-suspect.")
-
-        # TODO: temporarily disabling this rule
-        # if 'pooled' in validated_data and validated_data['pooled'] and tested_count <= 1:
-        #     raise serializers.ValidationError("A diagnosis can only be pooled if the tested count is greater than one.")
-
-        # TODO: following rule would only work on update due to M:N relate to orgs, so on-hold until further notice
-        # For new validated_data, if no Lab provided, then suspect = True; although all "Pending" and "Undetermined"
-        # diagnosis must be confirmed (suspect = False), even if no lab OR some other way of coding this such that we
 
         species_diagnosis = SpeciesDiagnosis.objects.create(**validated_data)
 
@@ -3671,23 +3699,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         # pull out org ID list from the request
         new_org_ids = validated_data.pop('new_species_diagnosis_organizations', [])
-
-        # for positive_count, only allowed to enter >0 if provide laboratory name.
-        if instance.positive_count and instance.positive_count > 0 and (len(old_org_ids) == 0 or len(new_org_ids) == 0):
-            message = "The positive count cannot be greater than zero if there is no laboratory for this diagnosis."
-            raise serializers.ValidationError(message)
-
-        # a diagnosis can only be used once for a location-species-labID combination
-        loc_specdiags = SpeciesDiagnosis.objects.filter(
-            location_species=instance.location_species).values('id', 'diagnosis').exclude(id=instance.id)
-        if instance.diagnosis.id in [specdiag['diagnosis'] for specdiag in loc_specdiags]:
-            loc_specdiags_ids = [specdiag['id'] for specdiag in loc_specdiags]
-            loc_specdiags_labs_ids = set(SpeciesDiagnosisOrganization.objects.filter(
-                species_diagnosis__in=loc_specdiags_ids).values_list('id', flat=True))
-            my_labs_ids = [org.id for org in instance.organizations.all()]
-            if len([lab_id for lab_id in my_labs_ids if lab_id in loc_specdiags_labs_ids]) > 0:
-                message = "A diagnosis can only be used once for a location-species-laboratory combination."
-                raise serializers.ValidationError(message)
 
         instance.save()
 

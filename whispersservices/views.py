@@ -2225,9 +2225,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             if ordering:
                 queryset = queryset.order_by(*ordering)
             else:
-                queryset = queryset.order_by('id')
+                queryset = queryset.order_by('-id')
         else:
-            queryset = queryset.order_by('id')
+            queryset = queryset.order_by('-id')
 
         user = get_request_user(self.request)
         no_page = True if self.request and 'no_page' in self.request.query_params else False
