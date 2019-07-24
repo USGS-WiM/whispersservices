@@ -3651,7 +3651,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                         message = "A diagnosis can only be used once for a location-species-laboratory combination."
                         raise serializers.ValidationError(message)
 
-        if data['new_species_diagnosis_organizations'] is not None:
+        if 'new_species_diagnosis_organizations' in data and data['new_species_diagnosis_organizations'] is not None:
             for org_id in data['new_species_diagnosis_organizations']:
                 org = Organization.objects.filter(id=org_id).first()
                 if org and not org.laboratory:
