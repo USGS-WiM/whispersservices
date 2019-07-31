@@ -2480,8 +2480,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(message_complete)
             # otherwise the Event is not complete (or complete but created in this chain), so apply business rules
             else:
-                # 1. Not every location needs a start date at initiation, but at least one location must.
-                # 2. Not every location needs a species at initiation, but at least one location must.
                 # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
                 # 4. For morbidity/mortality events, there must be at least one number between sick, dead,
                 #    estimated_sick, and estimated_dead for at least one species in the event
@@ -2505,10 +2503,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 latlng_matches_admin_21 = True
                 comments_is_valid = []
                 required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
-                min_start_date = False
                 start_date_is_valid = True
                 end_date_is_valid = True
-                min_location_species = False
                 min_species_count = False
                 pop_is_valid = []
                 est_sick_is_valid = True
@@ -2692,10 +2688,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
                     message += " the following types: Site description, History, Environmental factors, Clinical signs"
                     details.append(message)
-                if not min_start_date:
-                    details.append("start_date is required for at least one new event_location.")
-                if not min_location_species:
-                    details.append("Each new_event_location requires at least one new_location_species.")
                 if False in pop_is_valid:
                     message = "new_location_species population_count cannot be less than the sum of dead_count"
                     message += " and sick_count (where those counts are the maximum of the estimated or known count)."
