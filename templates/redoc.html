@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WHISPers Services Documentation</title>
+    <!-- needed for adaptive design -->
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+    <!-- ReDoc doesn't change outer page styles -->
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="background-color: #f7f7f9;">
+      {% if user.is_active %}
+        <span>Welcome, {{ user.first_name }} {{ user.last_name }}!</span>
+        <span>You are viewing the API for
+        {% if user.role.is_superadmin or user.role.is_admin %}
+            Administrators
+        {% elif user.role.is_partneradmin or user.role.is_partnermanager or user.role.is_partner %}
+            Partner Users
+        {% else %}
+            Public Users
+        {% endif %}
+        </span>
+        <span><a href="/api-auth/logout/?next=/redocs/">Log out</a></span>
+        {% else %}
+          <span>Welcome!</span>
+          <span>You are viewing the API for Public Users</span>
+          <span><a href="/api-auth/login/?next=/redocs/">Log in</a></span>
+        {% endif %}
+    </div>
+    <redoc spec-url='{% url schema_url %}'></redoc>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"> </script>
+  </body>
+</html>

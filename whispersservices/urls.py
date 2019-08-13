@@ -1,7 +1,10 @@
+from django.urls import path
 from django.conf.urls import url, include
+from django.contrib.auth import views as auth_views
+from django.views.generic.base import TemplateView
 from whispersservices import views
 from rest_framework.routers import DefaultRouter
-from rest_framework.documentation import include_docs_urls
+from rest_framework.schemas import get_schema_view
 
 
 router = DefaultRouter()
@@ -58,6 +61,12 @@ router.register(r'searches', views.SearchViewSet, 'searches')
 urlpatterns = [
     url(r'^', include(router.urls)),
     url(r'^api-auth/', include('rest_framework.urls', namespace='rest_framework')),
+    url(r'^login/$', auth_views.LoginView.as_view(template_name='rest_framework/login.html'), name='login'),
+    url(r'^logout/$', auth_views.LogoutView.as_view(), name='logout'),
+    path('openapi/', get_schema_view(title="WHISPersServices", description="API for WHISPers"), name='openapi-schema'),
+    path('docs/', TemplateView.as_view(template_name='swagger-ui.html',
+                                             extra_context={'schema_url': 'openapi-schema'}), name='swagger-ui'),
+    path('redocs/', TemplateView.as_view(template_name='redoc.html',
+                                        extra_context={'schema_url': 'openapi-schema'}), name='redoc'),
     url(r'^auth/$', views.AuthView.as_view(), name='authenticate'),
-    url(r'^docs/', include_docs_urls(title='WHISPers API', authentication_classes=())),
 ]
