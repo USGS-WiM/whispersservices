@@ -8,6 +8,7 @@ from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
 from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
 from rest_framework.exceptions import PermissionDenied, APIException, NotFound
@@ -1654,7 +1655,7 @@ class UserViewSet(HistoryViewSet):
         message = "Please add a new user:"
         return construct_email(request.data or '', user_email, message)
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):
         if isinstance(request.data, list):
             found = []

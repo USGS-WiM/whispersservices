@@ -69,7 +69,7 @@ class PermissionsHistoryModel(HistoryModel):
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
         # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
         # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
-        if not request or not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
@@ -77,7 +77,7 @@ class PermissionsHistoryModel(HistoryModel):
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or a manager/admin member of the creator's organization can update
-        if not request or not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
@@ -85,12 +85,12 @@ class PermissionsHistoryModel(HistoryModel):
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
-            write_collaborators= list(User.objects.filter(writeevents__in=[self.id]).values_list('id', flat=True))
+            write_collaborators = list(User.objects.filter(writeevents__in=[self.id]).values_list('id', flat=True))
             return True if request.user.id in write_collaborators else False
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
-        if not request or not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
@@ -137,7 +137,7 @@ class AdminPermissionsHistoryModel(HistoryModel):
 
     def has_object_write_permission(self, request):
         # Only superadmins or admins can write (create, update, delete)
-        if not request or not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         else:
             return request.user.role.is_superadmin or request.user.role.is_admin
@@ -1242,13 +1242,17 @@ class User(AbstractUser):
 
     @staticmethod
     def has_write_permission(request):
-        # Anyone can 'write'
-        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        # Prevent unsafe methods from appearing in the schema view/docs
+        return False
+
+    @staticmethod
+    def has_create_permission(request):
+        # Anyone can create a new user
         return True
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or an admin member of the creator's organization can update
-        if not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
@@ -1256,7 +1260,7 @@ class User(AbstractUser):
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or an admin member of the creator's organization can delete
-        if not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
@@ -1457,43 +1461,10 @@ class ContactType(AdminPermissionsHistoryModel):
         ordering = ['id']
 
 
-class Search(HistoryModel):
+class Search(PermissionsHistoryModel):
     """
     Searches
     """
-
-    @staticmethod
-    def has_read_permission(request):
-        # Only admins or the creator can 'read' (list)
-        # but this cannot be controlled here in this model; it can only be controlled in the views using this model
-        return True
-
-    def has_object_read_permission(self, request):
-        # Only admins or the creator can 'read' (retrieve)
-        if not request.user.is_authenticated:
-            return False
-        else:
-            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-
-    @staticmethod
-    def has_write_permission(request):
-        # Anyone can 'write'
-        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
-        return True
-
-    def has_object_update_permission(self, request):
-        # Only admins or the creator can update
-        if not request.user.is_authenticated:
-            return False
-        else:
-            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
-
-    def has_object_destroy_permission(self, request):
-        # Only superadmins or the creator can delete
-        if not request.user.is_authenticated:
-            return False
-        else:
-            return request.user.role.is_superadmin or request.user.role.is_admin or request.user == self.created_by
 
     name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of this search')
     data = JSONField(blank=True, help_text='A JSON object containing the search data')
