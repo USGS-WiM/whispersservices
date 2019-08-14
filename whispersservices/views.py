@@ -13,9 +13,11 @@ from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
 from rest_framework.exceptions import PermissionDenied, APIException, NotFound
 from rest_framework.settings import api_settings
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_csv import renderers as csv_renderers
 from whispersservices.serializers import *
 from whispersservices.models import *
+from whispersservices.filters import *
 from whispersservices.permissions import *
 from whispersservices.pagination import *
 from whispersservices.authentication import *
@@ -111,7 +113,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     permission_classes = (DRYPermissions,)
     pagination_class = StandardResultsSetPagination
-    filter_backends = (filters.OrderingFilter,)
+    filter_backends = [DjangoFilterBackend]  # (DjangoFilterBackend, filters.OrderingFilter,)
 
     def perform_create(self, serializer):
         if self.basename != 'users':
@@ -140,7 +142,7 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
 
     pagination_class = StandardResultsSetPagination
-    filter_backends = (filters.OrderingFilter,)
+    filter_backends = [DjangoFilterBackend]  # (DjangoFilterBackend, filters.OrderingFilter,)
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
@@ -2203,6 +2205,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     Returns an event summary by id.
     """
 
+    queryset = Event.objects.all()
+    filterset_class = EventSummaryFilter
+    # filterset_fields = ['complete', 'event_type']
+
     @action(detail=False)
     def get_count(self, request):
         query_params = self.request.query_params if self.request else None
@@ -2402,7 +2408,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 search.save()
 
         # then proceed to build the queryset
-        queryset = Event.objects.all()
+        queryset = self.queryset
 
         # anonymous users can only see public data
         if not user or not user.is_authenticated:

@@ -6,6 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.fields import JSONField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
+from whispersservices.field_descriptions import *
 
 
 # Default fields of the core User model: username, first_name, last_name, email, password, groups, user_permissions,
@@ -169,26 +170,30 @@ class Event(PermissionsHistoryModel):
     Event
     """
 
-    event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events', help_text='A foreign key integer value identifying a wildlife morbidity or mortality event')
-    event_reference = models.CharField(max_length=128, blank=True, default='', help_text='Name or number for an event designated by event owner')
-    complete = models.BooleanField(default=False, help_text='A boolean value indicating if an event is complete or incomplete. A complete event means it has ended, diagnostic tests are completed, and all information is updated in WHISPers')
-    start_date = models.DateField(null=True, blank=True, db_index=True, help_text='The date this event started on')
-    end_date = models.DateField(null=True, blank=True, db_index=True, help_text='The date this event ended on')
-    affected_count = models.IntegerField(null=True, db_index=True, help_text='An integer value for total number affected in this event')
-    staff = models.ForeignKey('Staff', models.PROTECT, null=True, related_name='events', help_text='A foreign key integer value identifying a staff member')
-    event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1, help_text='A foreign key integer value identifying event statuses specific to NWHC.')
-    legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1, help_text='A foreign key integer value identifying legal procedures associated with an event')
-    legal_number = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of legal case identifier')
-    quality_check = models.DateField(null=True, help_text='The date an NWHC staff and event owner make changes and check the record')
-    public = models.BooleanField(default=True, help_text='A boolean value indicating if an event is public or not')
-    read_collaborators = models.ManyToManyField(
-        'User', through='EventReadUser', through_fields=('event', 'user'), related_name='readevents')
-    write_collaborators = models.ManyToManyField(
-        'User', through='EventWriteUser', through_fields=('event', 'user'), related_name='writeevents')
-    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events', help_text='A foreign key integer identifying the user who last modified the object')
-    organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
-    contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
-    comments = GenericRelation('Comment', related_name='events')
+    event_type = models.ForeignKey('EventType', models.PROTECT, related_name='events', help_text=event.event_type)
+    event_reference = models.CharField(max_length=128, blank=True, default='', help_text=event.event_reference)
+    complete = models.BooleanField(default=False, help_text=event.complete)
+    start_date = models.DateField(null=True, blank=True, db_index=True, help_text=event.start_date)
+    end_date = models.DateField(null=True, blank=True, db_index=True, help_text=event.end_date)
+    affected_count = models.IntegerField(null=True, db_index=True, help_text=event.affected_count)
+    staff = models.ForeignKey('Staff', models.PROTECT, null=True, related_name='events', help_text=event.staff)
+    event_status = models.ForeignKey('EventStatus', models.PROTECT, null=True, related_name='events', default=1,
+                                     help_text=event.event_status)
+    legal_status = models.ForeignKey('LegalStatus', models.PROTECT, null=True, related_name='events', default=1,
+                                     help_text=event.legal_status)
+    legal_number = models.CharField(max_length=128, blank=True, default='', help_text=event.legal_number)
+    quality_check = models.DateField(null=True, help_text=event.quality_check)
+    public = models.BooleanField(default=True, help_text=event.public)
+    read_collaborators = models.ManyToManyField('User', through='EventReadUser', through_fields=('event', 'user'),
+                                                related_name='readevents', help_text=event.read_collaborators)
+    write_collaborators = models.ManyToManyField('User', through='EventWriteUser', through_fields=('event', 'user'),
+                                                 related_name='writeevents', help_text=event.write_collaborators)
+    eventgroups = models.ManyToManyField('EventGroup', through='EventEventGroup', related_name='events',
+                                         help_text=event.eventgroups)
+    organizations = models.ManyToManyField('Organization', through='EventOrganization', related_name='events',
+                                           help_text=event.organizations)
+    contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event', help_text=event.contacts)
+    comments = GenericRelation('Comment', related_name='events', help_text=event.comments)
 
     # override the save method to toggle quality check field when complete field changes
     # and update event diagnoses as necessary so there is always at least one

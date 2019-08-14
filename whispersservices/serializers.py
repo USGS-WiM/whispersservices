@@ -4490,16 +4490,17 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     def get_permission_source(self, obj):
         return determine_permission_source(self.context['request'].user, obj)
 
+    # TODO: improve help_text so that all are assigned to variables, not string literals
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
-    eventdiagnoses = serializers.SerializerMethodField()
-    administrativelevelones = serializers.SerializerMethodField()
-    administrativeleveltwos = serializers.SerializerMethodField()
-    flyways = serializers.SerializerMethodField()
-    species = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
+    eventdiagnoses = serializers.SerializerMethodField(help_text='A list of diagnoses determined for this event')
+    administrativelevelones = serializers.SerializerMethodField(help_text='A list of administrative level ones in which this event is located')
+    administrativeleveltwos = serializers.SerializerMethodField(help_text='A list of administrative level twos in which this event is located')
+    flyways = serializers.SerializerMethodField(help_text='A list of flyways in which this event is located')
+    species = serializers.SerializerMethodField(help_text='A list of species affected in this event')
+    event_type_string = serializers.StringRelatedField(source='event_type', help_text='A string value representing the type of the event')
+    event_status_string = serializers.StringRelatedField(source='event_status', help_text='A string value representing the status of the event')
+    permissions = DRYPermissionsField(help_text='A list of permissions available to the current user')
+    permission_source = serializers.SerializerMethodField(help_text='A string value indicating the source of the permissions assigned to the current user')
 
     class Meta:
         model = Event
