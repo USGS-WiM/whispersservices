@@ -3956,50 +3956,49 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        # validate updates
-        if self.instance:
-            if 'role' not in data or ('role' in data and data['role'] is None):
-                data['role'] = Role.objects.filter(name='Public').first()
-            if 'organization' not in data or ('organization' in data and data['organization'] is None):
-                data['organization'] = Organization.objects.filter(name='Public').first()
-            if 'password' not in data and self.context['request'].method == 'POST':
-                raise serializers.ValidationError("password is required")
-            elif 'password' in data:
-                password = data['password']
-                details = []
-                char_type_requirements_met = []
-                symbols = '~!@#$%^&*'
+        if 'role' not in data or ('role' in data and data['role'] is None):
+            data['role'] = Role.objects.filter(name='Public').first()
+        if 'organization' not in data or ('organization' in data and data['organization'] is None):
+            data['organization'] = Organization.objects.filter(name='Public').first()
+        if 'password' not in data and self.context['request'].method == 'POST':
+            raise serializers.ValidationError("password is required")
+        elif 'password' in data:
+            password = data['password']
+            details = []
+            char_type_requirements_met = []
+            symbols = '~!@#$%^&*'
 
-                username = self.initial_data['username'] if 'username' in self.initial_data else self.instance.username
+            username = self.initial_data['username'] if 'username' in self.initial_data else self.instance.username
 
-                if len(password) < 12:
-                    details.append("Password must be at least 12 characters long.")
-                if username in password:
-                    details.append("Password cannot contain username.")
-                if any(character.islower() for character in password):
-                    char_type_requirements_met.append('lowercase')
-                if any(character.isupper() for character in password):
-                    char_type_requirements_met.append('uppercase')
-                if any(character.isdigit() for character in password):
-                    char_type_requirements_met.append('number')
-                if any(character in password for character in symbols):
-                    char_type_requirements_met.append('special')
-                if len(char_type_requirements_met) < 3:
-                    message = "Password must satisfy three of the following requirements: "
-                    message += "Contain lowercase letters (a, b, c, ..., z); "
-                    message += "Contain uppercase letters (A, B, C, ..., Z); "
-                    message += "Contain numbers (0, 1, 2, ..., 9); "
-                    message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(details)
+            if len(password) < 12:
+                details.append("Password must be at least 12 characters long.")
+            if username.lower() in password.lower():
+                details.append("Password cannot contain username.")
+            if any(character.islower() for character in password):
+                char_type_requirements_met.append('lowercase')
+            if any(character.isupper() for character in password):
+                char_type_requirements_met.append('uppercase')
+            if any(character.isdigit() for character in password):
+                char_type_requirements_met.append('number')
+            if any(character in password for character in symbols):
+                char_type_requirements_met.append('special')
+            if len(char_type_requirements_met) < 3:
+                message = "Password must satisfy three of the following requirements: "
+                message += "Contain lowercase letters (a, b, c, ..., z); "
+                message += "Contain uppercase letters (A, B, C, ..., Z); "
+                message += "Contain numbers (0, 1, 2, ..., 9); "
+                message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
+                details.append(message)
+            if details:
+                raise serializers.ValidationError(details)
+
         return data
 
     # currently only public users can be created through the API
     def create(self, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
 
-        password = validated_data['password']
+        password = validated_data.pop('password', None)
         message = validated_data.pop('message', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
