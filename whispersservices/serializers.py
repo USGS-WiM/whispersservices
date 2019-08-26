@@ -2903,6 +2903,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         return evt_location
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
+    # TODO: consider updating flyway if instance had null value and/or when lat/lng or country/state/county change
     def update(self, instance, validated_data):
         user = get_user(self.context, self.initial_data)
 
@@ -3956,13 +3957,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        if 'role' not in data or ('role' in data and data['role'] is None):
-            data['role'] = Role.objects.filter(name='Public').first()
-        if 'organization' not in data or ('organization' in data and data['organization'] is None):
-            data['organization'] = Organization.objects.filter(name='Public').first()
-        if 'password' not in data and self.context['request'].method == 'POST':
-            raise serializers.ValidationError("password is required")
-        elif 'password' in data:
+        if self.context['request'].method == 'POST':
+            if 'role' not in data or ('role' in data and data['role'] is None):
+                data['role'] = Role.objects.filter(name='Public').first()
+            if 'organization' not in data or ('organization' in data and data['organization'] is None):
+                data['organization'] = Organization.objects.filter(name='Public').first()
+            if 'password' not in data:
+                raise serializers.ValidationError("password is required")
+        if 'password' in data:
             password = data['password']
             details = []
             char_type_requirements_met = []
