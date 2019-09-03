@@ -314,7 +314,7 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to eventgroups can be deleted
-        if self.get_object().complete:
+        if self.get_object().event.complete:
             message = "EventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
