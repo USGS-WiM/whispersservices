@@ -959,10 +959,13 @@ class EventSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=event, comment=comment['comment'],
-                                           comment_type=comment_type,
-                                           created_by=user, modified_by=user)
+                    if ('comment' in comment and 'comment_type' in comment
+                            and comment['comment_type'] is not None and comment['comment_type'].isdigit()):
+                        comment_type = CommentType.objects.filter(id=int(comment['comment_type'])).first()
+                        if comment_type is not None:
+                            Comment.objects.create(content_object=event, comment=comment['comment'],
+                                                   comment_type=comment_type,
+                                                   created_by=user, modified_by=user)
 
         # create the child eventgroups for this event
         if new_eventgroups is not None:
@@ -2936,7 +2939,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         # if an event_location has no name value but does have a gnis_name value, copy the value of gnis_name to name
         # this need only happen on creation since the two fields should maintain no durable relationship
-        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+        if ('name' in validated_data and 'gnis_name' in validated_data
+                and validated_data['name'] == '' and validated_data['gnis_name'] != ''):
             validated_data['name'] = validated_data['gnis_name']
 
         # calculate the priority value:
@@ -3189,6 +3193,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
+        # TODO: fix this to test against submitted data!!!
         # else this is an existing LocationSpecies
         elif self.instance:
             # check if parent Event is complete

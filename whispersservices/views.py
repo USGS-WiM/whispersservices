@@ -760,7 +760,10 @@ class EventLocationViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = EventLocation.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                        ).values_list('id', flat=True))):
                     return EventLocationSerializer
             return EventLocationPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -1068,7 +1071,11 @@ class LocationSpeciesViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = LocationSpecies.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.event_location.event.id]) | Q(
+                                readevents__in=[obj.event_location.event.id])
+                        ).values_list('id', flat=True))):
                     return LocationSpeciesSerializer
             return LocationSpeciesPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -1355,7 +1362,11 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = SpeciesDiagnosis.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
+                                readevents__in=[obj.location_species.event_location.event.id])
+                        ).values_list('id', flat=True))):
                     return SpeciesDiagnosisSerializer
             return SpeciesDiagnosisPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -1395,6 +1406,7 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
         return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
+# TODO: review every view's get_serializer method to ensure consistency and adherence to role/collaborator rules
 class DiagnosisBasisViewSet(HistoryViewSet):
     """
     list:

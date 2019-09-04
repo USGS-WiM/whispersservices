@@ -1388,11 +1388,36 @@ class Comment(PermissionsHistoryModel):
     object_id = models.PositiveIntegerField(help_text='A positive integer value indentifying an object')
     content_object = GenericForeignKey()
 
-    # TODO: revisit the create permission here... there ought to be further restrictions (e.g. write_collaborators), but that will require testing each object's content type and also deciding what to do with non-event stack objects (which don't have collaborators)
     @staticmethod
     def has_create_permission(request):
+        # For models that are children of events (e.g., eventlocation, locationspecies, speciesdiagnosis),
+        # only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can create
+        if (not request or not request.user or not request.user.is_authenticated
+                or request.user.role.is_public or request.user.role.is_affiliate):
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            model_name = request.data['content_type'].model
+            if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
+                return False
+            if model_name == 'servicerequest':
+                return True
+            if model_name in ['event', 'eventlocation', 'eventeventgroup']:
+                event = Event.objects.get(pk=int(request.data['event']))
+                if (request.user.id == event.created_by.id
+                        or (request.user.organization.id == event.created_by.organization.id
+                            and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                    return True
+                else:
+                    write_collaborators = list(
+                        User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
+                    return request.user.id in write_collaborators
+            else:
+                return False
+
         # anyone with role of Partner or above can create
-        return partner_create_permission(request)
+        # return partner_create_permission(request)
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
