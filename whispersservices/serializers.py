@@ -490,6 +490,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
 
 
 # TODO: allow read-only staff field for event owner org
+# TODO: validate expected fields and field data types for all submitted nested objects
 class EventSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -713,7 +714,10 @@ class EventSerializer(serializers.ModelSerializer):
                                     specdiag_lab_is_valid = False
                     if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                         for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -929,13 +933,15 @@ class EventSerializer(serializers.ModelSerializer):
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.get(id=read_user_id)
-                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+                read_user = User.objects.filter(id=read_user_id).first()
+                if read_user is not None:
+                    EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.get(id=write_user_id)
-                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
+                write_user = User.objects.filter(id=write_user_id).first()
+                if write_user is not None:
+                    EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -943,7 +949,7 @@ class EventSerializer(serializers.ModelSerializer):
             new_unique_organizations = list(set(new_organizations))
             for org_id in new_unique_organizations:
                 if org_id is not None:
-                    org = Organization.objects.filter(pk=org_id).first()
+                    org = Organization.objects.filter(id=org_id).first()
                     if org is not None:
                         event_org = EventOrganization.objects.create(event=event, organization=org,
                                                                      created_by=user, modified_by=user)
@@ -959,9 +965,8 @@ class EventSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    if ('comment' in comment and 'comment_type' in comment
-                            and comment['comment_type'] is not None and comment['comment_type'].isdigit()):
-                        comment_type = CommentType.objects.filter(id=int(comment['comment_type'])).first()
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
                         if comment_type is not None:
                             Comment.objects.create(content_object=event, comment=comment['comment'],
                                                    comment_type=comment_type,
@@ -971,7 +976,7 @@ class EventSerializer(serializers.ModelSerializer):
         if new_eventgroups is not None:
             for eventgroup_id in new_eventgroups:
                 if eventgroup_id is not None:
-                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    eventgroup = EventGroup.objects.filter(id=eventgroup_id).first()
                     if eventgroup is not None:
                         EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
@@ -1042,7 +1047,7 @@ class EventSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
+                request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
@@ -1508,7 +1513,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     specdiag_lab_is_valid = False
                     if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                         for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -1725,13 +1733,15 @@ class EventAdminSerializer(serializers.ModelSerializer):
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.get(id=read_user_id)
-                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+                read_user = User.objects.filter(id=read_user_id).first()
+                if read_user is not None:
+                    EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.get(id=write_user_id)
-                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
+                write_user = User.objects.filter(id=write_user_id).first()
+                if write_user is not None:
+                    EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -1739,7 +1749,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             new_unique_organizations = list(set(new_organizations))
             for org_id in new_unique_organizations:
                 if org_id is not None:
-                    org = Organization.objects.filter(pk=org_id).first()
+                    org = Organization.objects.filter(id=org_id).first()
                     if org is not None:
                         event_org = EventOrganization.objects.create(event=event, organization=org,
                                                                      created_by=user, modified_by=user)
@@ -1755,15 +1765,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
-                                           created_by=user, modified_by=user)
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if comment_type is not None:
+                            Comment.objects.create(content_object=event, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
         # create the child eventgroups for this event
         if new_eventgroups is not None:
             for eventgroup_id in new_eventgroups:
                 if eventgroup_id is not None:
-                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    eventgroup = EventGroup.objects.filter(id=eventgroup_id).first()
                     if eventgroup is not None:
                         EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
@@ -1834,7 +1846,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
+                request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
@@ -2661,7 +2673,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 specdiag_lab_is_valid = False
                     if 'new_location_contacts' in data and data['new_location_contacts'] is not None:
                         for loc_contact in data['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -2893,11 +2908,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_contact['event_location'] = evt_location
 
                 # Convert ids to ForeignKey objects
-                location_contact['contact'] = Contact.objects.filter(pk=location_contact['contact']).first()
-                location_contact['contact_type'] = ContactType.objects.filter(
-                    pk=location_contact['contact_type']).first()
+                if 'contact' in location_contact and location_contact['contact'] is not None:
+                    location_contact['contact'] = Contact.objects.filter(id=location_contact['contact']).first()
+                    location_contact['contact_type'] = ContactType.objects.filter(
+                        pk=location_contact['contact_type']).first()
 
-                EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
+                    EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
         # calculate the priority value:
         evt_location.priority = calculate_priority_event_location(evt_location)
@@ -3671,8 +3687,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 org = Organization.objects.filter(id=org_id).first()
                 if org:
                     user = get_user(self.context, self.initial_data)
-                    SpeciesDiagnosisOrganization.objects.create(species_diagnosis=species_diagnosis, organization=org,
-                                                                created_by=user, modified_by=user)
+                    SpeciesDiagnosisOrganization.objects.create(species_diagnosis=species_diagnosis,
+                                                                organization=org, created_by=user, modified_by=user)
 
         return species_diagnosis
 
@@ -3864,7 +3880,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     else:
                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                     comment_type=comment_type, created_by=user, modified_by=user)
+                                           comment_type=comment_type, created_by=user, modified_by=user)
                     service_request_comments.append(comment['comment'])
 
         # construct and send the request email
