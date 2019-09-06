@@ -4958,12 +4958,42 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
+    combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
+
+    def get_combined_comments(self, obj):
+        event_content_type = ContentType.objects.filter(model='event').first()
+        event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
+        evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
+        evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
+        evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
+        union_comments = event_comments.union(evtloc_comments).order_by('id')
+        # return CommentSerializer(union_comments, many=True).data
+        combined_comments = []
+        for cmt in union_comments:
+            # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
+            date_sort = str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2) + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32)
+            comment = {
+                "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
+                "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
+                "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
+                "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
+                "created_by_organization": cmt.created_by.organization.id,
+                "created_by_organization_string": cmt.created_by.organization.name,
+                "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
+                "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
+            }
+            if cmt.content_type.model == 'event':
+                comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
+            elif cmt.content_type.model == 'eventlocation':
+                comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
+            combined_comments.append(comment)
+        return combined_comments
 
     def get_eventgroups(self, obj):
         pub_groups = []
@@ -5028,7 +5058,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
                   'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
-                  'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
@@ -5050,6 +5080,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
+    combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     eventorganizations = serializers.SerializerMethodField()
@@ -5057,6 +5088,34 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
 
+    def get_combined_comments(self, obj):
+        event_content_type = ContentType.objects.filter(model='event').first()
+        event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
+        evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
+        evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
+        evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
+        union_comments = event_comments.union(evtloc_comments).order_by('id')
+        # return CommentSerializer(union_comments, many=True).data
+        combined_comments = []
+        for cmt in union_comments:
+            # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
+            date_sort = str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2) + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32)
+            comment = {
+                "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
+                "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
+                "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
+                "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
+                "created_by_organization": cmt.created_by.organization.id,
+                "created_by_organization_string": cmt.created_by.organization.name,
+                "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
+                "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
+            }
+            if cmt.content_type.model == 'event':
+                comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
+            elif cmt.content_type.model == 'eventlocation':
+                comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
+            combined_comments.append(comment)
+        return combined_comments
     def get_eventorganizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
@@ -5107,10 +5166,10 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
+                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'read_collaborators',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
+                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by',
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
