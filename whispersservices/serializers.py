@@ -4972,12 +4972,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        union_comments = event_comments.union(evtloc_comments).order_by('id')
+        union_comments = event_comments.union(evtloc_comments).order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
             # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
-            date_sort = str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2) + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32)
+            date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
+                         + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
             comment = {
                 "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
                 "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
@@ -5094,12 +5095,13 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        union_comments = event_comments.union(evtloc_comments).order_by('id')
+        union_comments = event_comments.union(evtloc_comments).order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
             # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
-            date_sort = str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2) + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32)
+            date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
+                         + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
             comment = {
                 "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
                 "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
