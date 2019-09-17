@@ -1,6 +1,7 @@
 import re
 import requests
 import json
+from operator import itemgetter
 from datetime import datetime, timedelta
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
@@ -5104,7 +5105,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        union_comments = event_comments.union(evtloc_comments).order_by('-id')
+        union_comments = event_comments.union(evtloc_comments)
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
@@ -5126,7 +5127,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
             elif cmt.content_type.model == 'eventlocation':
                 comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
             combined_comments.append(comment)
-        return combined_comments
+        return sorted(combined_comments, key=itemgetter('date_sort'), reverse=True)
     def get_eventorganizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
