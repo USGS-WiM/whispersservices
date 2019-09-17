@@ -3503,7 +3503,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # (false if any matching species diagnoses are false, otherwise true)
         event = validated_data['event']
         diagnosis = validated_data['diagnosis']
-        submitted_suspect = validated_data.pop('suspect')
+        submitted_suspect = validated_data.pop('suspect') if 'suspect' in validated_data else False
         matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=event.id, diagnosis=diagnosis.id
         ).values_list('suspect', flat=True)
