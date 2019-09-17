@@ -3502,10 +3502,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # (false if any matching species diagnoses are false, otherwise true)
         event = validated_data['event']
         diagnosis = validated_data['diagnosis']
+        submitted_suspect = validated_data.pop('suspect')
         matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=event.id, diagnosis=diagnosis.id
         ).values_list('suspect', flat=True)
-        suspect = False if False in matching_specdiags_suspect else True
+        suspect = False if False in matching_specdiags_suspect else submitted_suspect
         event_diagnosis = EventDiagnosis.objects.create(**validated_data, suspect=suspect)
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
         event_diagnosis.save()
@@ -3514,6 +3515,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
         [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
+
+        # If the parent event is complete, also check for existing Undetermined record and delete it
+        if event_diagnosis.event.complete:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3539,6 +3544,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # Now that we have the new event diagnoses created, check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
         [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
+
+        # If the parent event is complete, also check for existing Undetermined record and delete it
+        if instance.event.complete:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)

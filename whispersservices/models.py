@@ -491,8 +491,11 @@ class EventAbstract(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -516,8 +519,11 @@ class EventCase(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -541,8 +547,11 @@ class EventLabsite(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -567,8 +576,11 @@ class EventOrganization(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -593,8 +605,11 @@ class EventContact(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -643,8 +658,11 @@ class EventLocation(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        return determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -717,8 +735,11 @@ class EventLocationContact(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
-        return determine_create_permission(request, event)
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event_location.event.id
@@ -831,8 +852,11 @@ class EventLocationFlyway(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
-        return determine_create_permission(request, event)
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event_location.event.id
@@ -886,8 +910,11 @@ class LocationSpecies(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
-        return determine_create_permission(request, event)
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event_location.event.id
@@ -1051,8 +1078,11 @@ class EventDiagnosis(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = Event.objects.get(pk=int(request.data['event']))
-        return determine_create_permission(request, event)
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.event.id
@@ -1129,8 +1159,11 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = LocationSpecies.objects.get(pk=int(request.data['location_species'])).event_location.event
-        return determine_create_permission(request, event)
+        if request and 'location_species' in request.data:
+            event = LocationSpecies.objects.get(pk=int(request.data['location_species'])).event_location.event
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.location_species.event_location.event.id
@@ -1255,9 +1288,12 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        event = SpeciesDiagnosis.objects.get(
-            pk=int(request.data['species_diagnosis'])).location_species.event_location.event
-        return determine_create_permission(request, event)
+        if request and 'species_diagnosis' in request.data:
+            event = SpeciesDiagnosis.objects.get(
+                pk=int(request.data['species_diagnosis'])).location_species.event_location.event
+            return determine_create_permission(request, event)
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         event_id = self.species_diagnosis.location_species.event_location.event.id
