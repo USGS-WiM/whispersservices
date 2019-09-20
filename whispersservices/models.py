@@ -1349,7 +1349,7 @@ class ServiceRequest(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.CASCADE, related_name='servicerequests', help_text='A foreign key integer value identifying an event')
     request_type = models.ForeignKey('ServiceRequestType', models.PROTECT, related_name='servicerequests', help_text='A foreign key integer value identifying a request type for this service submission request')
-    request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
+    request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True, default=4,
                                          related_name='servicerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='servicerequests')

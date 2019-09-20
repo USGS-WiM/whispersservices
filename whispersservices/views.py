@@ -1530,7 +1530,7 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
     delete:
     Deletes a service request response.
     """
-    queryset = ServiceRequestResponse.objects.all()
+    queryset = ServiceRequestResponse.objects.all().exclude(name="Pending")
     serializer_class = ServiceRequestResponseSerializer
 
 
