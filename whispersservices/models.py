@@ -1411,6 +1411,7 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
 ######
 
 
+# TODO: revisit read permissions on comment
 class Comment(PermissionsHistoryModel):
     """
     Comment
@@ -1434,21 +1435,33 @@ class Comment(PermissionsHistoryModel):
         elif request.user.role.is_superadmin or request.user.role.is_admin:
             return True
         else:
-            model_name = request.data['content_type'].model
-            if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
-                return False
-            if model_name == 'servicerequest':
-                return True
-            if model_name in ['event', 'eventlocation', 'eventeventgroup']:
-                event = Event.objects.get(pk=int(request.data['event']))
-                if (request.user.id == event.created_by.id
-                        or (request.user.organization.id == event.created_by.organization.id
-                            and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            model_name = None
+            if 'content_type' in request.data:
+                model_name = request.data['content_type'].model
+            elif 'new_content_type' in request.data:
+                model_name = request.data['new_content_type']
+            if model_name:
+                if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
+                    return False
+                if model_name == 'servicerequest':
                     return True
+                if model_name in ['event', 'eventlocation', 'eventeventgroup']:
+                    if model_name == 'event':
+                        event = Event.objects.get(pk=int(request.data['object_id']))
+                    elif model_name == 'eventlocation':
+                        event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
+                    elif model_name == 'eventeventgroup':
+                        event = EventEventGroup.objects.get(pk=int(request.data['object_id'])).event
+                    if (request.user.id == event.created_by.id
+                            or (request.user.organization.id == event.created_by.organization.id
+                                and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                        return True
+                    else:
+                        write_collaborators = list(
+                            User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
+                        return request.user.id in write_collaborators
                 else:
-                    write_collaborators = list(
-                        User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
-                    return request.user.id in write_collaborators
+                    return False
             else:
                 return False
 
