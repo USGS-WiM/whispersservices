@@ -1063,7 +1063,9 @@ class EventSerializer(serializers.ModelSerializer):
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                request_response=request_response,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -1862,7 +1864,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                request_response=request_response,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -3890,6 +3894,10 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     jsonify_errors("You do not have permission to alter the request response."))
             else:
                 validated_data['response_by'] = user
+
+        # if a request_response is not submitted, assign the default
+        if 'request_response' not in validated_data or validated_data['request_response'] is None:
+            validated_data['request_response'] = ServiceRequestResponse.objects.filter(name='Pending').first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
         service_request_comments = []
