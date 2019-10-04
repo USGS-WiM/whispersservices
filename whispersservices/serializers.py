@@ -8,6 +8,7 @@ from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers, validators
+from rest_framework.settings import api_settings
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
@@ -20,6 +21,18 @@ GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
 FLYWAYS_API = 'https://services.arcgis.com/'
 FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+
+
+def jsonify_errors(data):
+    if isinstance(data, list) or isinstance(data, str):
+        # Errors raised as a list are non-field errors.
+        if hasattr(settings, 'NON_FIELD_ERRORS_KEY'):
+            key = settings.NON_FIELD_ERRORS_KEY
+        else:
+            key = api_settings.NON_FIELD_ERRORS_KEY
+        return {key: data}
+    else:
+        return data
 
 
 def decode_json(response):
@@ -38,7 +51,8 @@ def get_user(context, initial_data):
     elif 'created_by' in initial_data:
         user = User.objects.filter(id=initial_data['created_by']).first()
     else:
-        raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+        raise serializers.ValidationError(
+            jsonify_errors("User could not be identified, please contact the administrator."))
     return user
 
 
@@ -93,7 +107,7 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
             email.send(fail_silently=False)
         except TypeError:
             message = "Service Request saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -113,7 +127,7 @@ def construct_user_request_email(requester_email, message):
             email.send(fail_silently=False)
         except TypeError:
             message = "User saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -132,7 +146,7 @@ def construct_email(subject, message):
             email.send(fail_silently=False)
         except TypeError:
             message = "Send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -423,7 +437,7 @@ class CommentSerializer(serializers.ModelSerializer):
         if not content_object:
             message = "An object of type (" + str(new_content_type)
             message += ") and ID (" + str(validated_data['object_id']) + ") could not be found."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
         comment = Comment.objects.create(**validated_data, content_object=content_object)
         return comment
 
@@ -927,7 +941,7 @@ class EventSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
@@ -1013,7 +1027,7 @@ class EventSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
             # # Can only use diagnoses that are already used by this event's species diagnoses
             # valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
@@ -1093,13 +1107,13 @@ class EventSerializer(serializers.ModelSerializer):
                     user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
             elif (user != instance.created_by
                   or (user.organization.id != instance.created_by.organization.id
                       and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
         if not instance.complete and new_complete and (user.id == instance.created_by.id or (
@@ -1123,7 +1137,7 @@ class EventSerializer(serializers.ModelSerializer):
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(location_message)
+                        raise serializers.ValidationError(jsonify_errors(location_message))
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
@@ -1168,9 +1182,9 @@ class EventSerializer(serializers.ModelSerializer):
                     message += " have a cause."
                     details.append(message)
                 if details:
-                    raise serializers.ValidationError(details)
+                    raise serializers.ValidationError(jsonify_errors(details))
             else:
-                raise serializers.ValidationError(location_message)
+                raise serializers.ValidationError(jsonify_errors(location_message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
@@ -1727,7 +1741,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
@@ -1812,7 +1826,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
             # # Can only use diagnoses that are already used by this event's species diagnoses
             # valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
@@ -1896,7 +1910,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             if new_complete is None or new_complete:
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False in the request."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise event is not yet complete
         if not instance.complete and new_complete:
@@ -1918,7 +1932,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(location_message)
+                        raise serializers.ValidationError(jsonify_errors(location_message))
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
@@ -1964,9 +1978,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     message += " have a cause."
                     details.append(message)
                 if details:
-                    raise serializers.ValidationError(details)
+                    raise serializers.ValidationError(jsonify_errors(details))
             else:
-                raise serializers.ValidationError(location_message)
+                raise serializers.ValidationError(jsonify_errors(location_message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
@@ -2153,14 +2167,14 @@ class EventGroupSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
-            raise serializers.ValidationError("An EventGroup must have at least two Events")
+            raise serializers.ValidationError(jsonify_errors("An EventGroup must have at least two Events"))
 
         # pull out event ID list from the request
         new_event_ids = set(validated_data.pop('new_events', []))
         event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
         not_event_ids = list(new_event_ids - event_ids)
         if not_event_ids:
-            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+            raise serializers.ValidationError(jsonify_errors("No Events were found with IDs of " + str(not_event_ids)))
 
         # pull out comment from the request
         new_comment = validated_data.pop("new_comment")
@@ -2184,14 +2198,14 @@ class EventGroupSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
-            raise serializers.ValidationError("An EventGroup must have at least two Events")
+            raise serializers.ValidationError(jsonify_errors("An EventGroup must have at least two Events"))
 
         # pull out event ID list from the request
         new_event_ids = set(validated_data.pop('new_events', []))
         event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
         not_event_ids = list(new_event_ids - event_ids)
         if not_event_ids:
-            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+            raise serializers.ValidationError(jsonify_errors("No Events were found with IDs of " + str(not_event_ids)))
 
         user = get_user(self.context, self.initial_data)
 
@@ -2887,7 +2901,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     # delete this event location
                     # (related contacts and comments will be cascade deleted automatically if any exist)
                     evt_location.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
@@ -3321,7 +3335,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 else:
                     # delete this location species
                     location_species.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         # calculate the priority value:
         location_species.priority = calculate_priority_location_species(location_species)
@@ -3872,7 +3886,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
             if not (user.role.is_superadmin or user.role.is_admin):
-                raise serializers.ValidationError("You do not have permission to alter the request response.")
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
             else:
                 validated_data['response_by'] = user
 
@@ -3914,7 +3929,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             user = get_user(self.context, self.initial_data)
 
             if not (user.role.is_superadmin or user.role.is_admin):
-                raise serializers.ValidationError("You do not have permission to alter the request response.")
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
             else:
                 instance.response_by = user
 
@@ -4052,13 +4068,13 @@ class UserSerializer(serializers.ModelSerializer):
             if requesting_user.role.is_admin:
                 if validated_data['role'].name == 'SuperAdmin':
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
 
             # PartnerAdmins can only create users in their own org with equal or lower roles
             if requesting_user.role.is_partneradmin:
                 if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
         # only SuperAdmins and Admins can edit is_superuser, is_staff, and is_active fields
@@ -4086,14 +4102,14 @@ class UserSerializer(serializers.ModelSerializer):
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
-            raise serializers.ValidationError("You cannot edit user data.")
+            raise serializers.ValidationError(jsonify_errors("You cannot edit user data."))
         elif (requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
             if instance.id == requesting_user.id:
                 instance.first_name = validated_data.get('first_name', instance.first_name)
                 instance.last_name = validated_data.get('last_name', instance.last_name)
             else:
-                raise serializers.ValidationError("You can only edit your own user information.")
+                raise serializers.ValidationError(jsonify_errors("You can only edit your own user information."))
 
         elif (requesting_user.role.is_superadmin or requesting_user.role.is_admin
               or requesting_user.role.is_partneradmin):
@@ -4103,7 +4119,7 @@ class UserSerializer(serializers.ModelSerializer):
             if requesting_user.role.is_partneradmin:
                 if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
                 instance.role = validated_data.get('role', instance.role)
                 instance.organization = requesting_user.organization
             else:
