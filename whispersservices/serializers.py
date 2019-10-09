@@ -2156,6 +2156,10 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
 
 
 class EventGroupPublicSerializer(serializers.ModelSerializer):
+    events = serializers.SerializerMethodField()
+
+    def get_events(self, obj):
+        return list(Event.objects.filter(public=True, eventgroups=obj.id).values_list('id', flat=True))
 
     class Meta:
         model = EventGroup
@@ -4947,7 +4951,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
             for evtgrp in evtgrps:
-                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
                 pub_groups.append(group)
         return pub_groups
