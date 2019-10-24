@@ -4170,8 +4170,88 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class RoleChangeRequestSerializer(serializers.ModelSerializer):
+    # comments = serializers.SerializerMethodField()
+    comments = CommentSerializer(many=True, read_only=True)
+    new_comments = serializers.ListField(write_only=True, required=False)
+
+    # def get_comments(self, obj):
+    #     content_type = ContentType.objects.get_for_model(self.Meta.model)
+    #     comments = Comment.objects.filter(object_id=obj.id, content_type=content_type)
+    #     comments_comments = [comment.comment for comment in comments]
+    #     return comments_comments
+
+    def validate(self, data):
+        if 'new_comments' in data and data['new_comments'] is not None:
+            for item in data['new_comments']:
+                if 'comment' not in item or not item['comment']:
+                    raise serializers.ValidationError("A comment must have comment text.")
+                elif 'comment_type' not in item or not item['comment_type']:
+                    raise serializers.ValidationError("A comment must have a comment type.")
+
+        return data
+
+    def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child comments list from the request
+        new_comments = validated_data.pop('new_comments', None)
+
+        # Only allow NWHC admins to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            if not (user.role.is_superadmin or user.role.is_admin):
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
+            else:
+                validated_data['response_by'] = user
+
+        # if a request_response is not submitted, assign the default
+        if 'request_response' not in validated_data or validated_data['request_response'] is None:
+            validated_data['request_response'] = RoleChangeRequestResponse.objects.filter(name='Pending').first()
+
+        role_change_request = RoleChangeRequest.objects.create(**validated_data)
+        role_change_request_comments = []
+
+        # create the child comments for this service request
+        if new_comments is not None:
+            for comment in new_comments:
+                if comment is not None:
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if not comment_type:
+                            comment_type = CommentType.objects.filter(name='Other').first()
+                    else:
+                        comment_type = CommentType.objects.filter(name='Other').first()
+                    Comment.objects.create(content_object=role_change_request, comment=comment['comment'],
+                                           comment_type=comment_type, created_by=user, modified_by=user)
+                    role_change_request_comments.append(comment['comment'])
+
+        return role_change_request
+
+    def update(self, instance, validated_data):
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
+
+        # Only allow NWHC admins to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            user = get_user(self.context, self.initial_data)
+
+            if not (user.role.is_superadmin or user.role.is_admin):
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
+            else:
+                instance.response_by = user
+
+        instance.role_requested = validated_data.get('role_requested', instance.role_requested)
+        instance.request_response = validated_data.get('request_response', instance.request_response)
+
+        instance.save()
+        return instance
+
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    response_by = serializers.StringRelatedField()
 
     class Meta:
         model = RoleChangeRequest
