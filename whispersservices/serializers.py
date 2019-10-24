@@ -4013,6 +4013,7 @@ class UserSerializer(serializers.ModelSerializer):
     organization_string = serializers.StringRelatedField(source='organization')
     message = serializers.CharField(write_only=True, allow_blank=True, required=False)
     user_email = serializers.JSONField(read_only=True)
+    new_role_change_request = serializers.JSONField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -4060,7 +4061,9 @@ class UserSerializer(serializers.ModelSerializer):
         requesting_user = get_user(self.context, self.initial_data)
 
         password = validated_data.pop('password', None)
-        message = validated_data.pop('message', None)
+
+        # pull out child service request from the request
+        new_role_change_request = validated_data.pop('new_role_change_request', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
@@ -4069,10 +4072,6 @@ class UserSerializer(serializers.ModelSerializer):
             requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
-            original_message = message
-            message = "Please change the role for this user to:" + requested_role.name + "\r\n"
-            message += "Please change the organization for this user to:" + requested_org.name + "\r\n"
-            message += "\r\n" + original_message
 
         else:
 
@@ -4102,10 +4101,34 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        if message is not None:
-            user_email = construct_user_request_email(user.email, message)
-            if settings.ENVIRONMENT not in ['production', 'test']:
-                user.user_email = user_email.__dict__
+        if new_role_change_request is not None:
+            if ('role_requested' in new_role_change_request and new_role_change_request['role_requested'] is not None
+                    and str(new_role_change_request['role_requested']).isdigit()):
+                role_ids = list(Role.objects.values_list('id', flat=True))
+                if int(new_role_change_request['role_requested']) in role_ids:
+                    new_comments = new_role_change_request.pop('new_comments', None)
+                    role_requested = Role.objects.filter(id=new_role_change_request['role_requested']).first()
+                    request_response = RoleChangeRequestResponse.objects.filter(name='Pending').first()
+                    role_change_request = RoleChangeRequest.objects.create(user=user, role_requested=role_requested,
+                                                                       request_response=request_response,
+                                                                       created_by=user, modified_by=user)
+                    new_role_change_request_comments = []
+
+                    # create the child comments for this service request
+                    if new_comments is not None:
+                        for comment in new_comments:
+                            if comment is not None:
+                                if 'comment_type' in comment and comment['comment_type'] is not None:
+                                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                    if not comment_type:
+                                        comment_type = CommentType.objects.filter(name='Other').first()
+                                else:
+                                    comment_type = CommentType.objects.filter(name='Other').first()
+                                Comment.objects.create(content_object=role_change_request, comment=comment['comment'],
+                                                       comment_type=comment_type, created_by=user, modified_by=user)
+                                new_role_change_request_comments.append(comment['comment'])
+
+                    # TODO: implement notifications and emails here
 
         return user
 
@@ -4156,7 +4179,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'message', 'user_email')
+                  'user_status', 'new_role_change_request', 'rolechangerequests')
 
 
 class RoleSerializer(serializers.ModelSerializer):
