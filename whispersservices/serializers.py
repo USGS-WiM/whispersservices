@@ -4169,6 +4169,27 @@ class RoleSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+class RoleChangeRequestSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = RoleChangeRequest
+        fields = ('id', 'user', 'role_requested', 'request_response', 'response_by', 'comments',
+                  'new_comments', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class RoleChangeRequestResponseSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = RoleChangeRequestResponse
+        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
 class CircleSerlializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
