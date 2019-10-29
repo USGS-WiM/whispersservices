@@ -5051,12 +5051,20 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 class ServiceRequestDetailSerializer(serializers.ModelSerializer):
     request_type_string = serializers.StringRelatedField(source='request_type')
     request_response_string = serializers.StringRelatedField(source='request_response')
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+    created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
+    created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
+    created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
+    created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
     comments = CommentSerializer(many=True)
 
     class Meta:
         model = ServiceRequest
         fields = ('id', 'request_type', 'request_type_string', 'request_response', 'request_response_string',
-                  'response_by', 'created_time', 'created_date', 'comments',)
+                  'response_by', 'created_time', 'created_date', 'created_by', 'created_by_string',
+                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string', 'comments',)
 
 
 class EventDetailPublicSerializer(serializers.ModelSerializer):
