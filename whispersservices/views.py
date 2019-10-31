@@ -1536,6 +1536,38 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 ######
 #
+#  Notifications
+#
+######
+
+
+class NotificationViewSet(HistoryViewSet):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+
+
+class NotificationCuePreferenceViewSet(HistoryViewSet):
+    queryset = NotificationCuePreference.objects.all()
+    serializer_class = NotificationCuePreferenceSerializer
+
+
+class NotificationCueCustomViewSet(HistoryViewSet):
+    queryset = NotificationCueCustom.objects.all()
+    serializer_class = NotificationCueCustomSerializer
+
+
+class NotificationCueStandardViewSet(HistoryViewSet):
+    queryset = NotificationCueStandard.objects.all()
+    serializer_class = NotificationCueStandardSerializer
+
+
+class NotificationCueStandardTypeViewSet(HistoryViewSet):
+    queryset = NotificationCueStandardType.objects.all()
+    serializer_class = NotificationCueStandardTypeSerializer
+
+
+######
+#
 #  Misc
 #
 ######

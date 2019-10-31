@@ -81,17 +81,6 @@ class HistoryModel(models.Model):
         default_permissions = ('add', 'change', 'delete', 'view')
 
 
-class HistoryNameModel(HistoryModel):
-    """
-    An abstract base class model for the common name field.
-    """
-
-    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this history')
-
-    class Meta:
-        abstract = True
-
-
 class PermissionsHistoryModel(HistoryModel):
     """
     An abstract base class model for the common permissions.
@@ -397,7 +386,7 @@ class EventGroup(AdminPermissionsHistoryModel):
     def name(self):
         return "G" + str(self.id)
 
-    category = models.ForeignKey('EventGroupCategory', models.CASCADE)
+    category = models.ForeignKey('EventGroupCategory', models.CASCADE, related_name='eventgroups')
     comments = GenericRelation('Comment', related_name='eventgroups')
 
     def __str__(self):
@@ -1402,6 +1391,95 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
     class Meta:
         db_table = "whispers_servicerequestresponse"
         ordering = ['id']
+
+
+######
+#
+#  Notifications
+#
+######
+
+
+class Notification(PermissionsHistoryModel):
+    """
+    Notification
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying a user')
+    source = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the source of this notification')
+    event = models.ForeignKey('Event', models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying an event')
+    read = models.BooleanField(default=False, help_text='A boolean value indicating if this notification has been read or not')
+    link = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the link of this notification')
+    message = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notification"
+
+
+class NotificationCuePreference(PermissionsHistoryModel):
+    """
+    Notification Cue Preference
+    """
+
+    send_when_new = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent when a record is new')
+    send_when_modified = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent when a record is modified')
+    send_email = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent by email or not')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuepreference"
+
+
+# TODO: ensure that these are deactivated somehow when a user is_active values is False
+class NotificationCueCustom(PermissionsHistoryModel):
+    """
+    Notification Cue Custom
+    """
+
+    event = JSONField(blank=True, help_text='A JSON object containing the event ID data')
+    event_affected_count = JSONField(blank=True, help_text='A JSON object containing the event affected_count data')
+    eventlocation_land_ownership = JSONField(blank=True, help_text='A JSON object containing the eventlocation land_ownership ID data')
+    eventlocation_administrativelevelone = JSONField(blank=True, help_text='A JSON object containing the eventlocation administrativelevelone ID data')
+    species = JSONField(blank=True, help_text='A JSON object containing the species ID data')
+    speciesdiagnosis_diagnosis = JSONField(blank=True, help_text='A JSON object containing the speciesdiagnosis diagnosis ID data')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuecustom"
+
+
+# TODO: ensure that these are deactivated somehow when a user is_active value is False
+class NotificationCueStandard(PermissionsHistoryModel):
+    """
+    Notification Cue Standard
+    """
+
+    standard_type = models.ForeignKey('NotificationCueStandardType', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuestandardtype')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuestandard"
+
+
+class NotificationCueStandardType(AdminPermissionsHistoryNameModel):
+    """
+    Notification Cue Standard Types
+    """
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_notificationcuestandardtype"
 
 
 ######

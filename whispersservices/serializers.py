@@ -3985,6 +3985,67 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 
 ######
 #
+#  Service Requests
+#
+######
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = Notification
+        fields = ('id', 'user', 'source', 'event', 'read', 'link', 'message',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCuePreferenceSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCuePreference
+        fields = ('id', 'send_when_new', 'send_when_modified', 'send_email',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCueCustomSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCueCustom
+        fields = ('id', 'event', 'event_affected_count', 'eventlocation_land_ownership',
+                  'eventlocation_administrativelevelone', 'species', 'speciesdiagnosis_diagnosis',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCueStandardSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCueStandard
+        fields = ('id', 'standard_type', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCueStandardType
+        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+######
+#
 #  Users
 #
 ######
