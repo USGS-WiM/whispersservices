@@ -1405,11 +1405,11 @@ class Notification(PermissionsHistoryModel):
     Notification
     """
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying a user')
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the user receiving this notification')
     source = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the source of this notification')
-    event = models.ForeignKey('Event', models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying an event')
+    event = models.ForeignKey('Event', models.CASCADE, null=True, related_name='notifications', help_text='A foreign key integer value identifying an event')
     read = models.BooleanField(default=False, help_text='A boolean value indicating if this notification has been read or not')
-    link = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the link of this notification')
+    client_page = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the page of the client application where the topic of this notification can be addressed')
     message = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
 
     def __str__(self):
@@ -1424,8 +1424,8 @@ class NotificationCuePreference(PermissionsHistoryModel):
     Notification Cue Preference
     """
 
-    send_when_new = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent when a record is new')
-    send_when_modified = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent when a record is modified')
+    create_when_new = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is new')
+    create_when_modified = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is modified')
     send_email = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent by email or not')
 
     def __str__(self):
@@ -1441,12 +1441,13 @@ class NotificationCueCustom(PermissionsHistoryModel):
     Notification Cue Custom
     """
 
+    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuecustoms', help_text='A foreign key integer value identifying a notificationcuepreference')
     event = JSONField(blank=True, help_text='A JSON object containing the event ID data')
     event_affected_count = JSONField(blank=True, help_text='A JSON object containing the event affected_count data')
-    eventlocation_land_ownership = JSONField(blank=True, help_text='A JSON object containing the eventlocation land_ownership ID data')
-    eventlocation_administrativelevelone = JSONField(blank=True, help_text='A JSON object containing the eventlocation administrativelevelone ID data')
+    event_location_land_ownership = JSONField(blank=True, help_text='A JSON object containing the eventlocation land_ownership ID data')
+    event_location_administrative_level_one = JSONField(blank=True, help_text='A JSON object containing the eventlocation administrativelevelone ID data')
     species = JSONField(blank=True, help_text='A JSON object containing the species ID data')
-    speciesdiagnosis_diagnosis = JSONField(blank=True, help_text='A JSON object containing the speciesdiagnosis diagnosis ID data')
+    species_diagnosis_diagnosis = JSONField(blank=True, help_text='A JSON object containing the speciesdiagnosis diagnosis ID data')
 
     def __str__(self):
         return str(self.id)
@@ -1461,6 +1462,7 @@ class NotificationCueStandard(PermissionsHistoryModel):
     Notification Cue Standard
     """
 
+    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuepreference')
     standard_type = models.ForeignKey('NotificationCueStandardType', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuestandardtype')
 
     def __str__(self):
@@ -1732,12 +1734,12 @@ class RoleChangeRequest(PermissionsHistoryModel):
     Service Submission Request
     """
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='rolechangerequests', help_text='A foreign key integer value identifying a user')
+    requestor = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='rolechangerequests_requestor', help_text='A foreign key integer value identifying a user')
     role_requested = models.ForeignKey('Role', models.PROTECT, related_name='rolechangerequests', help_text='A foreign key integer value identifying a role requested for this role change request')
     request_response = models.ForeignKey('RoleChangeRequestResponse', models.PROTECT, null=True, default=3,
                                          related_name='rolechangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='rolechangerequests')
+                                    related_name='rolechangerequests_responder')
     comments = GenericRelation('Comment', related_name='rolechangerequests', help_text='An alphanumeric value for the comment of the role change request')
 
     @staticmethod

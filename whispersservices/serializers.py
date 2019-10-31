@@ -4170,7 +4170,7 @@ class UserSerializer(serializers.ModelSerializer):
                     new_comments = new_role_change_request.pop('new_comments', None)
                     role_requested = Role.objects.filter(id=new_role_change_request['role_requested']).first()
                     request_response = RoleChangeRequestResponse.objects.filter(name='Pending').first()
-                    role_change_request = RoleChangeRequest.objects.create(user=user, role_requested=role_requested,
+                    role_change_request = RoleChangeRequest.objects.create(requestor=user, role_requested=role_requested,
                                                                        request_response=request_response,
                                                                        created_by=user, modified_by=user)
                     new_role_change_request_comments = []
@@ -4339,7 +4339,7 @@ class RoleChangeRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RoleChangeRequest
-        fields = ('id', 'user', 'role_requested', 'request_response', 'response_by', 'comments',
+        fields = ('id', 'requestor', 'role_requested', 'request_response', 'response_by', 'comments',
                   'new_comments', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
