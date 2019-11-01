@@ -1023,6 +1023,7 @@ class Diagnosis(AdminPermissionsHistoryNameModel):
     def has_request_new_permission(request):
         return True
 
+    high_impact = models.BooleanField(default=False, help_text='A boolean value indicating if the diagnosis is high impact (reportable) or not')
     diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses', help_text='A foreign key integer value identifying the diagnosis type')
 
     def __str__(self):

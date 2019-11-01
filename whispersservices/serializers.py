@@ -3433,7 +3433,7 @@ class DiagnosisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Diagnosis
-        fields = ('id', 'name', 'diagnosis_type', 'diagnosis_type_string',
+        fields = ('id', 'name', 'high_impact', 'diagnosis_type', 'diagnosis_type_string',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
