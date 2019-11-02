@@ -6,6 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.fields import JSONField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
+from whispersservices.tasks import *
 
 
 # Default fields of the core User model: username, first_name, last_name, email, password, groups, user_permissions,
@@ -1160,6 +1161,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         return determine_object_update_permission(self, request, event_id)
 
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
+    # and to create real time notifications for high impact diseases
     # and to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
 
@@ -1179,6 +1181,15 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 self.suspect_count = 1
 
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
+
+        # create real time notifications for high impact diseases
+        if self.diagnosis.high_impact:
+            recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
+            message = "A High Impact Species Diagnosis has been created."
+            source = self.created_by.username
+            event = self.location_species.event_location.event.id
+            generate_notification.delay(recipients, source, event, 'event', message)
+
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
