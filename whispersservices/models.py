@@ -6,7 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.fields import JSONField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
-from whispersservices.tasks import *
+from celery import current_app
 
 
 # Default fields of the core User model: username, first_name, last_name, email, password, groups, user_permissions,
@@ -1188,8 +1188,12 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             message = "A High Impact Species Diagnosis has been created."
             source = self.created_by.username
             event = self.location_species.event_location.event.id
-            generate_notification.delay(recipients, source, event, 'event', message)
-
+            # current_app.send_task('myapp.tasks.do_stuff', args=(1, 'two'), kwargs={'foo': 'bar'})
+            # current_app.send_task('tasks.generate_notification_task',
+            #                       args=(recipients, source, event, 'event', message, True))
+            # generate_notification.delay(recipients, source, event, 'event', message, True)
+            from whispersservices.tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'event', message, True)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis

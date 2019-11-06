@@ -3996,7 +3996,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Notification
-        fields = ('id', 'user', 'source', 'event', 'read', 'link', 'message',
+        fields = ('id', 'recipient', 'source', 'event', 'read', 'client_page', 'message',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4007,7 +4007,7 @@ class NotificationCuePreferenceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NotificationCuePreference
-        fields = ('id', 'send_when_new', 'send_when_modified', 'send_email',
+        fields = ('id', 'create_when_new', 'create_when_modified', 'send_email',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4018,8 +4018,8 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NotificationCueCustom
-        fields = ('id', 'event', 'event_affected_count', 'eventlocation_land_ownership',
-                  'eventlocation_administrativelevelone', 'species', 'speciesdiagnosis_diagnosis',
+        fields = ('id', 'event', 'event_affected_count', 'event_location_land_ownership',
+                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4072,8 +4072,8 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, allow_blank=True, required=False)
     organization_string = serializers.StringRelatedField(source='organization')
-    message = serializers.CharField(write_only=True, allow_blank=True, required=False)
-    user_email = serializers.JSONField(read_only=True)
+    # message = serializers.CharField(write_only=True, allow_blank=True, required=False)  # what is this?
+    # user_email = serializers.JSONField(read_only=True)  # what is this?
     new_role_change_request = serializers.JSONField(write_only=True, required=False)
 
     def validate(self, data):
@@ -4240,7 +4240,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'new_role_change_request', 'rolechangerequests')
+                  'user_status', 'new_role_change_request', 'rolechangerequests_requestor')
 
 
 class RoleSerializer(serializers.ModelSerializer):
