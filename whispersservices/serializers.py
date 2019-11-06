@@ -1064,8 +1064,9 @@ class EventSerializer(serializers.ModelSerializer):
                 new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                admin = User.objects.filter(id=1).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                request_response=request_response,
+                                                                request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -1865,8 +1866,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                admin = User.objects.filter(id=1).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                request_response=request_response,
+                                                                request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -3902,6 +3904,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         # if a request_response is not submitted, assign the default
         if 'request_response' not in validated_data or validated_data['request_response'] is None:
             validated_data['request_response'] = ServiceRequestResponse.objects.filter(name='Pending').first()
+            validated_data['response_by'] = User.objects.filter(id=1).first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
         service_request_comments = []
@@ -3945,9 +3948,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     jsonify_errors("You do not have permission to alter the request response."))
             else:
                 instance.response_by = user
+                instance.request_response = validated_data.get('request_response', instance.request_response)
+
+                # capture the service request response as a comment
+                cmt = "Service Request Response: " + instance.request_response.name
+                cmt_type = CommentType.objects.filter(name='Other').first()
+                Comment.objects.create(content_object=instance, comment=cmt,
+                                       comment_type=cmt_type, created_by=user, modified_by=user)
 
         instance.request_type = validated_data.get('request_type', instance.request_type)
-        instance.request_response = validated_data.get('request_response', instance.request_response)
 
         instance.save()
         return instance
@@ -5203,7 +5212,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        union_comments = event_comments.union(evtloc_comments).order_by('-id')
+        servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
+        servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
+        servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments).order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
@@ -5326,7 +5338,10 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        union_comments = event_comments.union(evtloc_comments)
+        servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
+        servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
+        servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments).order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
