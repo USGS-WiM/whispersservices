@@ -5030,7 +5030,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
         servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
         servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
-        union_comments = event_comments.union(evtloc_comments).union(servreq_comments).order_by('-id')
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
@@ -5156,7 +5156,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
         servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
         servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
-        union_comments = event_comments.union(evtloc_comments).union(servreq_comments).order_by('-id')
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
         # return CommentSerializer(union_comments, many=True).data
         combined_comments = []
         for cmt in union_comments:
