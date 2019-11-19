@@ -1538,8 +1538,34 @@ class ServiceRequestViewSet(HistoryViewSet):
     delete:
     Deletes a service request.
     """
-    queryset = ServiceRequest.objects.all()
     serializer_class = ServiceRequestSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous or public users return nothing
+        if not user or not user.is_authenticated or user.role.is_public:
+            return ServiceRequest.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = ServiceRequest.objects.all()
+        # partners can see service requests owned by the user or user's org
+        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            # they can also see service requests for events on which they are collaborators:
+            collab_evt_ids = list(Event.objects.filter(
+                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+            ).values_list('id', flat=True))
+            queryset = ServiceRequest.objects.filter(
+                Q(created_by__exact=user.id) |
+                Q(created_by__organization__exact=user.organization) |
+                Q(event__in=collab_evt_ids)
+            )
+        # otherwise return nothing
+        else:
+            return ServiceRequest.objects.none()
+
+        return queryset
 
 
 class ServiceRequestTypeViewSet(HistoryViewSet):
