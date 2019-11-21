@@ -1518,7 +1518,7 @@ class Comment(PermissionsHistoryModel):
 
     # Below the mandatory fields for generic relation
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, help_text='A foreign key integer value identifying the content type for this comment')
-    object_id = models.PositiveIntegerField(help_text='A positive integer value indentifying an object')
+    object_id = models.PositiveIntegerField(help_text='A positive integer value identifying an object')
     content_object = GenericForeignKey()
 
     @staticmethod

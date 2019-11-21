@@ -469,8 +469,23 @@ class StaffViewSet(HistoryViewSet):
     delete:
     Deletes a staff member.
     """
-    queryset = Staff.objects.all()
     serializer_class = StaffSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous users return nothing
+        if not user or not user.is_authenticated:
+            return Comment.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Comment.objects.all()
+        # otherwise return nothing
+        else:
+            return Comment.objects.none()
+
+        return queryset
 
 
 class LegalStatusViewSet(HistoryViewSet):
@@ -697,7 +712,6 @@ class EventContactViewSet(HistoryViewSet):
     delete:
     Deletes an event contact.
     """
-    queryset = EventContact.objects.all()
     serializer_class = EventContactSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -707,6 +721,22 @@ class EventContactViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
         return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous users return nothing
+        if not user or not user.is_authenticated:
+            return EventContact.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = EventContact.objects.all()
+        # otherwise return nothing
+        else:
+            return EventContact.objects.none()
+
+        return queryset
 
 
 ######
@@ -791,7 +821,6 @@ class EventLocationContactViewSet(HistoryViewSet):
     delete:
     Deletes an event location contact.
     """
-    queryset = EventLocationContact.objects.all()
     serializer_class = EventLocationContactSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -801,6 +830,33 @@ class EventLocationContactViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise APIException(message)
         return super(EventLocationContactViewSet, self).destroy(request, *args, **kwargs)
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous or public users return nothing
+        if not user or not user.is_authenticated or user.role.is_public:
+            return EventLocationContact.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = EventLocationContact.objects.all()
+        # partners can see location contacts owned by the user or user's org
+        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            # they can also see location contacts for events on which they are collaborators:
+            collab_evt_ids = list(Event.objects.filter(
+                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+            ).values_list('id', flat=True))
+            queryset = EventLocationContact.objects.filter(
+                Q(created_by__exact=user.id) |
+                Q(created_by__organization__exact=user.organization) |
+                Q(event_location__event__in=collab_evt_ids)
+            )
+        # otherwise return nothing
+        else:
+            return EventLocationContact.objects.none()
+
+        return queryset
 
 
 class CountryViewSet(HistoryViewSet):
@@ -1482,8 +1538,34 @@ class ServiceRequestViewSet(HistoryViewSet):
     delete:
     Deletes a service request.
     """
-    queryset = ServiceRequest.objects.all()
     serializer_class = ServiceRequestSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous or public users return nothing
+        if not user or not user.is_authenticated or user.role.is_public:
+            return ServiceRequest.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = ServiceRequest.objects.all()
+        # partners can see service requests owned by the user or user's org
+        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            # they can also see service requests for events on which they are collaborators:
+            collab_evt_ids = list(Event.objects.filter(
+                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+            ).values_list('id', flat=True))
+            queryset = ServiceRequest.objects.filter(
+                Q(created_by__exact=user.id) |
+                Q(created_by__organization__exact=user.organization) |
+                Q(event__in=collab_evt_ids)
+            )
+        # otherwise return nothing
+        else:
+            return ServiceRequest.objects.none()
+
+        return queryset
 
 
 class ServiceRequestTypeViewSet(HistoryViewSet):
@@ -1595,87 +1677,44 @@ class CommentViewSet(HistoryViewSet):
     """
     serializer_class = CommentSerializer
 
-    # def can_access(self, obj):
-    #     if obj is None:
-    #         return False
-    #     model_name = None
-    #     if hasattr('content_type', obj):
-    #         model_name = obj.content_type.model
-    #     if model_name:
-    #         if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
-    #             return False
-    #         elif model_name == 'servicerequest':
-    #             servicerequest = ServiceRequest.objects.filter(id=self.request.data['object_id']).first()
-    #             if (self.request.user.id == servicerequest.created_by.id
-    #                     or (self.request.user.organization.id == servicerequest.created_by.organization.id
-    #                         and (self.request.user.role.is_partneradmin
-    #                              or self.request.user.role.is_partnermanager))):
-    #                 return True
-    #             else:
-    #                 return False
-    #         elif model_name in ['event', 'eventlocation', 'eventeventgroup']:
-    #             event = None
-    #             if model_name == 'event':
-    #                 event = Event.objects.get(pk=int(self.request.data['object_id']))
-    #             elif model_name == 'eventlocation':
-    #                 event = EventLocation.objects.get(pk=int(self.request.data['object_id'])).event
-    #             elif model_name == 'eventeventgroup':
-    #                 event = EventEventGroup.objects.get(pk=int(self.request.data['object_id'])).event
-    #             if event:
-    #                 if (self.request.user.id == event.created_by.id
-    #                         or (self.request.user.organization.id == event.created_by.organization.id
-    #                             and (self.request.user.role.is_partneradmin
-    #                                  or self.request.user.role.is_partnermanager))):
-    #                     return True
-    #                 else:
-    #                     collaborators = list(User.objects.filter(
-    #                         Q(readevents__in=[event.id]) | Q(writeevents__in=[event.id])
-    #                     ).values_list('id', flat=True))
-    #                     if self.request.user.id in collaborators:
-    #                         return True
-    #                     else:
-    #                         return False
-    #             else:
-    #                 return False
-    #         else:
-    #             return False
-    #     else:
-    #         return False
-
-    # TODO: this only gets user-owned and user org-owned... what about collab?
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         user = get_request_user(self.request)
-        queryset = Comment.objects.all()
-        empty_queryset = Comment.objects.none()
+
+        # all requests from anonymous or public users return nothing
+        if not user or not user.is_authenticated or user.role.is_public:
+            return Comment.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Comment.objects.all()
+        # partners can see comments owned by the user or user's org
+        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            # they can also see comments for events on which they are collaborators:
+            collab_evt_ids = list(Event.objects.filter(
+                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+            ).values_list('id', flat=True))
+            collab_evtloc_ids = list(EventLocation.objects.filter(
+                event__in=collab_evt_ids).values_list('id', flat=True))
+            collab_evtgrp_ids = list(EventEventGroup.objects.filter(
+                event__in=collab_evt_ids).values_list('id', flat=True))
+            collab_srvreq_ids = list(ServiceRequest.objects.filter(
+                event__in=collab_evt_ids).values_list('id', flat=True))
+            queryset = Comment.objects.filter(
+                Q(created_by__exact=user.id) |
+                Q(created_by__organization__exact=user.organization) |
+                Q(content_type__model='event', object_id__in=collab_evt_ids) |
+                Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
+                Q(content_type__model='eventeventgroup',object_id__in=collab_evtgrp_ids) |
+                Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
+            )
+        # otherwise return nothing
+        else:
+            return Comment.objects.none()
 
         contains = self.request.query_params.get('contains', None) if self.request else None
         if contains is not None:
             queryset = queryset.filter(comment__contains=contains)
-
-        # anonymous users cannot see anything
-        if not user or not user.is_authenticated:
-            return empty_queryset
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            return queryset
-        # for all non-admins, pk requests can only return data to the owner or their org or collaborators
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                return Comment.objects.filter(pk=pk).filter(
-                    Q(created_by=user.id) | Q(created_by__organization=user.organization.id)).first()
-                # return obj if self.can_access(pk) else empty_queryset
-            else:
-                raise NotFound
-        elif self.action == 'list':
-            return queryset.filter(Q(created_by=user.id) | Q(created_by__organization=user.organization.id))
-        # all create requests imply that the requester is the owner, so use allow non-public data
-        elif self.action == 'create':
-            return queryset
-        # all other requests return no data
-        else:
-            return empty_queryset
+        return queryset
 
 
 class CommentTypeViewSet(HistoryViewSet):
@@ -2352,6 +2391,7 @@ class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
               'counties': 'Counties (or equivalent)', 'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
 
 
+# TODO: event collaborators should be able to see private events if those have been shared to collaborators
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     """
     list:
