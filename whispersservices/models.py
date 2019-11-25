@@ -1185,7 +1185,10 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # create real time notifications for high impact diseases
         if self.diagnosis.high_impact:
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
-            message = "A High Impact Species Diagnosis has been created."
+            email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI]
+            text = "An event involving {specdiag} has been added to WHISPers. {specdiag} is identified"
+            text += " as a High Impact Disease. Please view Event {event} for details."
+            message = text.format(specdiag=self.diagnosis.name, event=self.location_species.event_location.event.id)
             source = self.created_by.username
             event = self.location_species.event_location.event.id
             # current_app.send_task('myapp.tasks.do_stuff', args=(1, 'two'), kwargs={'foo': 'bar'})
@@ -1193,7 +1196,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             #                       args=(recipients, source, event, 'event', message, True))
             # generate_notification.delay(recipients, source, event, 'event', message, True)
             from whispersservices.tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'event', message, True)
+            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
