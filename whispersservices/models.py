@@ -3,7 +3,7 @@ from datetime import date
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.postgres.fields import JSONField
+from django.contrib.postgres.fields import JSONField, ArrayField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
 from celery import current_app
@@ -1186,9 +1186,9 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         if self.diagnosis.high_impact:
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
             email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI]
-            text = "An event involving {specdiag} has been added to WHISPers. {specdiag} is identified"
-            text += " as a High Impact Disease. Please view Event {event} for details."
-            message = text.format(specdiag=self.diagnosis.name, event=self.location_species.event_location.event.id)
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first().message_template
+            message = msg_tmp.format(
+                species_diagnosis=self.diagnosis.name, event_id=self.location_species.event_location.event.id)
             source = self.created_by.username
             event = self.location_species.event_location.event.id
             # current_app.send_task('myapp.tasks.do_stuff', args=(1, 'two'), kwargs={'foo': 'bar'})
@@ -1436,6 +1436,19 @@ class Notification(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_notification"
+
+
+class NotificationMessageTemplate(PermissionsHistoryModel):
+
+    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this notification')
+    message_template = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
+    message_variables = ArrayField(models.CharField(max_length=128), blank=True, help_text='An array of alphanumeric values of the variable names of this notification message')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationmessagetemplate"
 
 
 class NotificationCuePreference(PermissionsHistoryModel):
