@@ -477,13 +477,13 @@ class StaffViewSet(HistoryViewSet):
 
         # all requests from anonymous users return nothing
         if not user or not user.is_authenticated:
-            return Comment.objects.none()
+            return Staff.objects.none()
         # admins and superadmins can see everything
         elif user.role.is_superadmin or user.role.is_admin:
-            queryset = Comment.objects.all()
+            queryset = Staff.objects.all()
         # otherwise return nothing
         else:
-            return Comment.objects.none()
+            return Staff.objects.none()
 
         return queryset
 
