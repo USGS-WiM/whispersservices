@@ -4249,7 +4249,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'new_role_change_request', 'rolechangerequests_requestor')
+                  'user_status', 'new_role_change_request',) # 'rolechangerequests_requestor')
 
 
 class RoleSerializer(serializers.ModelSerializer):

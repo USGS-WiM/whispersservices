@@ -1,5 +1,6 @@
 from django.db import models
 from datetime import date
+from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -1787,6 +1788,24 @@ class RoleChangeRequest(PermissionsHistoryModel):
             return True
         else:
             return False
+
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        super(RoleChangeRequest, self).save(*args, **kwargs)
+
+        recipients = list(User.objects.filter(
+            Q(role__in=[1, 2]) | Q(role=3, organization=self.requestor.organization.id)).values_list('id', flat=True))
+        org_admin_emails = list(
+            User.objects.filter(role=3, organization=self.requestor.organization.id).values_list('email', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ] + org_admin_emails
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Role Change').first().message_template
+        message = msg_tmp.format(
+            first_name=self.requestor.first_name, last_name=self.requestor.last_name, username=self.requestor.username,
+            role=self.role_requested.name)
+        source = self.created_by.username
+        event = None
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
 
     def __str__(self):
         return str(self.id)
