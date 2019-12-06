@@ -179,6 +179,25 @@ class EventViewSet(HistoryViewSet):
     Deletes an event.
     """
 
+    @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))
+    def request_collaboration(self, request, pk=None):
+        if request is None or not request.user.is_authenticated:
+            raise PermissionDenied
+
+        event = Event.objects.filter(id=pk).first()
+        event_owner = event.created_by
+        recipients = list(User.objects.filter(
+            Q(id=event_owner.id) | Q(role=3, organization=event_owner.organization.id)
+        ).values_list('id', flat=True))
+        email_to = list(User.objects.filter(
+            Q(id=event_owner.id) | Q(role=3, organization=event_owner.organization.id)).values_list('email', flat=True))
+        source = get_request_user(self.request).username
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first().message_template
+        message = msg_tmp.format(username=source, event_id=event.id, comment=request.data)
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
+
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
         # if the event is complete, it cannot be deleted
