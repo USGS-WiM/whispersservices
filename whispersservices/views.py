@@ -951,8 +951,18 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         if not request.user.is_authenticated:
             raise PermissionDenied
 
-        message = "Please add a new administrative level two:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new administrative level two:"
+        # return construct_email(request.data, request.user.email, message)
+
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
+        message = msg_tmp.format(lookup_item=request.data, lookup_table="administrativeleveltwos")
+        source = get_request_user(self.request).username
+        event = None
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
@@ -1169,8 +1179,18 @@ class SpeciesViewSet(HistoryViewSet):
         if not request.user.is_authenticated:
             raise PermissionDenied
 
-        message = "Please add a new species:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new species:"
+        # return construct_email(request.data, request.user.email, message)
+
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
+        message = msg_tmp.format(lookup_item=request.data, lookup_table="species")
+        source = get_request_user(self.request).username
+        event = None
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
 
     def get_serializer_class(self):
         if self.request and 'slim' in self.request.query_params:
@@ -1264,8 +1284,18 @@ class DiagnosisViewSet(HistoryViewSet):
         if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
-        message = "Please add a new diagnosis:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new diagnosis:"
+        # return construct_email(request.data, request.user.email, message)
+
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
+        message = msg_tmp.format(lookup_item=request.data, lookup_table="diagnoses")
+        source = get_request_user(self.request).username
+        event = None
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
@@ -2061,8 +2091,18 @@ class OrganizationViewSet(HistoryViewSet):
         if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
-        message = "Please add a new organization:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new organization:"
+        # return construct_email(request.data, request.user.email, message)
+
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
+        message = msg_tmp.format(lookup_item=request.data, lookup_table="organizations")
+        source = get_request_user(self.request).username
+        event = None
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
