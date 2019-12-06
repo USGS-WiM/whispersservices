@@ -4334,10 +4334,10 @@ class RoleChangeRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     jsonify_errors("You do not have permission to alter the request response."))
             else:
+                instance.request_response = validated_data.get('request_response', instance.request_response)
                 instance.response_by = user
 
         instance.role_requested = validated_data.get('role_requested', instance.role_requested)
-        instance.request_response = validated_data.get('request_response', instance.request_response)
 
         instance.save()
         return instance
