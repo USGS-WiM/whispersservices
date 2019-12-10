@@ -1165,6 +1165,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     # and to create real time notifications for high impact diseases
     # and to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
+        is_new = False if self.id else True
 
         # all "Pending" and "Undetermined" diagnosis must be confirmed (not suspect) = false, even if no lab OR
         # some other way of coding this such that we never see "Pending suspect" or "Undetermined suspect" on front end
@@ -1184,7 +1185,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
         # create real time notifications for high impact diseases
-        if self.diagnosis.high_impact:
+        if is_new and self.diagnosis.high_impact:
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
             email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI]
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first().message_template
@@ -1880,6 +1881,23 @@ class EventReadUser(PermissionsHistoryModel):
         else:
             return False
 
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+
+        super(EventReadUser, self).save(*args, **kwargs)
+
+        # if this is a new collaborator user, create a 'Collaborator Added' notification
+        if is_new:
+            recipients = [self.user.id, ]
+            email_to = [self.user.email, ]
+            event = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
+            message = msg_tmp.format(collaborator_type="Read", event_id=event)
+            source = self.created_by.username
+            from whispersservices.tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
+
     def __str__(self):
         return str(self.id)
 
@@ -1923,6 +1941,23 @@ class EventWriteUser(PermissionsHistoryModel):
             return True
         else:
             return False
+
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+
+        super(EventWriteUser, self).save(*args, **kwargs)
+
+        # if this is a new collaborator user, create a 'Collaborator Added' notification
+        if is_new:
+            recipients = [self.user.id, ]
+            email_to = [self.user.email, ]
+            event = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
+            message = msg_tmp.format(collaborator_type="Write", event_id=event)
+            source = self.created_by.username
+            from whispersservices.tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
     def __str__(self):
         return str(self.id)
