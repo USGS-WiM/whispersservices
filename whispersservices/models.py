@@ -1396,6 +1396,15 @@ class ServiceRequest(PermissionsHistoryModel):
             event = None
             from whispersservices.tasks import generate_notification
             generate_notification.delay(recipients, source, event, '', message, True, email_to)
+        elif self.request_response.name in ['Yes', 'No', 'Maybe']:
+            recipients = [self.created_by.id, self.event.created_by.id, ]
+            email_to = [self.created_by.email, self.event.created_by.email, ]
+            message = NotificationMessageTemplate.objects.filter(
+                name='Service Request Response').first().message_template
+            source = self.modified_by.username
+            event = None
+            from whispersservices.tasks import generate_notification
+            generate_notification.delay(recipients, source, event, '', message, True, email_to)
 
     def __str__(self):
         return str(self.id)
