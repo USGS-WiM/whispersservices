@@ -1068,7 +1068,7 @@ class EventSerializer(serializers.ModelSerializer):
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
-                service_request_comments = []
+                # service_request_comments = []
 
                 # create the child comments for this service request
                 if new_comments is not None:
@@ -1082,7 +1082,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment['comment'])
+                            # service_request_comments.append(comment['comment'])
 
                 # # construct and send the request email
                 # service_request_email = construct_service_request_email(service_request.event.id,
@@ -1870,7 +1870,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
-                service_request_comments = []
+                # service_request_comments = []
 
                 # create the child comments for this service request
                 if new_comments is not None:
@@ -1884,7 +1884,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment['comment'])
+                            # service_request_comments.append(comment['comment'])
 
                 # # construct and send the request email
                 # service_request_email = construct_service_request_email(service_request.event.id,
@@ -3907,7 +3907,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             validated_data['response_by'] = User.objects.filter(id=1).first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
-        service_request_comments = []
+        # service_request_comments = []
 
         # create the child comments for this service request
         if new_comments is not None:
@@ -3921,7 +3921,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
-                    service_request_comments.append(comment['comment'])
+                    # service_request_comments.append(comment['comment'])
 
         # # construct and send the request email
         # service_request_email = construct_service_request_email(service_request.event.id,

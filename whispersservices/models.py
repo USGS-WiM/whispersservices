@@ -1624,6 +1624,33 @@ class Comment(PermissionsHistoryModel):
         # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
         return determine_object_update_permission(self, request, None)
 
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+
+        super(Comment, self).save(*args, **kwargs)
+
+        # if this is a new request with a service request content type, create a 'Service Request Comment' notification
+        if is_new and self.content_type.model == 'servicerequest':
+            madison_epi = User.objects.filter(username='madisonepi').first()
+            if self.created_by.id == madison_epi.id:
+                service_request = ServiceRequest.objects.filter(id=self.object_id).first()
+                recipients = [service_request.created_by.id, ]
+                email_to = [service_request.created_by.email, ]
+                message = ''
+                source = service_request.created_by.username
+                event = None
+                from whispersservices.tasks import generate_notification
+                generate_notification.delay(recipients, source, event, '', message, True, email_to)
+            else:
+                recipients = [madison_epi.id, ]
+                email_to = [madison_epi.email, ]
+                message = ''
+                source = madison_epi.username
+                event = None
+                from whispersservices.tasks import generate_notification
+                generate_notification.delay(recipients, source, event, '', message, True, email_to)
+
     def __str__(self):
         return str(self.id)
 
