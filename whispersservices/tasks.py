@@ -26,14 +26,14 @@ def construct_notification_email(recipient_email, source, event, link, message):
     body = message
     if link == 'event':
         event_id_string = str(event)
-        url = settings.APP_WHISPERS_URL + 'event/' + event_id_string
+        url = settings.APP_WHISPERS_URL + 'event/' + event_id_string + '/'
     elif link == 'userdashboard':
-        url = settings.APP_WHISPERS_URL + 'usedashboard'
+        url = settings.APP_WHISPERS_URL + 'userdashboard' + '/'
     else:
         url = settings.APP_WHISPERS_URL
-    html_body = body + "<a href='" + url + "/'>" + url + "/</a>"
+    html_body = body + "<a href='" + url + ">" + url + "</a>"
     body = body.replace('<strong>', '').replace('</strong>', '').replace('<br>', '    ').replace('&nbsp;', ' ')
-    body += url + "/"
+    body += url
     from_address = settings.EMAIL_WHISPERS
     to_list = [recipient_email, ]
     bcc_list = []

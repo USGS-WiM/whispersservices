@@ -1084,14 +1084,14 @@ class EventSerializer(serializers.ModelSerializer):
                                                    comment_type=comment_type, created_by=user, modified_by=user)
                             service_request_comments.append(comment['comment'])
 
-                # construct and send the request email
-                service_request_email = construct_service_request_email(service_request.event.id,
-                                                                        user.organization.name,
-                                                                        service_request.request_type.name,
-                                                                        user.email,
-                                                                        service_request_comments)
-                if settings.ENVIRONMENT not in ['production', 'test']:
-                    event.service_request_email = service_request_email.__dict__
+                # # construct and send the request email
+                # service_request_email = construct_service_request_email(service_request.event.id,
+                #                                                         user.organization.name,
+                #                                                         service_request.request_type.name,
+                #                                                         user.email,
+                #                                                         service_request_comments)
+                # if settings.ENVIRONMENT not in ['production', 'test']:
+                #     event.service_request_email = service_request_email.__dict__
 
         return event
 
@@ -1886,14 +1886,14 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                    comment_type=comment_type, created_by=user, modified_by=user)
                             service_request_comments.append(comment['comment'])
 
-                # construct and send the request email
-                service_request_email = construct_service_request_email(service_request.event.id,
-                                                                        user.organization.name,
-                                                                        service_request.request_type.name,
-                                                                        user.email,
-                                                                        service_request_comments)
-                if settings.ENVIRONMENT not in ['production', 'test']:
-                    event.service_request_email = service_request_email.__dict__
+                # # construct and send the request email
+                # service_request_email = construct_service_request_email(service_request.event.id,
+                #                                                         user.organization.name,
+                #                                                         service_request.request_type.name,
+                #                                                         user.email,
+                #                                                         service_request_comments)
+                # if settings.ENVIRONMENT not in ['production', 'test']:
+                #     event.service_request_email = service_request_email.__dict__
 
         return event
 
@@ -3923,13 +3923,13 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                            comment_type=comment_type, created_by=user, modified_by=user)
                     service_request_comments.append(comment['comment'])
 
-        # construct and send the request email
-        service_request_email = construct_service_request_email(service_request.event.id,
-                                                                user.organization.name,
-                                                                service_request.request_type.name, user.email,
-                                                                service_request_comments)
-        if settings.ENVIRONMENT not in ['production', 'test']:
-            service_request.service_request_email = vars(service_request_email)
+        # # construct and send the request email
+        # service_request_email = construct_service_request_email(service_request.event.id,
+        #                                                         user.organization.name,
+        #                                                         service_request.request_type.name, user.email,
+        #                                                         service_request_comments)
+        # if settings.ENVIRONMENT not in ['production', 'test']:
+        #     service_request.service_request_email = vars(service_request_email)
 
         return service_request
 

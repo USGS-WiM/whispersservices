@@ -1380,6 +1380,23 @@ class ServiceRequest(PermissionsHistoryModel):
         else:
             return False
 
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+
+        super(ServiceRequest, self).save(*args, **kwargs)
+
+        # if this is a new service request, create a 'Service Request' notification
+        if is_new:
+            madison_epi = User.objects.filter(username='madisonepi').first()
+            recipients = [madison_epi.id, ]
+            email_to = [madison_epi.email, ]
+            message = NotificationMessageTemplate.objects.filter(name='Service Request').first().message_template
+            source = self.created_by.username
+            event = None
+            from whispersservices.tasks import generate_notification
+            generate_notification.delay(recipients, source, event, '', message, True, email_to)
+
     def __str__(self):
         return str(self.id)
 
