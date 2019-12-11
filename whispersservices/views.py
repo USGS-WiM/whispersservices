@@ -179,6 +179,58 @@ class EventViewSet(HistoryViewSet):
     Deletes an event.
     """
 
+    @action(detail=True, methods=['post'])
+    def alert_collaborator(self, request, pk=None):
+        # expected JSON fields: "recipients" (list of integers, required), "comment" (string, optional)
+        if request is None or not request.user.is_authenticated:
+            raise PermissionDenied
+
+        event = Event.objects.filter(id=pk).first()
+        user = get_request_user(self.request)
+        source = user.username
+
+        # validate that the POST body contains a required recipients list and possibly an optional comment
+        recipients_message = "A field named \"recipients\" containing a list/array of collaborator User IDs"
+        recipients_message += " is required to create collaborator alerts."
+        if 'recipients' in request.data:
+            recipient_ids = request.data['recipients']
+            if not isinstance(recipient_ids, list) or not all(isinstance(x, int) for x in recipient_ids):
+                raise APIException(recipients_message)
+            else:
+                # validate that the recipients are all collaborators of the event (or have access to the event)
+                event_user_ids = set(list(User.objects.filter(
+                    Q(eventreadusers__event_id=event.id) |
+                    Q(eventwriteusers__event_id=event.id) |
+                    Q(organization=event.created_by.organization.id) |
+                    Q(role__in=[1, 2])).values_list('id', flat=True)))
+                if not all(r_id in event_user_ids for r_id in recipient_ids):
+                    message = "One or more submitted recipient IDs are not eligible to recieve alerts about this event."
+                    message += " Eligible recipients are collaborators of this event or"
+                    message += " users in the same organization as the creator of this event, or system administrators."
+                    raise APIException(message)
+        else:
+            raise APIException(recipients_message)
+        comment_message = "A field named \"comment\" may only contain a string value."
+        if 'comment' in request.data:
+            comment = request.data['comment']
+            if not isinstance(comment, str):
+                raise APIException(comment_message)
+        else:
+            comment = None
+        if comment:
+            comment_type = CommentType.objects.filter(name='Other').first()
+            if comment_type is not None:
+                Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
+                                       created_by=user, modified_by=user)
+
+        recipients = list(User.objects.filter(id__in=recipient_ids).values_list('id', flat=True))
+        email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first().message_template
+        message = msg_tmp.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
+        from whispersservices.tasks import generate_notification
+        generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
+
     @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))
     def request_collaboration(self, request, pk=None):
         if request is None or not request.user.is_authenticated:
