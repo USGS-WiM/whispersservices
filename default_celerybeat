@@ -1,0 +1,10 @@
+CELERYD_NODES="beatworker1"
+CELERY_BIN="/var/www/whispersservices_django/env/bin/celery"
+CELERY_APP="whispersservices_django"
+CELERYBEAT_CHDIR="/var/www/whispersservices_django/"
+CELERYBEAT_OPTS="--time-limit=3600 --concurrency=16 -Ofair"
+CELERYBEAT_LOG_FILE="/var/log/celery/%n%I.log"
+CELERYBEAT_PID_FILE="/var/run/celery/%n.pid"
+CELERYBEAT_USER="root"
+CELERYBEAT_GROUP="root"
+CELERY_CREATE_DIRS=1
