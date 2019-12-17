@@ -7,7 +7,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.fields import JSONField, ArrayField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
-from celery import current_app
 
 
 # Default fields of the core User model: username, first_name, last_name, email, password, groups, user_permissions,
@@ -1193,11 +1192,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 species_diagnosis=self.diagnosis.name, event_id=self.location_species.event_location.event.id)
             source = self.created_by.username
             event = self.location_species.event_location.event.id
-            # current_app.send_task('myapp.tasks.do_stuff', args=(1, 'two'), kwargs={'foo': 'bar'})
-            # current_app.send_task('tasks.generate_notification_task',
-            #                       args=(recipients, source, event, 'event', message, True))
-            # generate_notification.delay(recipients, source, event, 'event', message, True)
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
@@ -1394,7 +1389,7 @@ class ServiceRequest(PermissionsHistoryModel):
             message = NotificationMessageTemplate.objects.filter(name='Service Request').first().message_template
             source = self.created_by.username
             event = None
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, '', message, True, email_to)
         elif self.request_response.name in ['Yes', 'No', 'Maybe']:
             recipients = [self.created_by.id, self.event.created_by.id, ]
@@ -1403,7 +1398,7 @@ class ServiceRequest(PermissionsHistoryModel):
                 name='Service Request Response').first().message_template
             source = self.modified_by.username
             event = None
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, '', message, True, email_to)
 
     def __str__(self):
@@ -1640,7 +1635,7 @@ class Comment(PermissionsHistoryModel):
                 message = ''
                 source = service_request.created_by.username
                 event = None
-                from whispersservices.tasks import generate_notification
+                from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event, '', message, True, email_to)
             else:
                 recipients = [madison_epi.id, ]
@@ -1648,7 +1643,7 @@ class Comment(PermissionsHistoryModel):
                 message = ''
                 source = madison_epi.username
                 event = None
-                from whispersservices.tasks import generate_notification
+                from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event, '', message, True, email_to)
 
     def __str__(self):
@@ -1863,7 +1858,7 @@ class RoleChangeRequest(PermissionsHistoryModel):
                 username=self.requestor.username, role=self.role_requested.name)
             source = self.created_by.username
             event = None
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         else:
             # else this is an update to an existing request, so create a 'Role Change Response' notification
@@ -1874,7 +1869,7 @@ class RoleChangeRequest(PermissionsHistoryModel):
                 role=self.role_requested.name, organization=self.requestor.organization.name)
             source = self.modified_by.username
             event = None
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
 
     def __str__(self):
@@ -1948,7 +1943,7 @@ class EventReadUser(PermissionsHistoryModel):
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
             message = msg_tmp.format(collaborator_type="Read", event_id=event)
             source = self.created_by.username
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
     def __str__(self):
@@ -2009,7 +2004,7 @@ class EventWriteUser(PermissionsHistoryModel):
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
             message = msg_tmp.format(collaborator_type="Write", event_id=event)
             source = self.created_by.username
-            from whispersservices.tasks import generate_notification
+            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
     def __str__(self):

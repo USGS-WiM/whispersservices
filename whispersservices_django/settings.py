@@ -182,8 +182,14 @@ MEDIA_URL = '/media/'
 
 CORS_ORIGIN_ALLOW_ALL = True
 
+CELERY_IMPORTS = ['whispersservices.tasks']
 CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
+# CELERY_TASK_ROUTES = {
+#     'immediate_tasks.*': 'default',
+#     'scheduled_tasks.*': 'beat'
+# }
+# CELERY_CREATE_MISSING_QUEUES = True
 # CELERY_RESULT_BACKEND = 'django-db'
 # CELERY_IGNORE_RESULT = False
 # CELERY_TASK_IGNORE_RESULT = False

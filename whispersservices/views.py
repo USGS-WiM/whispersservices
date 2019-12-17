@@ -227,7 +227,7 @@ class EventViewSet(HistoryViewSet):
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first().message_template
         message = msg_tmp.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -246,7 +246,7 @@ class EventViewSet(HistoryViewSet):
         source = get_request_user(self.request).username
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first().message_template
         message = msg_tmp.format(username=source, event_id=event.id, comment=request.data)
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1031,7 +1031,7 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         message = msg_tmp.format(lookup_item=request.data, lookup_table="administrativeleveltwos")
         source = get_request_user(self.request).username
         event = None
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1259,7 +1259,7 @@ class SpeciesViewSet(HistoryViewSet):
         message = msg_tmp.format(lookup_item=request.data, lookup_table="species")
         source = get_request_user(self.request).username
         event = None
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1364,7 +1364,7 @@ class DiagnosisViewSet(HistoryViewSet):
         message = msg_tmp.format(lookup_item=request.data, lookup_table="diagnoses")
         source = get_request_user(self.request).username
         event = None
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -2171,7 +2171,7 @@ class OrganizationViewSet(HistoryViewSet):
         message = msg_tmp.format(lookup_item=request.data, lookup_table="organizations")
         source = get_request_user(self.request).username
         event = None
-        from whispersservices.tasks import generate_notification
+        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 

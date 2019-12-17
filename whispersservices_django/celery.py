@@ -9,10 +9,10 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
 
 app.conf.beat_schedule = {
-    'nightly_all_events': {
-        'task': 'whispersservices.tasks.all_events',
+    'test_all_events': {
+        'task': 'scheduled_tasks.all_events',
         # the following schedule is just for testing; normal schedule should be minute='0', hour='1'
-        'schedule': crontab(minute='*', hour='*'),
+        'schedule': 10.0  # crontab(minute='*', hour='*'),
     },
     # 'task-number-two': {
     #     'task': 'app2.tasks.task_number_two',
