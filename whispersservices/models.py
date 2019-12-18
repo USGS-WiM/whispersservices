@@ -1454,6 +1454,22 @@ class Notification(PermissionsHistoryModel):
     client_page = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the page of the client application where the topic of this notification can be addressed')
     message = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
 
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
     def __str__(self):
         return str(self.id)
 
@@ -1461,7 +1477,7 @@ class Notification(PermissionsHistoryModel):
         db_table = "whispers_notification"
 
 
-class NotificationMessageTemplate(PermissionsHistoryModel):
+class NotificationMessageTemplate(AdminPermissionsHistoryModel):
 
     name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this notification')
     message_template = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
@@ -1482,6 +1498,22 @@ class NotificationCuePreference(PermissionsHistoryModel):
     create_when_new = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is new')
     create_when_modified = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is modified')
     send_email = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent by email or not')
+
+    @staticmethod
+    def has_create_permission(request):
+        # no one can create
+        return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
 
     def __str__(self):
         return str(self.id)
@@ -1504,6 +1536,22 @@ class NotificationCueCustom(PermissionsHistoryModel):
     species = JSONField(blank=True, help_text='A JSON object containing the species ID data')
     species_diagnosis_diagnosis = JSONField(blank=True, help_text='A JSON object containing the speciesdiagnosis diagnosis ID data')
 
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
     def __str__(self):
         return str(self.id)
 
@@ -1511,6 +1559,7 @@ class NotificationCueCustom(PermissionsHistoryModel):
         db_table = "whispers_notificationcuecustom"
 
 
+# TODO: ensure that these get created when a User is created, also use on_delete=PREVENT
 # TODO: ensure that these are deactivated somehow when a user is_active value is False
 class NotificationCueStandard(PermissionsHistoryModel):
     """
@@ -1519,6 +1568,23 @@ class NotificationCueStandard(PermissionsHistoryModel):
 
     notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuepreference')
     standard_type = models.ForeignKey('NotificationCueStandardType', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuestandardtype')
+
+    @staticmethod
+    def has_create_permission(request):
+        # no one can create
+        return False
+
+    # TODO: check if this is true, of if no one should be able to update (really they should only be able to update the preference, right?)
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
 
     def __str__(self):
         return str(self.id)

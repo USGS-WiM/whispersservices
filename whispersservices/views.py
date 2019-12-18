@@ -1725,23 +1725,91 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 
 class NotificationViewSet(HistoryViewSet):
-    queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return Notification.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return Notification.objects.none()
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Notification.objects.all()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = Notification.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
 
 
 class NotificationCuePreferenceViewSet(HistoryViewSet):
-    queryset = NotificationCuePreference.objects.all()
     serializer_class = NotificationCuePreferenceSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCuePreference.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCuePreference.objects.none()
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = NotificationCuePreference.objects.all()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCuePreference.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
 
 
 class NotificationCueCustomViewSet(HistoryViewSet):
-    queryset = NotificationCueCustom.objects.all()
     serializer_class = NotificationCueCustomSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCueCustom.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCueCustom.objects.none()
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = NotificationCueCustom.objects.all()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCueCustom.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
 
 
 class NotificationCueStandardViewSet(HistoryViewSet):
-    queryset = NotificationCueStandard.objects.all()
     serializer_class = NotificationCueStandardSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCueStandard.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCueStandard.objects.none()
+        # admins, superadmins, and superusers can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = NotificationCueStandard.objects.all()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCueStandard.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
 
 
 class NotificationCueStandardTypeViewSet(HistoryViewSet):

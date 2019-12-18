@@ -4033,13 +4033,52 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+# TODO: should this be read-only, or even hidden?
 class NotificationCueStandardSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
+    new_notification_cue_preference = serializers.JSONField(write_only=True, required=False)
+
+    def create(self, validated_data):
+        # pull out child notification cue preferences from the request
+        validated_data.pop('new_notification_cue_preference', None)
+
+        return NotificationCueStandard.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # TODO: change this to use its Serializer
+        # pull out child notification cue preferences from the request and update it if necessary
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        if new_pref:
+            pref = NotificationCuePreference.objects.filter(id=instance.notification_cue_preference.id).first()
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                pref.create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                pref.create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                pref.send_email = new_pref['send_email']
+            pref.modified_by = user if user else pref.modified_by
+            pref.save()
+
+        # update the NotificationCueStandard object (note that there is nothing that the user should be able to update)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # ensure that the post-save instance and its nested objecs is returned, not the pre-saved instance
+        instance = NotificationCueStandard.objects.filter(id=instance.id).first()
+
+        return instance
 
     class Meta:
         model = NotificationCueStandard
-        fields = ('id', 'standard_type', 'created_date', 'created_by', 'created_by_string',
+        fields = ('id', 'notification_cue_preference', 'standard_type', 'new_notification_cue_preference',
+                  'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
