@@ -4024,10 +4024,85 @@ class NotificationCuePreferenceSerializer(serializers.ModelSerializer):
 class NotificationCueCustomSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
+    new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
+
+    def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue preferences from the request
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        create_when_new = NotificationCuePreference._meta.get_field('create_when_new').get_default()
+        create_when_modified = NotificationCuePreference._meta.get_field('create_when_modified').get_default()
+        send_email = NotificationCuePreference._meta.get_field('send_email').get_default()
+        if new_pref:
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                send_email = new_pref['send_email']
+        # if any of create_when_new, create_when_modified, and send_email are not present
+        # in new_notification_cue_preference or are not boolean, default values will be assigned
+        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
+                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
+        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
+        if pref_serializer.is_valid():
+            pref_serializer.save()
+        else:
+            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
+        # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
+        #                                                 create_when_modified=create_when_modified,
+        #                                                 send_email=send_email, created_by=user,
+        #                                                 modified_by=user)
+        validated_data['notification_cue_preference'] = pref
+
+        return NotificationCueCustom.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue preferences from the request and update it if necessary
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        if new_pref:
+            pref = NotificationCuePreference.objects.filter(id=instance.notification_cue_preference.id).first()
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                pref.create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                pref.create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                pref.send_email = new_pref['send_email']
+            pref.modified_by = user if user else pref.modified_by
+            pref.save()
+
+        # update the NotificationCueCustom object
+        instance.event = validated_data.get('event', instance.event)
+        instance.event_affected_count = validated_data.get('event_affected_count', instance.event_affected_count)
+        instance.event_location_land_ownership = validated_data.get('event_location_land_ownership',
+                                                                    instance.event_location_land_ownership)
+        instance.event_location_administrative_level_one = validated_data.get('event_location_administrative_level_one',
+                                                                              instance.event_location_administrative_level_one)
+        instance.species = validated_data.get('species', instance.species)
+        instance.species_diagnosis_diagnosis = validated_data.get('species_diagnosis_diagnosis',
+                                                                  instance.species_diagnosis_diagnosis)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # ensure that the post-save instance and its nested objecs is returned, not the pre-saved instance
+        instance = NotificationCueCustom.objects.filter(id=instance.id).first()
+
+        return instance
 
     class Meta:
         model = NotificationCueCustom
-        fields = ('id', 'event', 'event_affected_count', 'event_location_land_ownership',
+        fields = ('id', 'notification_cue_preference', 'new_notification_cue_preference',
+                  'event', 'event_affected_count', 'event_location_land_ownership',
                   'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
@@ -4038,18 +4113,46 @@ class NotificationCueStandardSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
-    new_notification_cue_preference = serializers.JSONField(write_only=True, required=False)
+    new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
 
     def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
+
         # pull out child notification cue preferences from the request
-        validated_data.pop('new_notification_cue_preference', None)
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        create_when_new = NotificationCuePreference._meta.get_field('create_when_new').get_default()
+        create_when_modified = NotificationCuePreference._meta.get_field('create_when_modified').get_default()
+        send_email = NotificationCuePreference._meta.get_field('send_email').get_default()
+        if new_pref:
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                send_email = new_pref['send_email']
+        # if any of create_when_new, create_when_modified, and send_email are not present
+        # in new_notification_cue_preference or are not boolean, default values will be assigned
+        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
+                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
+        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
+        if pref_serializer.is_valid():
+            pref_serializer.save()
+        else:
+            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
+        # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
+        #                                                 create_when_modified=create_when_modified,
+        #                                                 send_email=send_email, created_by=user,
+        #                                                 modified_by=user)
+        validated_data['notification_cue_preference'] = pref
 
         return NotificationCueStandard.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
         user = get_user(self.context, self.initial_data)
 
-        # TODO: change this to use its Serializer
         # pull out child notification cue preferences from the request and update it if necessary
         new_pref = validated_data.pop('new_notification_cue_preference', None)
         if new_pref:

@@ -1557,6 +1557,7 @@ class NotificationCueCustom(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_notificationcuecustom"
+        # TODO: do we want to impose a unique_together constraint?
 
 
 # TODO: ensure that these get created when a User is created, also use on_delete=PREVENT
@@ -1591,6 +1592,7 @@ class NotificationCueStandard(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_notificationcuestandard"
+        unique_together = ("notification_cue_preference", "standard_type", "created_by")
 
 
 class NotificationCueStandardType(AdminPermissionsHistoryNameModel):
@@ -1827,6 +1829,20 @@ class User(AbstractUser):
     user_status = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the status for this user')
 
     history = HistoricalRecords()
+
+    # override the save method to create standard notifications and cue preferences
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+
+        if is_new:
+            std_notif_types = NotificationCueStandardType.objects.all()
+            admin = User.objects.filter(id=1).first
+            for std_notif_type in std_notif_types:
+                pref = NotificationCuePreference.objects.create(created_by=admin, modified_by=admin)
+                NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
+                                                       created_by=admin, modified_by=admin)
+
+        super(User, self).save(*args, **kwargs)
 
     def __str__(self):
         return self.username
