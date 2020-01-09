@@ -228,6 +228,7 @@ class EventViewSet(HistoryViewSet):
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first().message_template
         message = msg_tmp.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -247,6 +248,7 @@ class EventViewSet(HistoryViewSet):
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first().message_template
         message = msg_tmp.format(username=source, event_id=event.id, comment=request.data)
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1032,6 +1034,7 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         source = get_request_user(self.request).username
         event = None
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1260,6 +1263,7 @@ class SpeciesViewSet(HistoryViewSet):
         source = get_request_user(self.request).username
         event = None
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1365,6 +1369,7 @@ class DiagnosisViewSet(HistoryViewSet):
         source = get_request_user(self.request).username
         event = None
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -1728,7 +1733,16 @@ class NotificationViewSet(HistoryViewSet):
     serializer_class = NotificationSerializer
 
     def get_queryset(self):
+        queryset = Notification.objects.all()
         user = get_request_user(self.request)
+
+        recipient = self.request.query_params.get('recipient', None) if self.request else None
+        if recipient is not None and recipient != '':
+            if LIST_DELIMETER in recipient:
+                recipient_list = recipient.split(',')
+                queryset = queryset.filter(recipient__in=recipient_list)
+            else:
+                queryset = queryset.filter(recipient__exact=recipient)
 
         # anonymous users cannot see anything
         if not user or not user.is_authenticated:
@@ -1738,7 +1752,7 @@ class NotificationViewSet(HistoryViewSet):
             return Notification.objects.none()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
-            queryset = Notification.objects.all()
+            return queryset
         # otherwise return only what belongs to the user
         else:
             queryset = Notification.objects.all().filter(created_by__exact=user.id)
@@ -2240,6 +2254,7 @@ class OrganizationViewSet(HistoryViewSet):
         source = get_request_user(self.request).username
         event = None
         from whispersservices.immediate_tasks import generate_notification
+        # TODO: modify for new short and long messages
         generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 

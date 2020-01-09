@@ -1187,13 +1187,19 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         if is_new and self.diagnosis.high_impact:
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
             email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI]
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first().message_template
-            message = msg_tmp.format(
-                species_diagnosis=self.diagnosis.name, event_id=self.location_species.event_location.event.id)
+            evt_loc = self.location_species.event_location
+            short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
+            short_message = msg_tmp.short_message_template.format(
+                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
+            long_message = msg_tmp.long_message_template.format(
+                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
+                event_id=self.location_species.event_location.event.id)
             source = self.created_by.username
             event = self.location_species.event_location.event.id
             from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
+            # TODO: modify for new short and long messages
+            generate_notification.delay(recipients, source, event, 'event', short_message, long_message, True, email_to)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
@@ -1390,6 +1396,7 @@ class ServiceRequest(PermissionsHistoryModel):
             source = self.created_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, '', message, True, email_to)
         elif self.request_response.name in ['Yes', 'No', 'Maybe']:
             recipients = [self.created_by.id, self.event.created_by.id, ]
@@ -1399,6 +1406,7 @@ class ServiceRequest(PermissionsHistoryModel):
             source = self.modified_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, '', message, True, email_to)
 
     def __str__(self):
@@ -1452,7 +1460,8 @@ class Notification(PermissionsHistoryModel):
     event = models.ForeignKey('Event', models.CASCADE, null=True, related_name='notifications', help_text='A foreign key integer value identifying an event')
     read = models.BooleanField(default=False, help_text='A boolean value indicating if this notification has been read or not')
     client_page = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the page of the client application where the topic of this notification can be addressed')
-    message = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
+    subject = models.CharField(max_length=128, help_text='An alphanumeric value of the subject of this notification')
+    body = models.TextField(blank=True, help_text='An alphanumeric value of the message body of this notification')
 
     @staticmethod
     def has_create_permission(request):
@@ -1480,7 +1489,8 @@ class Notification(PermissionsHistoryModel):
 class NotificationMessageTemplate(AdminPermissionsHistoryModel):
 
     name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this notification')
-    message_template = models.TextField(blank=True, help_text='An alphanumeric value of the message of this notification')
+    subject_template = models.CharField(max_length=128, help_text='An alphanumeric value of the subject of this notification')
+    body_template = models.TextField(blank=True, help_text='An alphanumeric value of the message body of this notification')
     message_variables = ArrayField(models.CharField(max_length=128), blank=True, help_text='An array of alphanumeric values of the variable names of this notification message')
 
     def __str__(self):
@@ -1704,6 +1714,7 @@ class Comment(PermissionsHistoryModel):
                 source = service_request.created_by.username
                 event = None
                 from whispersservices.immediate_tasks import generate_notification
+                # TODO: modify for new short and long messages
                 generate_notification.delay(recipients, source, event, '', message, True, email_to)
             else:
                 recipients = [madison_epi.id, ]
@@ -1712,6 +1723,7 @@ class Comment(PermissionsHistoryModel):
                 source = madison_epi.username
                 event = None
                 from whispersservices.immediate_tasks import generate_notification
+                # TODO: modify for new short and long messages
                 generate_notification.delay(recipients, source, event, '', message, True, email_to)
 
     def __str__(self):
@@ -1941,6 +1953,7 @@ class RoleChangeRequest(PermissionsHistoryModel):
             source = self.created_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
         else:
             # else this is an update to an existing request, so create a 'Role Change Response' notification
@@ -1952,6 +1965,7 @@ class RoleChangeRequest(PermissionsHistoryModel):
             source = self.modified_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
 
     def __str__(self):
@@ -2026,6 +2040,7 @@ class EventReadUser(PermissionsHistoryModel):
             message = msg_tmp.format(collaborator_type="Read", event_id=event)
             source = self.created_by.username
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
     def __str__(self):
@@ -2087,6 +2102,7 @@ class EventWriteUser(PermissionsHistoryModel):
             message = msg_tmp.format(collaborator_type="Write", event_id=event)
             source = self.created_by.username
             from whispersservices.immediate_tasks import generate_notification
+            # TODO: modify for new short and long messages
             generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
 
     def __str__(self):

@@ -18,9 +18,9 @@ def jsonify_errors(data):
 
 
 # TODO: modify to suit the needs of notifications
-def construct_notification_email(recipient_email, source, event, client_page, subject, message):
-    subject = "An action by " + source + " requires your attention" if not subject else subject
-    body = message
+# TODO: modify for new short and long messages
+def construct_notification_email(recipient_email, source, event, client_page, subject, body):
+    # subject = "An action by " + source + " requires your attention" if not subject else subject
     if client_page == 'event':
         event_id_string = str(event)
         url = settings.APP_WHISPERS_URL + 'event/' + event_id_string + '/'
@@ -48,19 +48,20 @@ def construct_notification_email(recipient_email, source, event, client_page, su
     return email
 
 
+# TODO: modify for new short and long messages
 @shared_task(name='generate_notification_task')
-def generate_notification(
-        recipients, source, event_id, client_page, message, subject=None, send_email=False, email_to=None):
+def generate_notification(recipients, source, event_id, client_page, subject, body,
+                          send_email=False, email_to=None):
     admin = User.objects.filter(id=1).first()
     event = Event.objects.filter(id=event_id).first()
     for recip in recipients:
         user = User.objects.filter(id=recip).first()
         Notification.objects.create(
-            recipient=user, source=source, event=event, read=False, client_page=client_page, message=message,
-            created_by=admin, modified_by=admin)
+            recipient=user, source=source, event=event, read=False, client_page=client_page,
+            subject=subject, body=body, created_by=admin, modified_by=admin)
         # email: settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI
     if send_email and email_to is not None:
         for recip in email_to:
-            notif_email = construct_notification_email(recip, source, event, client_page, subject, message)
+            notif_email = construct_notification_email(recip, source, event, client_page, subject, body)
             print(notif_email.__dict__)
     return True
