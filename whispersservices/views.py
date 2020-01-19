@@ -2127,7 +2127,7 @@ class RoleViewSet(HistoryViewSet):
     serializer_class = RoleSerializer
 
 
-class RoleChangeRequestViewSet(HistoryViewSet):
+class UserChangeRequestViewSet(HistoryViewSet):
     """
     list:
     Returns a list of all role change requests.
@@ -2147,11 +2147,11 @@ class RoleChangeRequestViewSet(HistoryViewSet):
     delete:
     Deletes a role change request.
     """
-    queryset = RoleChangeRequest.objects.all()
-    serializer_class = RoleChangeRequestSerializer
+    queryset = UserChangeRequest.objects.all()
+    serializer_class = UserChangeRequestSerializer
 
 
-class RoleChangeRequestResponseViewSet(HistoryViewSet):
+class UserChangeRequestResponseViewSet(HistoryViewSet):
     """
     list:
     Returns a list of all role change request responses.
@@ -2171,8 +2171,8 @@ class RoleChangeRequestResponseViewSet(HistoryViewSet):
     delete:
     Deletes a role change request response.
     """
-    queryset = RoleChangeRequestResponse.objects.all().exclude(name="Pending")
-    serializer_class = RoleChangeRequestResponseSerializer
+    queryset = UserChangeRequestResponse.objects.all().exclude(name="Pending")
+    serializer_class = UserChangeRequestResponseSerializer
 
 
 class CircleViewSet(HistoryViewSet):

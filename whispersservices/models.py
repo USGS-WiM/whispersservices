@@ -1190,16 +1190,15 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
-            short_message = msg_tmp.short_message_template.format(
+            subject = msg_tmp.subject_message_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
-            long_message = msg_tmp.long_message_template.format(
+            body = msg_tmp.body_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
                 event_id=self.location_species.event_location.event.id)
             source = self.created_by.username
             event = self.location_species.event_location.event.id
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, 'event', short_message, long_message, True, email_to)
+            generate_notification.delay(recipients, source, event, 'event', subject, body, True, email_to)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
@@ -1532,7 +1531,6 @@ class NotificationCuePreference(PermissionsHistoryModel):
         db_table = "whispers_notificationcuepreference"
 
 
-# TODO: ensure that these are deactivated somehow when a user is_active values is False
 class NotificationCueCustom(PermissionsHistoryModel):
     """
     Notification Cue Custom
@@ -1570,14 +1568,12 @@ class NotificationCueCustom(PermissionsHistoryModel):
         # TODO: do we want to impose a unique_together constraint?
 
 
-# TODO: ensure that these get created when a User is created, also use on_delete=PREVENT
-# TODO: ensure that these are deactivated somehow when a user is_active value is False
 class NotificationCueStandard(PermissionsHistoryModel):
     """
     Notification Cue Standard
     """
 
-    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuepreference')
+    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuestandard', help_text='A foreign key integer value identifying a notificationcuepreference')
     standard_type = models.ForeignKey('NotificationCueStandardType', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuestandardtype')
 
     @staticmethod
@@ -1602,6 +1598,7 @@ class NotificationCueStandard(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_notificationcuestandard"
+        ordering = ['id']
         unique_together = ("notification_cue_preference", "standard_type", "created_by")
 
 
@@ -1779,7 +1776,7 @@ class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
 ######
 
 
-# TODO: revisit settings; role should default to Public, org should default to Public (doesn't exist yet)
+# TODO: revisit settings; role should default to Public, org should default to Public
 class User(AbstractUser):
     """
     Extends the default User model.
@@ -1842,19 +1839,23 @@ class User(AbstractUser):
 
     history = HistoricalRecords()
 
-    # override the save method to create standard notifications and cue preferences
+    # override the save method to create standard notifications and cue preferences on create
+    # also deactivate all notifications when the user is no longer active
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
 
+        super(User, self).save(*args, **kwargs)
+
         if is_new:
             std_notif_types = NotificationCueStandardType.objects.all()
-            admin = User.objects.filter(id=1).first
             for std_notif_type in std_notif_types:
-                pref = NotificationCuePreference.objects.create(created_by=admin, modified_by=admin)
+                pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
                 NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
-                                                       created_by=admin, modified_by=admin)
-
-        super(User, self).save(*args, **kwargs)
+                                                       created_by=self, modified_by=self)
+        elif not self.is_active:
+            # deactivate all notifications (all cue preferences set to False) when user.is_active is False
+            NotificationCuePreference.objects.filter(created_by=self.id).update(
+                create_when_new=False, create_when_modified=False, send_email=False)
 
     def __str__(self):
         return self.username
@@ -1905,18 +1906,19 @@ class Role(AdminPermissionsHistoryNameModel):
         ordering = ['id']
 
 
-class RoleChangeRequest(PermissionsHistoryModel):
+class UserChangeRequest(PermissionsHistoryModel):
     """
-    Service Submission Request
+    User Change Request
     """
 
-    requestor = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='rolechangerequests_requestor', help_text='A foreign key integer value identifying a user')
-    role_requested = models.ForeignKey('Role', models.PROTECT, related_name='rolechangerequests', help_text='A foreign key integer value identifying a role requested for this role change request')
-    request_response = models.ForeignKey('RoleChangeRequestResponse', models.PROTECT, null=True, default=3,
-                                         related_name='rolechangerequests', help_text='A foreign key integer value identifying a response to this request')
+    requestor = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='userchangerequests_requestor', help_text='A foreign key integer value identifying a user')
+    role_requested = models.ForeignKey('Role', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying a role requested for this user change request')
+    organization_requested = models.ForeignKey('Organization', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying an organization requested for this user change request')
+    request_response = models.ForeignKey('UserChangeRequestResponse', models.PROTECT, null=True, default=3,
+                                         related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
-                                    related_name='rolechangerequests_responder')
-    comments = GenericRelation('Comment', related_name='rolechangerequests', help_text='An alphanumeric value for the comment of the role change request')
+                                    related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')
+    comments = GenericRelation('Comment', related_name='userchangerequests', help_text='An alphanumeric value for the comment of the user change request')
 
     @staticmethod
     def has_create_permission(request):
@@ -1936,9 +1938,9 @@ class RoleChangeRequest(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
 
-        super(RoleChangeRequest, self).save(*args, **kwargs)
+        super(UserChangeRequest, self).save(*args, **kwargs)
 
-        # if this is a new request, create a 'Role Change' notification
+        # if this is a new request, create a 'User Change Request' notification
         if is_new:
             recipients = list(User.objects.filter(
                 Q(role__in=[1, 2]) | Q(role=3, organization=self.requestor.organization.id)
@@ -1946,46 +1948,55 @@ class RoleChangeRequest(PermissionsHistoryModel):
             org_admin_emails = list(User.objects.filter(
                 role=3, organization=self.requestor.organization.id).values_list('email', flat=True))
             email_to = [settings.EMAIL_WHISPERS, ] + org_admin_emails
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='Role Change').first().message_template
-            message = msg_tmp.format(
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
+            subject = msg_tmp.subject_message_template.format(new_organization=self.organization_requested.name)
+            body = msg_tmp.body_template.format(
                 first_name=self.requestor.first_name, last_name=self.requestor.last_name,
-                username=self.requestor.username, role=self.role_requested.name)
+                username=self.requestor.username, current_role=self.requestor.role.name,
+                new_role=self.role_requested.name, current_organization=self.requestor.organization.name,
+                new_organization=self.organization_requested.name, comment=self.comment)
             source = self.created_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
         else:
-            # else this is an update to an existing request, so create a 'Role Change Response' notification
+            # else this is an update to an existing request
+            # if the response is 'Yes', update the User and create a 'User Change Request Response' notification
+            if self.request_response.name == 'Yes':
+                requestor = User.objects.filter(id=self.requestor.id).first()
+                requestor.role = self.role_requested
+                requestor.organization = self.organization_requested
+                requestor.save()
             recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [self.requestor.id, ]
             email_to = [settings.EMAIL_WHISPERS, self.requestor.email]
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='Role Change Response').first().message_template
-            message = msg_tmp.format(
-                role=self.role_requested.name, organization=self.requestor.organization.name)
+            msg_tmp = NotificationMessageTemplate.objects.filter(
+                name='User Change Request Response').first()
+            subject = msg_tmp.subject_message_template
+            body = msg_tmp.body_template.format(
+                role=self.role_requested.name, organization=self.organization_requested.name)
             source = self.modified_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
+            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
 
     class Meta:
-        db_table = "whispers_rolechangerequest"
+        db_table = "whispers_userchangerequest"
         ordering = ['id']
 
 
-class RoleChangeRequestResponse(AdminPermissionsHistoryNameModel):
+class UserChangeRequestResponse(AdminPermissionsHistoryNameModel):
     """
-    Role Change Request Response
+    User Change Request Response
     """
 
     def __str__(self):
         return self.name
 
     class Meta:
-        db_table = "whispers_rolechangerequestresponse"
+        db_table = "whispers_userchangerequestresponse"
         ordering = ['id']
 
 

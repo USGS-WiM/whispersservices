@@ -4109,46 +4109,12 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
 
 
 # TODO: should this be read-only, or even hidden?
+# NOTE: these are only be created when a user is created, and only deleted when a user is deleted
 class NotificationCueStandardSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
     new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
-
-    def create(self, validated_data):
-        user = get_user(self.context, self.initial_data)
-
-        # pull out child notification cue preferences from the request
-        new_pref = validated_data.pop('new_notification_cue_preference', None)
-        create_when_new = NotificationCuePreference._meta.get_field('create_when_new').get_default()
-        create_when_modified = NotificationCuePreference._meta.get_field('create_when_modified').get_default()
-        send_email = NotificationCuePreference._meta.get_field('send_email').get_default()
-        if new_pref:
-            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
-                    and isinstance(new_pref['create_when_new'], bool)):
-                create_when_new = new_pref['create_when_new']
-            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
-                    and isinstance(new_pref['create_when_modified'], bool)):
-                create_when_modified = new_pref['create_when_modified']
-            if ('send_email' in new_pref and new_pref['send_email'] is not None
-                    and isinstance(new_pref['send_email'], bool)):
-                send_email = new_pref['send_email']
-        # if any of create_when_new, create_when_modified, and send_email are not present
-        # in new_notification_cue_preference or are not boolean, default values will be assigned
-        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
-                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
-        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
-        if pref_serializer.is_valid():
-            pref_serializer.save()
-        else:
-            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
-        # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
-        #                                                 create_when_modified=create_when_modified,
-        #                                                 send_email=send_email, created_by=user,
-        #                                                 modified_by=user)
-        validated_data['notification_cue_preference'] = pref
-
-        return NotificationCueStandard.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
         user = get_user(self.context, self.initial_data)
@@ -4180,7 +4146,7 @@ class NotificationCueStandardSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NotificationCueStandard
-        fields = ('id', 'notification_cue_preference', 'standard_type', 'new_notification_cue_preference',
+        fields = ('id', 'standard_type', 'notification_cue_preference', 'new_notification_cue_preference',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4225,7 +4191,9 @@ class UserSerializer(serializers.ModelSerializer):
     organization_string = serializers.StringRelatedField(source='organization')
     # message = serializers.CharField(write_only=True, allow_blank=True, required=False)  # what is this?
     # user_email = serializers.JSONField(read_only=True)  # what is this?
-    new_role_change_request = serializers.JSONField(write_only=True, required=False)
+    notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
+    new_user_change_request = serializers.JSONField(write_only=True, required=False)
+    new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -4272,10 +4240,13 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
 
+        # pull out child notification cue standard preferences from the request (cannot be created here, only in model)
+        validated_data.pop('new_notification_cue_standard_preferences', None)
+
         password = validated_data.pop('password', None)
 
         # pull out child service request from the request
-        new_role_change_request = validated_data.pop('new_role_change_request', None)
+        new_user_change_request = validated_data.pop('new_user_change_request', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
@@ -4313,18 +4284,19 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        if new_role_change_request is not None:
-            if ('role_requested' in new_role_change_request and new_role_change_request['role_requested'] is not None
-                    and str(new_role_change_request['role_requested']).isdigit()):
+        # TODO: also include new org request here, not just new role request
+        if new_user_change_request is not None:
+            if ('role_requested' in new_user_change_request and new_user_change_request['role_requested'] is not None
+                    and str(new_user_change_request['role_requested']).isdigit()):
                 role_ids = list(Role.objects.values_list('id', flat=True))
-                if int(new_role_change_request['role_requested']) in role_ids:
-                    new_comments = new_role_change_request.pop('new_comments', None)
-                    role_requested = Role.objects.filter(id=new_role_change_request['role_requested']).first()
-                    request_response = RoleChangeRequestResponse.objects.filter(name='Pending').first()
-                    role_change_request = RoleChangeRequest.objects.create(requestor=user, role_requested=role_requested,
+                if int(new_user_change_request['role_requested']) in role_ids:
+                    new_comments = new_user_change_request.pop('new_comments', None)
+                    role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
+                    request_response = UserChangeRequestResponse.objects.filter(name='Pending').first()
+                    role_change_request = UserChangeRequest.objects.create(requestor=user, role_requested=role_requested,
                                                                        request_response=request_response,
                                                                        created_by=user, modified_by=user)
-                    new_role_change_request_comments = []
+                    new_user_change_request_comments = []
 
                     # create the child comments for this service request
                     if new_comments is not None:
@@ -4338,7 +4310,7 @@ class UserSerializer(serializers.ModelSerializer):
                                     comment_type = CommentType.objects.filter(name='Other').first()
                                 Comment.objects.create(content_object=role_change_request, comment=comment['comment'],
                                                        comment_type=comment_type, created_by=user, modified_by=user)
-                                new_role_change_request_comments.append(comment['comment'])
+                                new_user_change_request_comments.append(comment['comment'])
 
                     # TODO: implement notifications and emails here
 
@@ -4346,6 +4318,25 @@ class UserSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue standard preferences from the request and validate if necessary
+        new_prefs = validated_data.pop('new_notification_cue_standard_preferences', None)
+        if new_prefs:
+            if not isinstance(new_prefs, list):
+                message = "new_notification_cue_standard_preferences must be a list/array."
+                raise serializers.ValidationError(jsonify_errors(message))
+            else:
+                details = []
+                for new_cue in new_prefs:
+                    if 'id' not in new_cue:
+                        message = "id is a required field for each new_notification_cue_standard_preference"
+                        details.append(jsonify_errors(message))
+                    if 'new_notification_cue_preference' not in new_cue:
+                        message = "new_notification_cue_standard_preferences is a required field"
+                        message += " for each new_notification_cue_standard_preference"
+                        details.append(jsonify_errors(message))
+                if details:
+                    raise serializers.ValidationError(details)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
@@ -4385,13 +4376,31 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(new_password)
         instance.save()
 
+        # update child notification cue standard preferences if necessary
+        if new_prefs:
+            for new_cue in new_prefs:
+                new_pref = new_cue['new_notification_cue_preference']
+                pref = NotificationCuePreference.objects.filter(notificationcuestandard__id=new_cue['id']).first()
+                if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                        and isinstance(new_pref['create_when_new'], bool)):
+                    pref.create_when_new = new_pref['create_when_new']
+                if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                        and isinstance(new_pref['create_when_modified'], bool)):
+                    pref.create_when_modified = new_pref['create_when_modified']
+                if ('send_email' in new_pref and new_pref['send_email'] is not None
+                        and isinstance(new_pref['send_email'], bool)):
+                    pref.send_email = new_pref['send_email']
+                pref.modified_by = requesting_user if requesting_user else pref.modified_by
+                pref.save()
+
         return instance
 
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'new_role_change_request',) # 'rolechangerequests_requestor')
+                  'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
+                  'new_user_change_request', )  # 'rolechangerequests_requestor')
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -4404,7 +4413,8 @@ class RoleSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class RoleChangeRequestSerializer(serializers.ModelSerializer):
+# TODO: refactor to also include org change request, not just role change request
+class UserChangeRequestSerializer(serializers.ModelSerializer):
     # comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
     new_comments = serializers.ListField(write_only=True, required=False)
@@ -4441,9 +4451,9 @@ class RoleChangeRequestSerializer(serializers.ModelSerializer):
 
         # if a request_response is not submitted, assign the default
         if 'request_response' not in validated_data or validated_data['request_response'] is None:
-            validated_data['request_response'] = RoleChangeRequestResponse.objects.filter(name='Pending').first()
+            validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
 
-        role_change_request = RoleChangeRequest.objects.create(**validated_data)
+        role_change_request = UserChangeRequest.objects.create(**validated_data)
         role_change_request_comments = []
 
         # create the child comments for this service request
@@ -4489,18 +4499,18 @@ class RoleChangeRequestSerializer(serializers.ModelSerializer):
     response_by = serializers.StringRelatedField()
 
     class Meta:
-        model = RoleChangeRequest
+        model = UserChangeRequest
         fields = ('id', 'requestor', 'role_requested', 'request_response', 'response_by', 'comments',
                   'new_comments', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class RoleChangeRequestResponseSerializer(serializers.ModelSerializer):
+class UserChangeRequestResponseSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     class Meta:
-        model = RoleChangeRequestResponse
+        model = UserChangeRequestResponse
         fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
