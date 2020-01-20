@@ -84,6 +84,23 @@ def construct_email(request_data, requester_email, message):
         return Response(email.__dict__, status=200)
 
 
+def generate_notification_request_new(lookup_table, request):
+    user = get_request_user(request)
+    user = user if user else User.objects.filter(id=1).first()
+    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+    email_to = [settings.EMAIL_WHISPERS, ]
+    msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
+    subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
+    body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                  organization=user.organization.name, lookup_table=lookup_table,
+                                  lookup_item=request.data)
+    source = user.username
+    event = None
+    from whispersservices.immediate_tasks import generate_notification
+    generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+    return Response({"status": 'email sent'}, status=200)
+
+
 ######
 #
 #  Abstract Base Classes
@@ -225,11 +242,11 @@ class EventViewSet(HistoryViewSet):
 
         recipients = list(User.objects.filter(id__in=recipient_ids).values_list('id', flat=True))
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first().message_template
-        message = msg_tmp.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
+        subject = msg_tmp.subject_template.format(event_id=event.id)
+        body = msg_tmp.body_template.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
         from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
+        generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
     @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))
@@ -237,6 +254,7 @@ class EventViewSet(HistoryViewSet):
         if request is None or not request.user.is_authenticated:
             raise PermissionDenied
 
+        user = get_request_user(self.request)
         event = Event.objects.filter(id=pk).first()
         event_owner = event.created_by
         recipients = list(User.objects.filter(
@@ -244,12 +262,13 @@ class EventViewSet(HistoryViewSet):
         ).values_list('id', flat=True))
         email_to = list(User.objects.filter(
             Q(id=event_owner.id) | Q(role=3, organization=event_owner.organization.id)).values_list('email', flat=True))
-        source = get_request_user(self.request).username
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first().message_template
-        message = msg_tmp.format(username=source, event_id=event.id, comment=request.data)
+        source = user.username
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
+        subject = msg_tmp.subject_template.format(event_id=event.id)
+        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                            organization=user.organization, event_id=event.id, comment=request.data)
         from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event.id, 'event', message, True, email_to)
+        generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
     # TODO: would this be true?
@@ -1026,17 +1045,7 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
         # message = "Please add a new administrative level two:"
         # return construct_email(request.data, request.user.email, message)
-
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-        email_to = [settings.EMAIL_WHISPERS, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
-        message = msg_tmp.format(lookup_item=request.data, lookup_table="administrativeleveltwos")
-        source = get_request_user(self.request).username
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
-        return Response({"status": 'email sent'}, status=200)
+        return generate_notification_request_new("administrativeleveltwos", request)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
@@ -1255,17 +1264,7 @@ class SpeciesViewSet(HistoryViewSet):
 
         # message = "Please add a new species:"
         # return construct_email(request.data, request.user.email, message)
-
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-        email_to = [settings.EMAIL_WHISPERS, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
-        message = msg_tmp.format(lookup_item=request.data, lookup_table="species")
-        source = get_request_user(self.request).username
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
-        return Response({"status": 'email sent'}, status=200)
+        return generate_notification_request_new("species", request)
 
     def get_serializer_class(self):
         if self.request and 'slim' in self.request.query_params:
@@ -1361,17 +1360,7 @@ class DiagnosisViewSet(HistoryViewSet):
 
         # message = "Please add a new diagnosis:"
         # return construct_email(request.data, request.user.email, message)
-
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-        email_to = [settings.EMAIL_WHISPERS, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
-        message = msg_tmp.format(lookup_item=request.data, lookup_table="diagnoses")
-        source = get_request_user(self.request).username
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
-        return Response({"status": 'email sent'}, status=200)
+        return generate_notification_request_new("diagnoses", request)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
@@ -2246,17 +2235,7 @@ class OrganizationViewSet(HistoryViewSet):
 
         # message = "Please add a new organization:"
         # return construct_email(request.data, request.user.email, message)
-
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-        email_to = [settings.EMAIL_WHISPERS, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first().message_template
-        message = msg_tmp.format(lookup_item=request.data, lookup_table="organizations")
-        source = get_request_user(self.request).username
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        # TODO: modify for new short and long messages
-        generate_notification.delay(recipients, source, event, 'userdashboard', message, True, email_to)
-        return Response({"status": 'email sent'}, status=200)
+        return generate_notification_request_new("organizations", request)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):

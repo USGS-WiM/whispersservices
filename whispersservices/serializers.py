@@ -4279,40 +4279,48 @@ class UserSerializer(serializers.ModelSerializer):
             validated_data['is_active'] = True
 
         user = User.objects.create(**validated_data)
-        requesting_user = user if not requesting_user.is_authenticated else requesting_user
-
         user.set_password(password)
         user.save()
 
-        # TODO: also include new org request here, not just new role request
         if new_user_change_request is not None:
+            role_requested = None
+            organization_requested = None
+
             if ('role_requested' in new_user_change_request and new_user_change_request['role_requested'] is not None
                     and str(new_user_change_request['role_requested']).isdigit()):
                 role_ids = list(Role.objects.values_list('id', flat=True))
                 if int(new_user_change_request['role_requested']) in role_ids:
-                    new_comments = new_user_change_request.pop('new_comments', None)
                     role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
-                    request_response = UserChangeRequestResponse.objects.filter(name='Pending').first()
-                    role_change_request = UserChangeRequest.objects.create(requestor=user, role_requested=role_requested,
-                                                                       request_response=request_response,
-                                                                       created_by=user, modified_by=user)
-                    new_user_change_request_comments = []
 
-                    # create the child comments for this service request
-                    if new_comments is not None:
-                        for comment in new_comments:
-                            if comment is not None:
-                                if 'comment_type' in comment and comment['comment_type'] is not None:
-                                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                    if not comment_type:
-                                        comment_type = CommentType.objects.filter(name='Other').first()
-                                else:
+            if ('organization_requested' in new_user_change_request
+                    and new_user_change_request['organization_requested'] is not None
+                    and str(new_user_change_request['organization_requested']).isdigit()):
+                org_ids = list(Organization.objects.values_list('id', flat=True))
+                if int(new_user_change_request['organization_requested']) in org_ids:
+                    organization_requested = Organization.objects.filter(
+                        id=new_user_change_request['organization_requested']).first()
+
+            if role_requested or organization_requested:
+                role_requested = role_requested if role_requested else user.role
+                organization_requested = organization_requested if organization_requested else user.organization
+                new_comments = new_user_change_request.pop('new_comments', None)
+                request_response = UserChangeRequestResponse.objects.filter(name='Pending').first()
+                user_change_request = UserChangeRequest.objects.create(
+                    requestor=user, role_requested=role_requested, organization_requested=organization_requested,
+                    request_response=request_response, created_by=user, modified_by=user)
+
+                # create the child comments for this service request
+                if new_comments is not None:
+                    for comment in new_comments:
+                        if comment is not None:
+                            if 'comment_type' in comment and comment['comment_type'] is not None:
+                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                                if not comment_type:
                                     comment_type = CommentType.objects.filter(name='Other').first()
-                                Comment.objects.create(content_object=role_change_request, comment=comment['comment'],
-                                                       comment_type=comment_type, created_by=user, modified_by=user)
-                                new_user_change_request_comments.append(comment['comment'])
-
-                    # TODO: implement notifications and emails here
+                            else:
+                                comment_type = CommentType.objects.filter(name='Other').first()
+                            Comment.objects.create(content_object=user_change_request, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
         return user
 
@@ -4413,33 +4421,14 @@ class RoleSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-# TODO: refactor to also include org change request, not just role change request
 class UserChangeRequestSerializer(serializers.ModelSerializer):
-    # comments = serializers.SerializerMethodField()
-    comments = CommentSerializer(many=True, read_only=True)
-    new_comments = serializers.ListField(write_only=True, required=False)
-
-    # def get_comments(self, obj):
-    #     content_type = ContentType.objects.get_for_model(self.Meta.model)
-    #     comments = Comment.objects.filter(object_id=obj.id, content_type=content_type)
-    #     comments_comments = [comment.comment for comment in comments]
-    #     return comments_comments
-
-    def validate(self, data):
-        if 'new_comments' in data and data['new_comments'] is not None:
-            for item in data['new_comments']:
-                if 'comment' not in item or not item['comment']:
-                    raise serializers.ValidationError("A comment must have comment text.")
-                elif 'comment_type' not in item or not item['comment_type']:
-                    raise serializers.ValidationError("A comment must have a comment type.")
-
-        return data
+    comment = serializers.CharField(write_only=True, required=False)
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
 
         # pull out child comments list from the request
-        new_comments = validated_data.pop('new_comments', None)
+        comment = validated_data.pop('comment', None)
 
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
@@ -4453,26 +4442,31 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         if 'request_response' not in validated_data or validated_data['request_response'] is None:
             validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
 
-        role_change_request = UserChangeRequest.objects.create(**validated_data)
-        role_change_request_comments = []
+        ucr = UserChangeRequest.objects.create(**validated_data)
 
-        # create the child comments for this service request
-        if new_comments is not None:
-            for comment in new_comments:
-                if comment is not None:
-                    if 'comment_type' in comment and comment['comment_type'] is not None:
-                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                        if not comment_type:
-                            comment_type = CommentType.objects.filter(name='Other').first()
-                    else:
-                        comment_type = CommentType.objects.filter(name='Other').first()
-                    Comment.objects.create(content_object=role_change_request, comment=comment['comment'],
-                                           comment_type=comment_type, created_by=user, modified_by=user)
-                    role_change_request_comments.append(comment['comment'])
+        # create a 'User Change Request' notification
+        recipients = list(User.objects.filter(
+            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requestor.organization.id)
+        ).values_list('id', flat=True))
+        org_admin_emails = list(User.objects.filter(
+            role=3, organization=ucr.requestor.organization.id).values_list('email', flat=True))
+        email_to = [settings.EMAIL_WHISPERS, ] + org_admin_emails
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
+        subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
+        body = msg_tmp.body_template.format(
+            first_name=ucr.requestor.first_name, last_name=ucr.requestor.last_name,
+            username=ucr.requestor.username, current_role=ucr.requestor.role.name,
+            new_role=ucr.role_requested.name, current_organization=ucr.requestor.organization.name,
+            new_organization=ucr.organization_requested.name, comment=comment)
+        source = ucr.created_by.username
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
-        return role_change_request
+        return ucr
 
     def update(self, instance, validated_data):
+        request_response_updated = False
 
         # remove child comments list from the request
         if 'new_comments' in validated_data:
@@ -4488,10 +4482,31 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             else:
                 instance.request_response = validated_data.get('request_response', instance.request_response)
                 instance.response_by = user
+                request_response_updated = True
 
         instance.role_requested = validated_data.get('role_requested', instance.role_requested)
-
+        instance.organization_requested = validated_data.get('organization_requested', instance.organization_requested)
         instance.save()
+
+        # if the response is updated to 'Yes', update the User and create a 'User Change Request Response' notification
+        if request_response_updated and instance.request_response.name == 'Yes':
+            requestor = User.objects.filter(id=instance.requestor.id).first()
+            requestor.role = instance.role_requested
+            requestor.organization = instance.organization_requested
+            requestor.save()
+            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                instance.requestor.id, ]
+            email_to = [settings.EMAIL_WHISPERS, instance.requestor.email]
+            msg_tmp = NotificationMessageTemplate.objects.filter(
+                name='User Change Request Response').first()
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                                                organization=instance.organization_requested.name)
+            source = instance.modified_by.username
+            event = None
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+
         return instance
 
     created_by_string = serializers.StringRelatedField(source='created_by')
@@ -4500,8 +4515,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserChangeRequest
-        fields = ('id', 'requestor', 'role_requested', 'request_response', 'response_by', 'comments',
-                  'new_comments', 'created_date', 'created_by', 'created_by_string',
+        fields = ('id', 'requestor', 'role_requested', 'organization_requested', 'request_response', 'response_by',
+                  'comment', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 

@@ -1183,6 +1183,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
+        event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
+
         # create real time notifications for high impact diseases
         if is_new and self.diagnosis.high_impact:
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
@@ -1190,17 +1192,15 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
-            subject = msg_tmp.subject_message_template.format(
+            subject = msg_tmp.subject_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
             body = msg_tmp.body_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
                 event_id=self.location_species.event_location.event.id)
             source = self.created_by.username
-            event = self.location_species.event_location.event.id
             from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'event', subject, body, True, email_to)
+            generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
 
-        event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
 
         # affected_count
@@ -1383,30 +1383,45 @@ class ServiceRequest(PermissionsHistoryModel):
     # override the save method to create real time notifications
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
-
         super(ServiceRequest, self).save(*args, **kwargs)
+
+        event_id = self.event.id
 
         # if this is a new service request, create a 'Service Request' notification
         if is_new:
             madison_epi = User.objects.filter(username='madisonepi').first()
+            user = self.created_by
             recipients = [madison_epi.id, ]
             email_to = [madison_epi.email, ]
-            message = NotificationMessageTemplate.objects.filter(name='Service Request').first().message_template
+            evt_loc = self.event.eventlocations[0]
+            short_evt_loc = evt_loc.administrative_level_two.name + ", " + evt_loc.administrative_level_one.name
+            short_evt_loc += ", " + evt_loc.country.name
+            content_type = ContentType.objects.get_for_model(self, for_concrete_model=True)
+            comments = Comment.objects.filter(content_type=content_type, object_id=self.id)
+            if comments:
+                combined_comment = ""
+                for comment in comments:
+                    combined_comment = combined_comment + "\r\n" + comment
+            else:
+                combined_comment = "None"
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
+            subject = msg_tmp.subject_template.format(service_request=self.request_type.name, event_id=event_id)
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
+                service_request=self.request_type.name, event_id=event_id, event_location=short_evt_loc,
+                comment=combined_comment)
             source = self.created_by.username
-            event = None
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, '', message, True, email_to)
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
         elif self.request_response.name in ['Yes', 'No', 'Maybe']:
             recipients = [self.created_by.id, self.event.created_by.id, ]
             email_to = [self.created_by.email, self.event.created_by.email, ]
-            message = NotificationMessageTemplate.objects.filter(
-                name='Service Request Response').first().message_template
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Response').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(event_id=event_id)
             source = self.modified_by.username
-            event = None
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, '', message, True, email_to)
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -1697,31 +1712,31 @@ class Comment(PermissionsHistoryModel):
     # override the save method to create real time notifications
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
-
         super(Comment, self).save(*args, **kwargs)
 
-        # if this is a new request with a service request content type, create a 'Service Request Comment' notification
+        # if this is a new comment with a service request content type, create a 'Service Request Comment' notification
         if is_new and self.content_type.model == 'servicerequest':
+            event_id = Event.objects.filter(id=self.object_id).first().id
             madison_epi = User.objects.filter(username='madisonepi').first()
             if self.created_by.id == madison_epi.id:
                 service_request = ServiceRequest.objects.filter(id=self.object_id).first()
                 recipients = [service_request.created_by.id, ]
                 email_to = [service_request.created_by.email, ]
-                message = ''
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
                 source = service_request.created_by.username
-                event = None
                 from whispersservices.immediate_tasks import generate_notification
-                # TODO: modify for new short and long messages
-                generate_notification.delay(recipients, source, event, '', message, True, email_to)
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
             else:
                 recipients = [madison_epi.id, ]
                 email_to = [madison_epi.email, ]
-                message = ''
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
                 source = madison_epi.username
-                event = None
                 from whispersservices.immediate_tasks import generate_notification
-                # TODO: modify for new short and long messages
-                generate_notification.delay(recipients, source, event, '', message, True, email_to)
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -1843,7 +1858,6 @@ class User(AbstractUser):
     # also deactivate all notifications when the user is no longer active
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
-
         super(User, self).save(*args, **kwargs)
 
         if is_new:
@@ -1918,7 +1932,6 @@ class UserChangeRequest(PermissionsHistoryModel):
                                          related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')
-    comments = GenericRelation('Comment', related_name='userchangerequests', help_text='An alphanumeric value for the comment of the user change request')
 
     @staticmethod
     def has_create_permission(request):
@@ -1933,51 +1946,6 @@ class UserChangeRequest(PermissionsHistoryModel):
             return True
         else:
             return False
-
-    # override the save method to create real time notifications
-    def save(self, *args, **kwargs):
-        is_new = False if self.id else True
-
-        super(UserChangeRequest, self).save(*args, **kwargs)
-
-        # if this is a new request, create a 'User Change Request' notification
-        if is_new:
-            recipients = list(User.objects.filter(
-                Q(role__in=[1, 2]) | Q(role=3, organization=self.requestor.organization.id)
-            ).values_list('id', flat=True))
-            org_admin_emails = list(User.objects.filter(
-                role=3, organization=self.requestor.organization.id).values_list('email', flat=True))
-            email_to = [settings.EMAIL_WHISPERS, ] + org_admin_emails
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
-            subject = msg_tmp.subject_message_template.format(new_organization=self.organization_requested.name)
-            body = msg_tmp.body_template.format(
-                first_name=self.requestor.first_name, last_name=self.requestor.last_name,
-                username=self.requestor.username, current_role=self.requestor.role.name,
-                new_role=self.role_requested.name, current_organization=self.requestor.organization.name,
-                new_organization=self.organization_requested.name, comment=self.comment)
-            source = self.created_by.username
-            event = None
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
-        else:
-            # else this is an update to an existing request
-            # if the response is 'Yes', update the User and create a 'User Change Request Response' notification
-            if self.request_response.name == 'Yes':
-                requestor = User.objects.filter(id=self.requestor.id).first()
-                requestor.role = self.role_requested
-                requestor.organization = self.organization_requested
-                requestor.save()
-            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [self.requestor.id, ]
-            email_to = [settings.EMAIL_WHISPERS, self.requestor.email]
-            msg_tmp = NotificationMessageTemplate.objects.filter(
-                name='User Change Request Response').first()
-            subject = msg_tmp.subject_message_template
-            body = msg_tmp.body_template.format(
-                role=self.role_requested.name, organization=self.organization_requested.name)
-            source = self.modified_by.username
-            event = None
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2039,20 +2007,21 @@ class EventReadUser(PermissionsHistoryModel):
     # override the save method to create real time notifications
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
-
         super(EventReadUser, self).save(*args, **kwargs)
 
         # if this is a new collaborator user, create a 'Collaborator Added' notification
         if is_new:
+            user = self.created_by
             recipients = [self.user.id, ]
             email_to = [self.user.email, ]
-            event = self.event.id
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
-            message = msg_tmp.format(collaborator_type="Read", event_id=event)
-            source = self.created_by.username
+            event_id = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                username=user.username, collaborator_type="Read", event_id=event_id)
+            source = user.username
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2101,20 +2070,21 @@ class EventWriteUser(PermissionsHistoryModel):
     # override the save method to create real time notifications
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
-
         super(EventWriteUser, self).save(*args, **kwargs)
 
         # if this is a new collaborator user, create a 'Collaborator Added' notification
         if is_new:
+            user = self.created_by
             recipients = [self.user.id, ]
             email_to = [self.user.email, ]
-            event = self.event.id
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first().message_template
-            message = msg_tmp.format(collaborator_type="Write", event_id=event)
-            source = self.created_by.username
+            event_id = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                username=user.username, collaborator_type="Write", event_id=event_id)
+            source = user.username
             from whispersservices.immediate_tasks import generate_notification
-            # TODO: modify for new short and long messages
-            generate_notification.delay(recipients, source, event, 'event', message, True, email_to)
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
