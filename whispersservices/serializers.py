@@ -4204,6 +4204,18 @@ class UserSerializer(serializers.ModelSerializer):
                 data['organization'] = Organization.objects.filter(name='Public').first()
             if 'password' not in data:
                 raise serializers.ValidationError("password is required")
+            if 'new_user_change_request' in data and data['new_user_change_request'] is not None:
+                ucr = data['new_user_change_request']
+                if ('role_requested' in ucr and ucr['role_requested'] is not None
+                        and str(ucr['role_requested']).isdigit()):
+                    role_ids = list(Role.objects.values_list('id', flat=True))
+                    if int(ucr['role_requested']) not in role_ids:
+                        raise serializers.ValidationError("Requested role does not exist.")
+                if ('organization_requested' in ucr and ucr['organization_requested'] is not None
+                        and str(ucr['organization_requested']).isdigit()):
+                    org_ids = list(Organization.objects.values_list('id', flat=True))
+                    if int(ucr['organization_requested']) not in org_ids:
+                        raise serializers.ValidationError("Requested organization does not exist.")
         if 'password' in data:
             password = data['password']
             details = []
@@ -4283,44 +4295,27 @@ class UserSerializer(serializers.ModelSerializer):
         user.save()
 
         if new_user_change_request is not None:
-            role_requested = None
-            organization_requested = None
-
-            if ('role_requested' in new_user_change_request and new_user_change_request['role_requested'] is not None
-                    and str(new_user_change_request['role_requested']).isdigit()):
-                role_ids = list(Role.objects.values_list('id', flat=True))
-                if int(new_user_change_request['role_requested']) in role_ids:
-                    role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
-
-            if ('organization_requested' in new_user_change_request
-                    and new_user_change_request['organization_requested'] is not None
-                    and str(new_user_change_request['organization_requested']).isdigit()):
-                org_ids = list(Organization.objects.values_list('id', flat=True))
-                if int(new_user_change_request['organization_requested']) in org_ids:
-                    organization_requested = Organization.objects.filter(
-                        id=new_user_change_request['organization_requested']).first()
+            role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
+            organization_requested = Organization.objects.filter(
+                id=new_user_change_request['organization_requested']).first()
 
             if role_requested or organization_requested:
                 role_requested = role_requested if role_requested else user.role
                 organization_requested = organization_requested if organization_requested else user.organization
-                new_comments = new_user_change_request.pop('new_comments', None)
+                comment = new_user_change_request.pop('comment', None)
                 request_response = UserChangeRequestResponse.objects.filter(name='Pending').first()
-                user_change_request = UserChangeRequest.objects.create(
-                    requestor=user, role_requested=role_requested, organization_requested=organization_requested,
-                    request_response=request_response, created_by=user, modified_by=user)
-
-                # create the child comments for this service request
-                if new_comments is not None:
-                    for comment in new_comments:
-                        if comment is not None:
-                            if 'comment_type' in comment and comment['comment_type'] is not None:
-                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                if not comment_type:
-                                    comment_type = CommentType.objects.filter(name='Other').first()
-                            else:
-                                comment_type = CommentType.objects.filter(name='Other').first()
-                            Comment.objects.create(content_object=user_change_request, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
+                # user_change_request = UserChangeRequest.objects.create(
+                #     requester=user, role_requested=role_requested, organization_requested=organization_requested,
+                #     request_response=request_response, created_by=user, modified_by=user)
+                user_change_request = {'requester': user, 'role_requested': role_requested,
+                                       'organization_requested': organization_requested, 'comment': comment,
+                                       'request_response': request_response, 'created_by': user, 'modified_by': user}
+                ucr_serializer = UserChangeRequestSerializer(data=user_change_request)
+                if ucr_serializer.is_valid():
+                    ucr_serializer.save()
+                else:
+                    user.delete()
+                    raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
         return user
 
@@ -4408,7 +4403,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
                   'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
-                  'new_user_change_request', )  # 'rolechangerequests_requestor')
+                  'new_user_change_request', )  # 'rolechangerequests_requester')
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -4445,20 +4440,24 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         ucr = UserChangeRequest.objects.create(**validated_data)
 
         # create a 'User Change Request' notification
+        # source: User that requests an account upgrade or requesting an account above public
+        source = ucr.created_by.username
+        # recipients: WHISPers admin team, Admins of organization requested
         recipients = list(User.objects.filter(
-            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requestor.organization.id)
+            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requester.organization.id)
         ).values_list('id', flat=True))
-        org_admin_emails = list(User.objects.filter(
-            role=3, organization=ucr.requestor.organization.id).values_list('email', flat=True))
-        email_to = [settings.EMAIL_WHISPERS, ] + org_admin_emails
+        # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
+        # TODO: include parent org admin
+        email_to = list(User.objects.filter(
+            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requester.organization.id)
+        ).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
-            first_name=ucr.requestor.first_name, last_name=ucr.requestor.last_name,
-            username=ucr.requestor.username, current_role=ucr.requestor.role.name,
-            new_role=ucr.role_requested.name, current_organization=ucr.requestor.organization.name,
+            first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
+            username=ucr.requester.username, current_role=ucr.requester.role.name,
+            new_role=ucr.role_requested.name, current_organization=ucr.requester.organization.name,
             new_organization=ucr.organization_requested.name, comment=comment)
-        source = ucr.created_by.username
         event = None
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
@@ -4472,11 +4471,12 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         if 'new_comments' in validated_data:
             validated_data.pop('new_comments')
 
-        # Only allow NWHC admins to alter the request response
+        # Only allow NWHC admins or requester's org admin to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
             user = get_user(self.context, self.initial_data)
 
-            if not (user.role.is_superadmin or user.role.is_admin):
+            if not (user.role.is_superadmin or user.role.is_admin or
+                    (user.role.is_partneradmin and user.organization.id == instance.created_by.organization.id)):
                 raise serializers.ValidationError(
                     jsonify_errors("You do not have permission to alter the request response."))
             else:
@@ -4490,19 +4490,23 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
 
         # if the response is updated to 'Yes', update the User and create a 'User Change Request Response' notification
         if request_response_updated and instance.request_response.name == 'Yes':
-            requestor = User.objects.filter(id=instance.requestor.id).first()
-            requestor.role = instance.role_requested
-            requestor.organization = instance.organization_requested
-            requestor.save()
+            requester = User.objects.filter(id=instance.requester.id).first()
+            requester.role = instance.role_requested
+            requester.organization = instance.organization_requested
+            requester.save()
+            # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
+            source = instance.modified_by.username
+            # recipients: user, WHISPers admin team
             recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                instance.requestor.id, ]
-            email_to = [settings.EMAIL_WHISPERS, instance.requestor.email]
+                instance.requester.id, ]
+            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+            email_to = list(User.objects.filter(role__in=[1, 2]).values_list('email', flat=True)) + [
+                instance.requester.email, ]
             msg_tmp = NotificationMessageTemplate.objects.filter(
                 name='User Change Request Response').first()
             subject = msg_tmp.subject_template
             body = msg_tmp.body_template.format(role=instance.role_requested.name,
                                                 organization=instance.organization_requested.name)
-            source = instance.modified_by.username
             event = None
             from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
@@ -4515,7 +4519,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserChangeRequest
-        fields = ('id', 'requestor', 'role_requested', 'organization_requested', 'request_response', 'response_by',
+        fields = ('id', 'requester', 'role_requested', 'organization_requested', 'request_response', 'response_by',
                   'comment', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 

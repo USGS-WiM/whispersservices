@@ -60,7 +60,6 @@ def construct_notification_email(recipient_email, subject, html_body):
     return email
 
 
-# TODO: modify for new short and long messages
 @shared_task(name='generate_notification_task')
 def generate_notification(recipients, source, event_id, client_page, subject, body,
                           send_email=False, email_to=None):

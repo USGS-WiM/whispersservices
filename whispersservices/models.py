@@ -1148,6 +1148,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
 
+    # keep track of "previous" diagnosis to detect if the value changes during save
+    __original_diagnosis = None
+
+    def __init__(self, *args, **kwargs):
+        super(SpeciesDiagnosis, self).__init__(*args, **kwargs)
+        self.__original_diagnosis = self.diagnosis
+
     @staticmethod
     def has_create_permission(request):
         if request and 'location_species' in request.data:
@@ -1186,9 +1193,15 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
 
         # create real time notifications for high impact diseases
-        if is_new and self.diagnosis.high_impact:
+        # trigger: creating or updating a species diagnosis with a high impact diagnosis
+        if self.diagnosis.high_impact and (is_new or (self.diagnosis.id != self.__original_diagnosis.id)):
+            self.__original_diagnosis = self.diagnosis
+            # source: User that adds a species diagnosis that is a reportable disease
+            source = self.created_by.username
+            # recipients: WHISPers admin team, WHISPers Epi staff, event owner
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
-            email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI]
+            # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
+            email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI, event.created_by.email]
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
@@ -1197,7 +1210,6 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             body = msg_tmp.body_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
                 event_id=self.location_species.event_location.event.id)
-            source = self.created_by.username
             from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
 
@@ -1925,7 +1937,7 @@ class UserChangeRequest(PermissionsHistoryModel):
     User Change Request
     """
 
-    requestor = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='userchangerequests_requestor', help_text='A foreign key integer value identifying a user')
+    requester = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='userchangerequests_requester', help_text='A foreign key integer value identifying a user')
     role_requested = models.ForeignKey('Role', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying a role requested for this user change request')
     organization_requested = models.ForeignKey('Organization', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying an organization requested for this user change request')
     request_response = models.ForeignKey('UserChangeRequestResponse', models.PROTECT, null=True, default=3,

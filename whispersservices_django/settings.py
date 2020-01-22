@@ -182,7 +182,7 @@ MEDIA_URL = '/media/'
 
 CORS_ORIGIN_ALLOW_ALL = True
 
-CELERY_IMPORTS = ['whispersservices.tasks', 'whispersservices.immediate_tasks', 'whispersservices.scheduled_tasks']
+CELERY_IMPORTS = ['whispersservices.immediate_tasks', 'whispersservices.scheduled_tasks']
 CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
 # CELERY_TASK_ROUTES = {
