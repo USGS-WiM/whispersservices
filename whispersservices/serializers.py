@@ -4331,9 +4331,27 @@ class UserSerializer(serializers.ModelSerializer):
             else:
                 details = []
                 for new_cue in new_prefs:
-                    if 'id' not in new_cue:
-                        message = "id is a required field for each new_notification_cue_standard_preference"
+                    if 'standard_type' not in new_cue and 'id' not in new_cue:
+                        message = "Either id or standard_type is a required field"
+                        message += " for each new_notification_cue_standard_preference"
                         details.append(jsonify_errors(message))
+                    if 'standard_type' in new_cue and new_cue['standard_type'] is not None:
+                        if not str(new_cue['standard_type']).isdigit():
+                            raise serializers.ValidationError("Submitted standard_type must be a valid integer.")
+                        else:
+                            std_type_ids = list(NotificationCueStandardType.objects.values_list('id', flat=True))
+                            if int(new_cue['standard_type']) not in std_type_ids:
+                                message = "Submitted standard_type does not exist."
+                                raise serializers.ValidationError(message)
+                    elif 'id' in new_cue and new_cue['id'] is not None:
+                        if not str(new_cue['id']).isdigit():
+                            raise serializers.ValidationError("Submitted id must be a valid integer.")
+                        else:
+                            cue_ids = list(NotificationCueStandard.objects.filter(
+                                created_by=instance.id).values_list('id', flat=True))
+                            if int(new_cue['id']) not in cue_ids:
+                                message = "Submitted id does not exist or you do not have permission to update it."
+                                raise serializers.ValidationError(message)
                     if 'new_notification_cue_preference' not in new_cue:
                         message = "new_notification_cue_standard_preferences is a required field"
                         message += " for each new_notification_cue_standard_preference"
@@ -4383,7 +4401,14 @@ class UserSerializer(serializers.ModelSerializer):
         if new_prefs:
             for new_cue in new_prefs:
                 new_pref = new_cue['new_notification_cue_preference']
-                pref = NotificationCuePreference.objects.filter(notificationcuestandard__id=new_cue['id']).first()
+                # use the standard_type to find the requested standard cue, since each user can only have one per type
+                if 'standard_type' in new_cue:
+                    std_cue_id = NotificationCueStandard.objects.filter(
+                        created_by=instance.id, standard_type=new_cue['standard_type']).values('id').first()['id']
+                else:
+                    # otherwise fall back to the standard cue ID (standard_type or ID must have been submitted)
+                    std_cue_id = new_cue['id']
+                pref = NotificationCuePreference.objects.filter(notificationcuestandard__id=std_cue_id).first()
                 if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
                         and isinstance(new_pref['create_when_new'], bool)):
                     pref.create_when_new = new_pref['create_when_new']

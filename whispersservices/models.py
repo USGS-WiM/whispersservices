@@ -1405,7 +1405,8 @@ class ServiceRequest(PermissionsHistoryModel):
             user = self.created_by
             recipients = [madison_epi.id, ]
             email_to = [madison_epi.email, ]
-            evt_loc = self.event.eventlocations[0]
+            # TODO: determine which location to use
+            evt_loc = EventLocation.objects.filter(event=event_id).first()
             short_evt_loc = evt_loc.administrative_level_two.name + ", " + evt_loc.administrative_level_one.name
             short_evt_loc += ", " + evt_loc.country.name
             content_type = ContentType.objects.get_for_model(self, for_concrete_model=True)
@@ -1728,10 +1729,10 @@ class Comment(PermissionsHistoryModel):
 
         # if this is a new comment with a service request content type, create a 'Service Request Comment' notification
         if is_new and self.content_type.model == 'servicerequest':
-            event_id = Event.objects.filter(id=self.object_id).first().id
+            service_request = ServiceRequest.objects.filter(id=self.object_id).first()
+            event_id = service_request.event.id
             madison_epi = User.objects.filter(username='madisonepi').first()
             if self.created_by.id == madison_epi.id:
-                service_request = ServiceRequest.objects.filter(id=self.object_id).first()
                 recipients = [service_request.created_by.id, ]
                 email_to = [service_request.created_by.email, ]
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
