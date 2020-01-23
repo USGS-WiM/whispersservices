@@ -18,8 +18,6 @@ def jsonify_errors(data):
         return data
 
 
-# TODO: modify to suit the needs of notifications
-# TODO: modify for new short and long messages
 def construct_notification_email(recipient_email, subject, html_body):
     # subject = "An action by " + source + " requires your attention" if not subject else subject
     # if client_page == 'event':

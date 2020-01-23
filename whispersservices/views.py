@@ -87,14 +87,17 @@ def construct_email(request_data, requester_email, message):
 def generate_notification_request_new(lookup_table, request):
     user = get_request_user(request)
     user = user if user else User.objects.filter(id=1).first()
+    # source: User requesting a new option.
+    source = user.username
+    # recipients: WHISPers admin team
     recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-    email_to = [settings.EMAIL_WHISPERS, ]
+    # email forwarding: Automatic, to whispers@usgs.gov
+    email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
     msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
     subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
     body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
                                   organization=user.organization.name, lookup_table=lookup_table,
                                   lookup_item=request.data)
-    source = user.username
     event = None
     from whispersservices.immediate_tasks import generate_notification
     generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
@@ -199,12 +202,21 @@ class EventViewSet(HistoryViewSet):
     @action(detail=True, methods=['post'])
     def alert_collaborator(self, request, pk=None):
         # expected JSON fields: "recipients" (list of integers, required), "comment" (string, optional)
-        if request is None or not request.user.is_authenticated:
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
         event = Event.objects.filter(id=pk).first()
         user = get_request_user(self.request)
-        source = user.username
+
+        # only 'qualified users' may send alerts
+        # (a user who is an admin, the event owner, in the event owner's org, or already a collaborator)
+        event_user_ids = set(list(User.objects.filter(
+            Q(eventreadusers__event_id=event.id) |
+            Q(eventwriteusers__event_id=event.id) |
+            Q(organization=event.created_by.organization.id) |
+            Q(role__in=[1, 2])).values_list('id', flat=True)))
+        if user.id not in event_user_ids:
+            raise PermissionDenied
 
         # validate that the POST body contains a required recipients list and possibly an optional comment
         recipients_message = "A field named \"recipients\" containing a list/array of collaborator User IDs"
@@ -215,13 +227,8 @@ class EventViewSet(HistoryViewSet):
                 raise APIException(recipients_message)
             else:
                 # validate that the recipients are all collaborators of the event (or have access to the event)
-                event_user_ids = set(list(User.objects.filter(
-                    Q(eventreadusers__event_id=event.id) |
-                    Q(eventwriteusers__event_id=event.id) |
-                    Q(organization=event.created_by.organization.id) |
-                    Q(role__in=[1, 2])).values_list('id', flat=True)))
                 if not all(r_id in event_user_ids for r_id in recipient_ids):
-                    message = "One or more submitted recipient IDs are not eligible to recieve alerts about this event."
+                    message = "One or more submitted recipient IDs are not eligible to receive alerts about this event."
                     message += " Eligible recipients are collaborators of this event or"
                     message += " users in the same organization as the creator of this event, or system administrators."
                     raise APIException(message)
@@ -234,17 +241,24 @@ class EventViewSet(HistoryViewSet):
                 raise APIException(comment_message)
         else:
             comment = None
+        # Collaborator alert is also logged as an event-level comment.
+        # TODO: would the event-level comment just be the submitted comment, or also some boilerplate like a pre-pended "Alert Collaborator: "?
         if comment:
             comment_type = CommentType.objects.filter(name='Other').first()
             if comment_type is not None:
                 Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
                                        created_by=user, modified_by=user)
 
+        # source: A qualified user who creates a collaborator alert.
+        source = user.username
+        # recipients: user(s) chosen from among the collaborator list
         recipients = list(User.objects.filter(id__in=recipient_ids).values_list('id', flat=True))
+        # email forwarding: Automatic, to all users included in the notificiation request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
-        body = msg_tmp.body_template.format(alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
+        body = msg_tmp.body_template.format(
+            alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
@@ -255,14 +269,18 @@ class EventViewSet(HistoryViewSet):
             raise PermissionDenied
 
         user = get_request_user(self.request)
+        # source: User requesting that they be a collaborator on an event.
+        source = user.username
         event = Event.objects.filter(id=pk).first()
         event_owner = event.created_by
+        # recipients: event owner, org manager, org admin
         recipients = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role=3, organization=event_owner.organization.id)
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id)
         ).values_list('id', flat=True))
+        # email forwarding: Automatic, to event owner, organization manager, and organization admin
         email_to = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role=3, organization=event_owner.organization.id)).values_list('email', flat=True))
-        source = user.username
+            Q(id=event_owner.id) | Q(role_in=[3, 4], organization=event_owner.organization.id)
+        ).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
         body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
@@ -1040,7 +1058,8 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
         # message = "Please add a new administrative level two:"
@@ -1259,7 +1278,8 @@ class SpeciesViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
         # message = "Please add a new species:"
@@ -1355,7 +1375,8 @@ class DiagnosisViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
         # message = "Please add a new diagnosis:"
@@ -1876,7 +1897,7 @@ class CommentViewSet(HistoryViewSet):
                 Q(created_by__organization__exact=user.organization) |
                 Q(content_type__model='event', object_id__in=collab_evt_ids) |
                 Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-                Q(content_type__model='eventeventgroup',object_id__in=collab_evtgrp_ids) |
+                Q(content_type__model='eventeventgroup', object_id__in=collab_evtgrp_ids) |
                 Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
             )
         # otherwise return nothing
@@ -1969,6 +1990,7 @@ class UserViewSet(HistoryViewSet):
     """
     serializer_class = UserSerializer
 
+    # TODO: is this still needed, now that we have notifications?
     # anyone can request a new user, but an email address is required if the request comes from a non-user
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -2230,7 +2252,8 @@ class OrganizationViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
         # message = "Please add a new organization:"
@@ -2741,7 +2764,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         return EventSummaryAdminSerializer
                     # owner and org members and collaborators have full access to non-admin fields
                     elif (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                          or user in read_collaborators or user in write_collaborators):
+                          or user.id in read_collaborators or user.id in write_collaborators):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
         # everything else must use the public serializer

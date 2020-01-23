@@ -4474,8 +4474,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
         # TODO: include parent org admin
         email_to = list(User.objects.filter(
-            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requester.organization.id)
-        ).values_list('email', flat=True))
+            Q(id=1) | Q(role=3, organization=ucr.requester.organization.id)).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
@@ -4525,8 +4524,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
                 instance.requester.id, ]
             # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-            email_to = list(User.objects.filter(role__in=[1, 2]).values_list('email', flat=True)) + [
-                instance.requester.email, ]
+            email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
             msg_tmp = NotificationMessageTemplate.objects.filter(
                 name='User Change Request Response').first()
             subject = msg_tmp.subject_template
