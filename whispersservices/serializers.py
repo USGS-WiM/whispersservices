@@ -4508,11 +4508,18 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 instance.response_by = user
                 request_response_updated = True
 
+                # capture the user change request response as a comment
+                cmt = "User Change Request Response: " + instance.request_response.name
+                cmt_type = CommentType.objects.filter(name='Other').first()
+                Comment.objects.create(content_object=instance, comment=cmt,
+                                       comment_type=cmt_type, created_by=user, modified_by=user)
+
         instance.role_requested = validated_data.get('role_requested', instance.role_requested)
         instance.organization_requested = validated_data.get('organization_requested', instance.organization_requested)
         instance.save()
 
         # if the response is updated to 'Yes', update the User and create a 'User Change Request Response' notification
+        # TODO: what about 'No' and 'Maybe'?
         if request_response_updated and instance.request_response.name == 'Yes':
             requester = User.objects.filter(id=instance.requester.id).first()
             requester.role = instance.role_requested

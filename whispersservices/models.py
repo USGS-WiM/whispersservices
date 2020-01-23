@@ -1409,13 +1409,15 @@ class ServiceRequest(PermissionsHistoryModel):
             source = user.username
             # recipients: nwhc-epi@usgs.gov or HFS dropbox
             recipients = [madison_epi.id, ]
-            # TODO: Location-based routing was discarded, right?
+            # TODO: Location-based routing, need list from NWHC staff
             # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
             email_to = [madison_epi.email, ]
-            # TODO: determine which location to use
-            evt_loc = EventLocation.objects.filter(event=event_id).first()
-            short_evt_loc = evt_loc.administrative_level_two.name + ", " + evt_loc.administrative_level_one.name
-            short_evt_loc += ", " + evt_loc.country.name
+            evt_locs = EventLocation.objects.filter(event=event_id)
+            short_evt_locs = ""
+            for evt_loc in evt_locs:
+                short_evt_loc = evt_loc.administrative_level_two.name + ", "
+                short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
+                short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
             content_type = ContentType.objects.get_for_model(self, for_concrete_model=True)
             comments = Comment.objects.filter(content_type=content_type, object_id=self.id)
             if comments:
@@ -1957,7 +1959,7 @@ class UserChangeRequest(PermissionsHistoryModel):
     requester = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='userchangerequests_requester', help_text='A foreign key integer value identifying a user')
     role_requested = models.ForeignKey('Role', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying a role requested for this user change request')
     organization_requested = models.ForeignKey('Organization', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying an organization requested for this user change request')
-    request_response = models.ForeignKey('UserChangeRequestResponse', models.PROTECT, null=True, default=3,
+    request_response = models.ForeignKey('UserChangeRequestResponse', models.PROTECT, null=True, default=4,
                                          related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')

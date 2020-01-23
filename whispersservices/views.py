@@ -208,12 +208,12 @@ class EventViewSet(HistoryViewSet):
         event = Event.objects.filter(id=pk).first()
         user = get_request_user(self.request)
 
-        # only 'qualified users' may send alerts
-        # (a user who is an admin, the event owner, in the event owner's org, or already a collaborator)
+        # only 'qualified users' may send alerts (someone with edit permissions on event)
+        # (admins or the creator or a manager/admin member of the creator's org or a write_collaborator)
         event_user_ids = set(list(User.objects.filter(
-            Q(eventreadusers__event_id=event.id) |
             Q(eventwriteusers__event_id=event.id) |
-            Q(organization=event.created_by.organization.id) |
+            Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+            Q(id=event.created_by.id) |
             Q(role__in=[1, 2])).values_list('id', flat=True)))
         if user.id not in event_user_ids:
             raise PermissionDenied
@@ -249,7 +249,7 @@ class EventViewSet(HistoryViewSet):
                 Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
                                        created_by=user, modified_by=user)
 
-        # source: A qualified user who creates a collaborator alert.
+        # source: A qualified user (someone with edit permissions on event) who creates a collaborator alert.
         source = user.username
         # recipients: user(s) chosen from among the collaborator list
         recipients = list(User.objects.filter(id__in=recipient_ids).values_list('id', flat=True))
