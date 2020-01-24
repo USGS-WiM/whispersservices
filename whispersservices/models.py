@@ -1490,6 +1490,7 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
 ######
 
 
+# TODO: revisit create/update permissions... perhaps no one should be allowed to create (aside from the system), and only the recipient (or admin) can update (and even then, only the 'read' field), and only the recipient (or admin) can delete
 class Notification(PermissionsHistoryModel):
     """
     Notification
@@ -1540,6 +1541,7 @@ class NotificationMessageTemplate(AdminPermissionsHistoryModel):
         db_table = "whispers_notificationmessagetemplate"
 
 
+# TODO: revisit create/update permissions... perhaps only user (or admins) (or partner admins?) can update
 class NotificationCuePreference(PermissionsHistoryModel):
     """
     Notification Cue Preference
@@ -1572,6 +1574,7 @@ class NotificationCuePreference(PermissionsHistoryModel):
         db_table = "whispers_notificationcuepreference"
 
 
+# TODO: revisit create/update permissions
 class NotificationCueCustom(PermissionsHistoryModel):
     """
     Notification Cue Custom
@@ -1609,6 +1612,7 @@ class NotificationCueCustom(PermissionsHistoryModel):
         # TODO: do we want to impose a unique_together constraint?
 
 
+# TODO: revisit create/update permissions... no one should be allowed to do anything (aside from the system)?
 class NotificationCueStandard(PermissionsHistoryModel):
     """
     Notification Cue Standard
