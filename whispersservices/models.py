@@ -1876,6 +1876,7 @@ class User(AbstractUser):
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
                     or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
+    email = models.EmailField(unique=True, blank=True, max_length=254, verbose_name='email address')
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
     circles = models.ManyToManyField(
