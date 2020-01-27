@@ -997,10 +997,17 @@ class EventSerializer(serializers.ModelSerializer):
                                                        created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
+        undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
+        existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
+        if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
+            remove_diagnoses = [pending, undetermined]
+        else:
+            remove_diagnoses = [pending, ]
 
         # remove Pending if in the list because it should never be submitted by the user
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
+        # and remove Undetermined if in the list and the event already has an Undetermined
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
 
         if new_event_diagnoses:
             is_valid = True
@@ -1799,10 +1806,17 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                                        created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
+        undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
+        existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
+        if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
+            remove_diagnoses = [pending, undetermined]
+        else:
+            remove_diagnoses = [pending, ]
 
         # remove Pending if in the list because it should never be submitted by the user
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
+        # and remove Undetermined if in the list and the event already has an Undetermined
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
 
         if new_event_diagnoses:
             is_valid = True
