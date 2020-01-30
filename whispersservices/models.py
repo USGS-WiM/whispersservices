@@ -658,7 +658,7 @@ class EventLocation(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to calculate the parent event's start_date and end_date and affected_count
+    # override the save method to calculate the parent event's start_date, end_date, affected_count, and modified_date
     def save(self, *args, **kwargs):
         super(EventLocation, self).save(*args, **kwargs)
 
@@ -704,6 +704,10 @@ class EventLocation(PermissionsHistoryModel):
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
                 event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
 
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+
         event.save()
 
     def __str__(self):
@@ -734,6 +738,14 @@ class EventLocationContact(PermissionsHistoryModel):
     def has_object_update_permission(self, request):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
+
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventLocationContact, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     def __str__(self):
         return str(self.id)
@@ -852,6 +864,14 @@ class EventLocationFlyway(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventLocationFlyway, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+
     def __str__(self):
         return str(self.id)
 
@@ -910,7 +930,7 @@ class LocationSpecies(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to calculate the parent event's affected_count
+    # override the save method to calculate the parent event's affected_count and update the modified_date
     def save(self, *args, **kwargs):
         super(LocationSpecies, self).save(*args, **kwargs)
 
@@ -940,6 +960,11 @@ class LocationSpecies(PermissionsHistoryModel):
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
                 event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
         event.save()
 
@@ -1082,10 +1107,16 @@ class EventDiagnosis(PermissionsHistoryModel):
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
     # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+    # and update the parent event's modified_date
     def save(self, *args, **kwargs):
         if self.diagnosis.name in ['Pending', 'Undetermined']:
             self.suspect = False
         super(EventDiagnosis, self).save(*args, **kwargs)
+
+        event = Event.objects.filter(id=self.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1169,7 +1200,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # and to create real time notifications for high impact diseases
-    # and to calculate the parent event's affected_count
+    # and to update the parent event's affected_count and modified_date
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
 
@@ -1241,6 +1272,10 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 positive_counts = [dx or 0 for dx in species_dx_positive_counts]
                 event.affected_count = sum(positive_counts)
+
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
 
@@ -1322,6 +1357,14 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     def has_object_update_permission(self, request):
         event_id = self.species_diagnosis.location_species.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
+
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(SpeciesDiagnosisOrganization, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     def __str__(self):
         return str(self.id)
@@ -1740,6 +1783,7 @@ class Comment(PermissionsHistoryModel):
         return determine_object_update_permission(self, request, None)
 
     # override the save method to create real time notifications
+    # update the parent event's modified_date (if applicable)
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
         super(Comment, self).save(*args, **kwargs)
@@ -1772,6 +1816,20 @@ class Comment(PermissionsHistoryModel):
                 body = msg_tmp.body_template.format(event_id=event_id)
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+
+        # modified_date
+        event = None
+        model_name = self.content_type.model
+        if model_name == 'event':
+            event = Event.objects.filter(pk=self.object_id).first()
+        elif model_name == 'eventlocation':
+            event = EventLocation.objects.get(pk=self.object_id).event
+        elif model_name == 'eventeventgroup':
+            event = EventEventGroup.objects.get(pk=self.object_id).event
+        if event:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
