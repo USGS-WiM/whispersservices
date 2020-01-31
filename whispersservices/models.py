@@ -710,6 +710,14 @@ class EventLocation(PermissionsHistoryModel):
 
         event.save()
 
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+        super(EventLocation, self).delete(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
@@ -746,6 +754,14 @@ class EventLocationContact(PermissionsHistoryModel):
         event.modified_by = self.modified_by
         event.modified_date = self.modified_date
         event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+        super(EventLocationContact, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -872,6 +888,14 @@ class EventLocationFlyway(PermissionsHistoryModel):
         event.modified_date = self.modified_date
         event.save()
 
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+        super(EventLocationFlyway, self).delete(*args, **kwargs)
+
     def __str__(self):
         return str(self.id)
 
@@ -966,7 +990,13 @@ class LocationSpecies(PermissionsHistoryModel):
         event.modified_date = self.modified_date
         event.save()
 
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
         event.save()
+        super(LocationSpecies, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -1117,6 +1147,14 @@ class EventDiagnosis(PermissionsHistoryModel):
         event.modified_by = self.modified_by
         event.modified_date = self.modified_date
         event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+        super(EventDiagnosis, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1304,8 +1342,9 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     # override the delete method to ensure that when all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
+    # and update the parent event's modified_date
     def delete(self, *args, **kwargs):
-        event = self.location_species.event_location.event
+        event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
         super(SpeciesDiagnosis, self).delete(*args, **kwargs)
 
@@ -1326,6 +1365,10 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             EventDiagnosis.objects.create(
                 event=event, diagnosis=new_diagnosis, suspect=False, priority=1,
                 created_by=self.created_by, modified_by=self.modified_by)
+
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1365,6 +1408,14 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
         event.modified_by = self.modified_by
         event.modified_date = self.modified_date
         event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+        super(SpeciesDiagnosisOrganization, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -1830,6 +1881,22 @@ class Comment(PermissionsHistoryModel):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
+
+    # override the delete method to update the parent event's modified_date (if applicable)
+    def delete(self, *args, **kwargs):
+        event = None
+        model_name = self.content_type.model
+        if model_name == 'event':
+            event = Event.objects.filter(pk=self.object_id).first()
+        elif model_name == 'eventlocation':
+            event = EventLocation.objects.get(pk=self.object_id).event
+        elif model_name == 'eventeventgroup':
+            event = EventEventGroup.objects.get(pk=self.object_id).event
+        if event:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(Comment, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
