@@ -206,6 +206,9 @@ class EventViewSet(HistoryViewSet):
             raise PermissionDenied
 
         event = Event.objects.filter(id=pk).first()
+        if not event:
+            raise NotFound
+
         user = get_request_user(self.request)
 
         # only 'qualified users' may send alerts (someone with edit permissions on event)
@@ -272,6 +275,9 @@ class EventViewSet(HistoryViewSet):
         # source: User requesting that they be a collaborator on an event.
         source = user.username
         event = Event.objects.filter(id=pk).first()
+        if not event:
+            raise NotFound
+
         event_owner = event.created_by
         # recipients: event owner, org manager, org admin
         recipients = list(User.objects.filter(
@@ -283,7 +289,8 @@ class EventViewSet(HistoryViewSet):
         ).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
-        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+        # {first_name,last_name,organization,event_id,comment,email}
+        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
                                             organization=user.organization, event_id=event.id, comment=request.data)
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
