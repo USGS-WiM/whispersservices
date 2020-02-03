@@ -5,27 +5,6 @@ from whispersservices.immediate_tasks import generate_notification
 
 
 @shared_task()
-def standard_notifications():
-    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
-    new_events = Event.objects.filter(created_date=yesterday)
-    updated_events = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
-
-    all_events = all_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
-    own_events = own_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
-    org_events = organization_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
-    collab_events = collaborator_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
-
-    all_notifications = all_events + own_events + org_events + collab_events
-    unique_notifications = []
-
-    for notification in all_notifications:
-        if (notification[0], notification[2]) not in unique_notifications:
-            generate_notification.delay(notification)
-
-    return True
-
-
-@shared_task()
 def all_events(events_created_yesterday, events_updated_yesterday):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='ALL Events').first()
@@ -38,8 +17,9 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             recipients = [cue.created_by.id, ]
             email_to = [cue.created_by.email, ] if send_email else []
 
+            eventlocations = EventLocation.objects.filter(event=event.id)
             event_location = "["
-            for evtloc in event.eventlocations:
+            for evtloc in eventlocations:
                 event_location += evtloc.administrative_level_two.name
                 event_location += ", " + evtloc.administrative_level_one.abbreviation
                 event_location += ", " + evtloc.country.abbreviation + "; "
@@ -60,8 +40,9 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             recipients = [cue.created_by.id, ]
             email_to = [cue.created_by.email, ] if send_email else []
 
+            eventlocations = EventLocation.objects.filter(event=event.id)
             event_location = "["
-            for evtloc in event.eventlocations:
+            for evtloc in eventlocations:
                 event_location += evtloc.administrative_level_two.name
                 event_location += ", " + evtloc.administrative_level_one.abbreviation
                 event_location += ", " + evtloc.country.abbreviation + "; "
@@ -181,7 +162,7 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday):
             Q(eventreadusers__event_id=event.id)
         ).values_list('id', flat=True)))
         for cue in standard_notification_cues_new:
-            if cue.created_by.organization.id in event_collaborator_ids:
+            if cue.created_by.id in event_collaborator_ids:
                 send_email = cue.notification_cue_preference.send_email
                 recipients = [cue.created_by.id, ]
                 email_to = [cue.created_by.email, ] if send_email else []
@@ -203,7 +184,7 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday):
             Q(eventreadusers__event_id=event.id)
         ).values_list('id', flat=True)))
         for cue in standard_notification_cues_updated:
-            if cue.created_by.organization.id in event_collaborator_ids:
+            if cue.created_by.id in event_collaborator_ids:
                 send_email = cue.notification_cue_preference.send_email
                 recipients = [cue.created_by.id, ]
                 email_to = [cue.created_by.email, ] if send_email else []
@@ -219,3 +200,25 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday):
                 # generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
 
     return notifications
+
+
+@shared_task()
+def standard_notifications():
+    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
+    new_events = Event.objects.filter(created_date=yesterday)
+    updated_events = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
+
+    all_evts = all_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
+    own_evts = own_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
+    org_evts = organization_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
+    collab_evts = collaborator_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
+
+    all_notifications = all_evts + own_evts + org_evts + collab_evts
+    unique_notifications = []
+
+    for notification in all_notifications:
+        if (notification[0], notification[2]) not in unique_notifications:
+            unique_notifications.append((notification[0], notification[2]))
+            generate_notification.delay(*notification)
+
+    return True
