@@ -279,7 +279,7 @@ class EventViewSet(HistoryViewSet):
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to event owner, organization manager, and organization admin
         email_to = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role_in=[3, 4], organization=event_owner.organization.id)
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id)
         ).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
