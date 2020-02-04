@@ -13,6 +13,8 @@ This project was built with Django, Django REST Framework, and Psycopg2.
 
 *Prerequisite*: Please install PostgreSQL by following [these instructions](https://www.postgresql.org/docs/devel/tutorial-install.html).
 
+*Prerequisite*: Please install Celery and RabbitMQ by following [these instructions](https://docs.celeryproject.org/en/latest/getting-started/first-steps-with-celery.html).
+
 ```bash
 git clone https://github.com/USGS-WiM/whispersservices_django.git
 cd whispersservices_django
@@ -35,12 +37,16 @@ python3 manage.py migrate
 # install the custom SQL views in the database
 psql -U webapp_whispers -d whispers -f whispers_views.sql
 
+# install RabbitMQ, the message broker used by Celery (which is itself was installed by the prior pip command)
+sudo apt-get install rabbitmq-server
 ```
 
 ## Environments
 The web services are designed to work very slightly differently between dev, test, and production environments. Environment settings are defined in the settings.py file, the most important of which are `ENVIRONMENT`, `APP_WHISPERS_URL`, `SSL_CERT`, and the various email and database settings, among others.
 
 Note that on Windows, the default arrangement of a settings.py file reading a settings.cfg file (to keep sensitive information out of code repositories) seems to  work fine, but in Linux this does not seem to work, and so all the `CONFIG.get()` calls should be replaced by simple values.
+
+To use Celery in development, run `celery -A whispersservices_django worker -l info` (note that this no longer seems to work on Windows, and so the `--pool=solo` option should be appeneded to the preceding command).
 
 ## Development server
 
@@ -49,6 +55,10 @@ Run `python3 manage.py runserver` for a dev server with live reload. Navigate to
 ## Production server
 
 In a production environment (or really, any non-development environment) this Django project should be run through a dedicated web server, likely using the Web Server Gateway Interface [(WSGI)](https://wsgi.readthedocs.io/en/latest/). This repository includes sample configuration files (*.conf in the root folder) for running this project in [Apache HTTP Server](https://docs.djangoproject.com/en/dev/howto/deployment/wsgi/modwsgi/).
+
+Additionally, Celery must be set up as a service or daemon for Django to use it. On Linux (note that Celery is no longer supported on Windows) follow the instructions [here](https://docs.celeryproject.org/en/latest/userguide/daemonizing.html#daemonizing) (also read the docs about how Celery and Django connect [here](https://docs.celeryproject.org/en/latest/django/first-steps-with-django.html#django-first-steps)). For convenience, the necessary documents are in this repository:
+* `default_celeryd` (sourced from the [official Celery documentation](https://docs.celeryproject.org/en/latest/userguide/daemonizing.html#example-configuration), note that this file should be saved on the server as `/etc/default/celeryd`)
+* `init.d_celeryd` (sourced from the [official Celery repo](https://github.com/celery/celery/blob/master/extra/generic-init.d/celeryd), note that this file should be saved on the server as `/etc/init.d/celeryd`, and its file permissions should be set to 755 (which can be done with the command `sudo chmod 755 /etc/init.d/celeryd`); also register the script to run on boot with the command `sudo update-rc.d celeryd defaults`)
 
 ## Authors
 
