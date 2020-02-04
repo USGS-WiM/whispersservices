@@ -222,3 +222,33 @@ def standard_notifications():
             generate_notification.delay(*notification)
 
     return True
+
+
+@shared_task()
+def stale_events():
+    stale_event_periords = Configuration.objects.filter(name='stale_event_periods').first()
+    if stale_event_periords and all(isinstance(x, int) for x in stale_event_periords):
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Stale Events').first()
+        for period in stale_event_periords:
+            period_date = datetime.strftime(datetime.now() - timedelta(period), '%Y-%m-%d')
+            all_stale_events = Event.objects.filter(complete=False, created_date=period_date)
+            for event in all_stale_events:
+                recipients = list(User.objects.filter(name='madisonepi').values_list('id', flat=True))
+                recipients += [event.created_by.id, ]
+                email_to = list(User.objects.filter(name='madisonepi').values_list('email', flat=True))
+                email_to += [event.created_by.email, ]
+
+                eventlocations = EventLocation.objects.filter(event=event.id)
+                event_location = "["
+                for evtloc in eventlocations:
+                    event_location += evtloc.administrative_level_two.name
+                    event_location += ", " + evtloc.administrative_level_one.abbreviation
+                    event_location += ", " + evtloc.country.abbreviation + "; "
+                event_location += "]"
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+                body = msg_tmp.body_template.format(
+                    event_id=event.id, event_location=event_location, event_date=event.created_date,
+                    stale_period=str(period))
+                source = 'system'
+                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+    return True

@@ -267,6 +267,13 @@ class Event(PermissionsHistoryModel):
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event')
     comments = GenericRelation('Comment', related_name='events')
 
+    # keep track of "previous" event_status to detect if the value changes during save
+    __original_event_status = None
+
+    def __init__(self, *args, **kwargs):
+        super(Event, self).__init__(*args, **kwargs)
+        self.__original_event_status = self.event_status
+
     @staticmethod
     def has_create_permission(request):
         # anyone with role of Partner or above can create
@@ -277,12 +284,30 @@ class Event(PermissionsHistoryModel):
 
     # override the save method to toggle quality check field when complete field changes
     # and update event diagnoses as necessary so there is always at least one
+    # and send notifications if the event requires quality check
     def save(self, *args, **kwargs):
         # Disable Quality check field until field "complete" =1.
         # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
         if not self.complete:
             self.quality_check = None
         super(Event, self).save(*args, **kwargs)
+
+        # create real time notifications for quality check
+        # trigger: Event status (event_status) is set to "Quality Check Needed"
+        if self.event_status.name == 'Quality Check Needed' and self.event_status.id != self.__original_event_status.id:
+            self.__original_event_status = self.event_status
+            # source: system
+            source = 'system'
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
+            # recipients: Epi staff
+            recipients = list(User.objects.filter(name='madisonepi').values_list('id', flat=True))
+            # email forwarding: Automatic, to nwhc-epi@usgs.gov
+            email_to = list(User.objects.filter(name='madisonepi').values_list('email', flat=True))
+            subject = msg_tmp.subject_template.format(event_id=self.id)
+            body = msg_tmp.body_template.format(event_id=self.id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
+            return True
 
         def get_event_diagnoses():
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
@@ -1941,6 +1966,21 @@ class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
 
     class Meta:
         db_table = "whispers_artifact"
+        ordering = ['id']
+
+
+class Configuration(AdminPermissionsHistoryNameModel):
+    """
+    Global Configuration Setting
+    """
+
+    value = models.TextField(blank=True, default='', help_text='An alphanumeric value of the value paired to the name for this configuration')
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_configuration"
         ordering = ['id']
 
 
