@@ -1749,6 +1749,43 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 class NotificationViewSet(HistoryViewSet):
     serializer_class = NotificationSerializer
 
+    @action(methods=['post'], detail=False)
+    def bulk_update(self, request):
+        user = get_request_user(self.request)
+
+        is_valid = True
+        response_errors = []
+        item = request.data
+        if 'action' not in item or item['action'] not in ['delete', 'set_read', 'set_unread']:
+            message = 'action is a required field (accepted values are "delete", "set_read", "set_unread")'
+            response_errors.append(message)
+        if 'ids' not in item or not isinstance(item['ids'], list) or not (
+                all(isinstance(x, int) for x in item['ids']) or all(x.isdigit() for x in item['ids'])):
+            # recipients_message = "A field named \"ids\" containing a list/array of notification IDs"
+            # recipients_message += " is required to bulk update notifications."
+            # raise APIException(recipients_message)
+            response_errors.append("ids is a required field")
+        else:
+            if user.role.id not in [1,2]:
+                user_notifications = list(
+                    Notification.objects.filter(recipient__id=user.id).values_list('id', flat=True))
+                if not all(x in user_notifications for x in item['ids']):
+                    message = "the requesting user must be the recipient of all notifications for all submitted ids"
+                    response_errors.append(message)
+        if len(response_errors) > 0:
+            is_valid = False
+
+        if is_valid:
+            if item['action'] == 'delete':
+                Notification.objects.filter(id__in=(item['ids'])).delete()
+            elif item['action'] == 'set_read':
+                Notification.objects.filter(id__in=(item['ids'])).update(read=True)
+            elif item['action'] == 'set_unread':
+                Notification.objects.filter(id__in=(item['ids'])).update(read=False)
+            return Response({"status": 'update completed'}, status=200)
+        else:
+            return Response({"non-field errors": response_errors}, status=400)
+
     def get_queryset(self):
         queryset = Notification.objects.all()
         user = get_request_user(self.request)
