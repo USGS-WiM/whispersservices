@@ -4312,14 +4312,14 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # create a 'User Change Request Response Public' notification
+        # create a 'User Created' notification
         # source: User that requests a public account
         source = user.username
         # recipients: user, WHISPers admin team
         recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
         # email forwarding: Automatic, to user's email and to whispers@usgs.gov
         email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Public').first()
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
         subject = msg_tmp.subject_template
         body = msg_tmp.body_template
         event = None
@@ -4518,14 +4518,14 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
-        # also create a 'User Change Request Pending' notification
+        # also create a 'User Change Request Response Pending' notification
         # source: User that requests the natural resource management professional account
         source = ucr.created_by.username
         # recipients: user
         recipients = [ucr.created_by.id, ]
         # email forwarding: Automatic to the user's email
         email_to = [ucr.created_by.email, ]
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Pending').first()
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
         subject = msg_tmp.subject_template
         body = msg_tmp.body_template
         event = None

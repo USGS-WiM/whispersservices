@@ -29,6 +29,10 @@ def construct_notification_email(recipient_email, subject, html_body):
     #     url = settings.APP_WHISPERS_URL
     # html_body = body + "<a href='" + url + ">" + url + "</a>"
 
+    # append the boilerplate text to the end of the email body
+    boilerplate = Configuration.objects.filter(name='email_boilerplate').first()
+    html_body += boilerplate
+
     # create a plain text body by remove HTML tags from the html_body
     body = html_body
     body = body.replace('<h1>', '').replace('</h1>', '\r\n').replace('<h2>', '').replace('</h2>', '\r\n')

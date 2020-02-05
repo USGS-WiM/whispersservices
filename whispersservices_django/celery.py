@@ -13,4 +13,8 @@ app.conf.beat_schedule = {
         'task': 'whispersservices.scheduled_tasks.standard_notifications',
         'schedule': crontab(minute='0', hour='1'),
     },
+    # 'nightly_custom_notifications': {
+    #     'task': 'whispersservices.scheduled_tasks.custom_notifications',
+    #     'schedule': crontab(minute='0', hour='2'),
+    # },
 }

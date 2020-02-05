@@ -252,3 +252,57 @@ def stale_events():
                 source = 'system'
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
     return True
+
+
+@shared_task()
+def custom_notifications():
+    # An event with a number affected greater than or equal to the provided integer is created,
+    # OR an event location is added/updated that meets that criteria
+    msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
+
+    custom_notification_cues_new = NotificationCueCustom.objects.filter(
+        notification_cue_preference__create_when_new=True)
+    for cue in custom_notification_cues_new:
+        # TODO: critera
+        custom_criteria_events = []
+        for event in custom_criteria_events:
+            send_email = cue.notification_cue_preference.send_email
+            # recipients: users with this notification configured
+            recipients = [cue.created_by.id, ]
+            # email forwarding: Optional, set by user.
+            email_to = [cue.created_by.email, ] if send_email else []
+
+            field = ""
+            criteria = ""
+            subject = msg_tmp.subject_template.format(event_id=event.id)
+            body = msg_tmp.body_template.format(
+                new_updated="New", field=field, criteria=criteria, organization=event.created_by.organization.name,
+                created_updated="created", event_id=event.id, event_date=event.created_date, updates="N/A")
+            # source: any user who creates or updates an event that meets the trigger criteria
+            source = event.created_by.username
+            generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
+
+    custom_notification_cues_updated = NotificationCueCustom.objects.filter(
+        notification_cue_preference__create_when_modified=True)
+    for cue in custom_notification_cues_updated:
+        # TODO: critera
+        custom_criteria_events = []
+        for event in custom_criteria_events:
+            send_email = cue.notification_cue_preference.send_email
+            # recipients: users with this notification configured
+            recipients = [cue.created_by.id, ]
+            # email forwarding: Optional, set by user.
+            email_to = [cue.created_by.email, ] if send_email else []
+
+            field = ""
+            criteria = ""
+            updates = ""
+            subject = msg_tmp.subject_template.format(event_id=event.id)
+            body = msg_tmp.body_template.format(
+                new_updated="Updated", field=field, criteria=criteria, organization=event.created_by.organization.name,
+                created_updated="updated", event_id=event.id, event_date=event.created_date, updates=updates)
+            # source: any user who creates or updates an event that meets the trigger criteria
+            source = event.modified_by.username
+            generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
+
+    return True
