@@ -2059,6 +2059,8 @@ class User(AbstractUser):
     # also deactivate all notifications when the user is no longer active
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
+        # users with SuperAdmin role should always have is_superuser = True
+        self.is_superuser = True if self.role.is_superadmin else False
         super(User, self).save(*args, **kwargs)
 
         if is_new:

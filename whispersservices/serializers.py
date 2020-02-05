@@ -4297,16 +4297,34 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
-        # only SuperAdmins and Admins can edit is_superuser, is_staff, and is_active fields
+        # only SuperAdmins and Admins can edit is_staff and is_active fields
         if (requesting_user.is_authenticated
                 and not (requesting_user.role.is_superadmin or requesting_user.role.is_admin)):
-            validated_data['is_superuser'] = False
             validated_data['is_staff'] = False
             validated_data['is_active'] = True
+
+        # only SuperAdmins can edit is_superuser field
+        if (requesting_user.is_authenticated
+                and not (requesting_user.role.is_superadmin or requesting_user.is_superuser)):
+            validated_data['is_superuser'] = False
 
         user = User.objects.create(**validated_data)
         user.set_password(password)
         user.save()
+
+        # create a 'User Change Request Response Public' notification
+        # source: User that requests a public account
+        source = user.username
+        # recipients: user, WHISPers admin team
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+        # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+        email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Public').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         if new_user_change_request is not None:
             role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
@@ -4500,6 +4518,20 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
+        # also create a 'User Change Request Pending' notification
+        # source: User that requests the natural resource management professional account
+        source = ucr.created_by.username
+        # recipients: user
+        recipients = [ucr.created_by.id, ]
+        # email forwarding: Automatic to the user's email
+        email_to = [ucr.created_by.email, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Pending').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+
         return ucr
 
     def update(self, instance, validated_data):
@@ -4532,28 +4564,43 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         instance.organization_requested = validated_data.get('organization_requested', instance.organization_requested)
         instance.save()
 
-        # if the response is updated to 'Yes', update the User and create a 'User Change Request Response' notification
-        # TODO: what about 'No' and 'Maybe'?
-        if request_response_updated and instance.request_response.name == 'Yes':
-            requester = User.objects.filter(id=instance.requester.id).first()
-            requester.role = instance.role_requested
-            requester.organization = instance.organization_requested
-            requester.save()
-            # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
-            source = instance.modified_by.username
-            # recipients: user, WHISPers admin team
-            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                instance.requester.id, ]
-            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-            email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-            msg_tmp = NotificationMessageTemplate.objects.filter(
-                name='User Change Request Response').first()
-            subject = msg_tmp.subject_template
-            body = msg_tmp.body_template.format(role=instance.role_requested.name,
-                                                organization=instance.organization_requested.name)
-            event = None
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        # if the response is updated to 'Yes' or 'No',
+        # update the User and create a 'User Change Request Response' notification
+        # TODO: what about 'Maybe'?
+        if request_response_updated:
+            if instance.request_response.name == 'Yes':
+                requester = User.objects.filter(id=instance.requester.id).first()
+                requester.role = instance.role_requested
+                requester.organization = instance.organization_requested
+                requester.save()
+                # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
+                source = instance.modified_by.username
+                # recipients: user, WHISPers admin team
+                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                    instance.requester.id, ]
+                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                                                    organization=instance.organization_requested.name)
+                event = None
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+            elif instance.request_response.name == 'No':
+                # source: WHISPer Admin or Org Admin who assigns a WHISPers role.
+                source = instance.modified_by.username
+                # recipients: user, WHISPers admin team
+                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                    instance.requester.id, ]
+                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template
+                event = None
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         return instance
 
