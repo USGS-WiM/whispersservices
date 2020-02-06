@@ -683,6 +683,32 @@ class EventLocation(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    def update_event_affected_count(self, event, locations):
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            return None
+        else:
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                return sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
+                return sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+            else:
+                return None
+
     # override the save method to calculate the parent event's start_date, end_date, affected_count, and modified_date
     def save(self, *args, **kwargs):
         super(EventLocation, self).save(*args, **kwargs)
@@ -706,40 +732,27 @@ class EventLocation(PermissionsHistoryModel):
             event.end_date = None
 
         # affected_count
-        # If EventType = Morbidity/Mortality
-        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
-        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
-        event_type_id = event.event_type.id
-        if event_type_id not in [1, 2]:
-            event.affected_count = None
-        else:
-            loc_ids = [loc['id'] for loc in locations]
-            loc_species = LocationSpecies.objects.filter(
-                event_location_id__in=loc_ids).values(
-                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
-            if event_type_id == 1:
-                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                   for spec in loc_species]
-                event.affected_count = sum(affected_counts)
-            elif event_type_id == 2:
-                loc_species_ids = [spec['id'] for spec in loc_species]
-                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+        event.affected_count = self.update_event_affected_count(event, locations)
 
         # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
 
         event.save()
 
-    # override the delete method to update the parent event's modified_date
+    # override the delete method to update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+
+        # affected_count
+        event.affected_count = self.update_event_affected_count(event, locations)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
         event.save()
         super(EventLocation, self).delete(*args, **kwargs)
 
@@ -776,16 +789,18 @@ class EventLocationContact(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(EventLocationContact, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
         super(EventLocationContact, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -909,16 +924,18 @@ class EventLocationFlyway(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(EventLocationFlyway, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
         super(EventLocationFlyway, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -979,19 +996,13 @@ class LocationSpecies(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to calculate the parent event's affected_count and update the modified_date
-    def save(self, *args, **kwargs):
-        super(LocationSpecies, self).save(*args, **kwargs)
-
-        event = Event.objects.filter(id=self.event_location.event.id).first()
-
-        # affected_count
+    def update_event_affected_location(self, event):
         # If EventType = Morbidity/Mortality
         # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
         # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
         event_type_id = event.event_type.id
         if event_type_id not in [1, 2]:
-            event.affected_count = None
+            return None
         else:
             locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
             loc_ids = [loc['id'] for loc in locations]
@@ -1002,24 +1013,43 @@ class LocationSpecies(PermissionsHistoryModel):
                 affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
                                    + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
                                    for spec in loc_species]
-                event.affected_count = sum(affected_counts)
+                return sum(affected_counts)
             elif event_type_id == 2:
                 loc_species_ids = [spec['id'] for spec in loc_species]
                 species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+                return sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+            else:
+                return None
+
+    # override the save method to calculate the parent event's affected_count and update the modified_date
+    def save(self, *args, **kwargs):
+        super(LocationSpecies, self).save(*args, **kwargs)
+
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+
+        # affected_count
+        event.affected_count = self.update_event_affected_location(event)
 
         # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
         event.save()
 
-    # override the delete method to update the parent event's modified_date
+    # override the delete method to update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+
+        # affected_count
+        event.affected_count = self.update_event_affected_location(event)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
         event.save()
         super(LocationSpecies, self).delete(*args, **kwargs)
 
@@ -1169,16 +1199,18 @@ class EventDiagnosis(PermissionsHistoryModel):
         super(EventDiagnosis, self).save(*args, **kwargs)
 
         event = Event.objects.filter(id=self.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
         super(EventDiagnosis, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -1261,6 +1293,33 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         event_id = self.location_species.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    def update_event_affected_count(self, event):
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            return None
+        else:
+            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                return sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
+                return sum(positive_counts)
+            else:
+                return None
+
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # and to create real time notifications for high impact diseases
     # and to update the parent event's affected_count and modified_date
@@ -1312,33 +1371,12 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         diagnosis = self.diagnosis
 
         # affected_count
-        # If EventType = Morbidity/Mortality
-        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
-        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
-        event_type_id = event.event_type.id
-        if event_type_id not in [1, 2]:
-            event.affected_count = None
-        else:
-            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
-            loc_ids = [loc['id'] for loc in locations]
-            loc_species = LocationSpecies.objects.filter(
-                event_location_id__in=loc_ids).values(
-                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
-            if event_type_id == 1:
-                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                   for spec in loc_species]
-                event.affected_count = sum(affected_counts)
-            elif event_type_id == 2:
-                loc_species_ids = [spec['id'] for spec in loc_species]
-                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
-                event.affected_count = sum(positive_counts)
+        event.affected_count = self.update_event_affected_count(event)
 
         # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
 
         event.save()
 
@@ -1367,7 +1405,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     # override the delete method to ensure that when all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
-    # and update the parent event's modified_date
+    # and update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
@@ -1391,8 +1429,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 event=event, diagnosis=new_diagnosis, suspect=False, priority=1,
                 created_by=self.created_by, modified_by=self.modified_by)
 
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        # affected_count
+        event.affected_count = self.update_event_affected_count(event)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
         event.save()
 
     def __str__(self):
@@ -1430,16 +1473,18 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(SpeciesDiagnosisOrganization, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
         super(SpeciesDiagnosisOrganization, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -1902,7 +1947,7 @@ class Comment(PermissionsHistoryModel):
             event = EventLocation.objects.get(pk=self.object_id).event
         elif model_name == 'eventeventgroup':
             event = EventEventGroup.objects.get(pk=self.object_id).event
-        if event:
+        if event and not event.modified_date == self.modified_date:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1917,7 +1962,7 @@ class Comment(PermissionsHistoryModel):
             event = EventLocation.objects.get(pk=self.object_id).event
         elif model_name == 'eventeventgroup':
             event = EventEventGroup.objects.get(pk=self.object_id).event
-        if event:
+        if event and not event.modified_date == self.modified_date:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
