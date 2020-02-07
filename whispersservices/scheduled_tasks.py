@@ -259,12 +259,35 @@ def custom_notifications():
     # An event with a number affected greater than or equal to the provided integer is created,
     # OR an event location is added/updated that meets that criteria
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
+    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
 
     custom_notification_cues_new = NotificationCueCustom.objects.filter(
         notification_cue_preference__create_when_new=True)
     for cue in custom_notification_cues_new:
-        # TODO: critera
         custom_criteria_events = []
+        # TODO: critera
+        #{"Values": [], "Operator": ""}
+        # event
+        if len(cue.event['values']) > 0:
+            queryset = Event.objects.filter(created_date=yesterday)
+            values = cue.event['values']
+            if cue.event['operator'] == "OR":
+                queries = [Q(id=value) for value in values]
+                query = queries.pop()
+                for item in queries:
+                    query |= item
+                queryset = queryset.filter(query)
+            else:
+                # default to AND
+                # if there is more than one value, the query is pointless because there will never be a match
+                for value in values:
+                    queryset.filter(id=value)
+        # event_affected_count
+        # event_location_land_ownership
+        # event_location_administrative_level_one
+        # species
+        # species_diagnosis_diagnosis
+
         for event in custom_criteria_events:
             send_email = cue.notification_cue_preference.send_email
             # recipients: users with this notification configured

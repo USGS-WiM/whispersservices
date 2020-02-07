@@ -1742,6 +1742,8 @@ class NotificationCuePreference(PermissionsHistoryModel):
 class NotificationCueCustom(PermissionsHistoryModel):
     """
     Notification Cue Custom
+    Each JSON field has the format of {"Values": [], "Operator": ""}
+    with Values being a list of integers and Operator being either "AND" or "OR"
     """
 
     notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuecustoms', help_text='A foreign key integer value identifying a notificationcuepreference')
