@@ -254,6 +254,116 @@ def stale_events():
     return True
 
 
+def build_custom_notifications_query(cue, base_queryset):
+    # TODO: how to handle ANDs
+    # {"Values": [], "Operator": ""}
+    queryset = None
+
+    # event
+    if len(cue.event['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.event['values']
+        if cue.event['operator'] == "OR":
+            queries = [Q(id=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # if there is more than one value, the query is pointless because there will never be a match
+            for value in values:
+                queryset = queryset.filter(id=value)
+
+    # event_affected_count
+    if len(cue.event_affected_count['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.event_affected_count['values']
+        if cue.event_affected_count['operator'] == "OR":
+            queries = [Q(affected_count=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # if there is more than one value, the query is pointless because there will never be a match
+            for value in values:
+                queryset = queryset.filter(affected_count=value)
+
+    # event_location_land_ownership
+    if len(cue.event_location_land_ownership['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.event_location_land_ownership['values']
+        if cue.event_location_land_ownership['operator'] == "OR":
+            queries = [Q(eventlocations__land_ownership=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # figure out how to query if an event has a child with one of each
+            for value in values:
+                queryset = queryset.filter(eventlocations__land_ownership=value)
+
+    # event_location_administrative_level_one
+    if len(cue.event_location_administrative_level_one['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.event_location_administrative_level_one['values']
+        if cue.event_location_administrative_level_one['operator'] == "OR":
+            queries = [Q(eventlocations__administrative_level_one=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # figure out how to query if an event has a child with one of each
+            for value in values:
+                queryset = queryset.filter(eventlocations__administrative_level_one=value)
+
+    # species
+    if len(cue.species['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.species['values']
+        if cue.species['operator'] == "OR":
+            queries = [Q(eventlocations__locationspecies__species=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # figure out how to query if an event has a child with one of each
+            for value in values:
+                queryset = queryset.filter(eventlocations__locationspecies__species=value)
+
+    # species_diagnosis_diagnosis
+    if len(cue.species_diagnosis_diagnosis['values']) > 0:
+        if not queryset:
+            queryset = base_queryset
+        values = cue.species_diagnosis_diagnosis['values']
+        if cue.species_diagnosis_diagnosis['operator'] == "OR":
+            queries = [Q(eventlocations__locationspecies__speciesdiagnoses_diagnosis=value) for value in values]
+            query = queries.pop()
+            for item in queries:
+                query |= item
+            queryset = queryset.filter(query)
+        else:
+            # default to AND
+            # figure out how to query if an event has a child with one of each
+            for value in values:
+                queryset = queryset.filter(eventlocations__locationspecies__speciesdiagnoses_diagnosis=value)
+
+    return queryset
+
+
 @shared_task()
 def custom_notifications():
     # An event with a number affected greater than or equal to the provided integer is created,
@@ -263,69 +373,52 @@ def custom_notifications():
 
     custom_notification_cues_new = NotificationCueCustom.objects.filter(
         notification_cue_preference__create_when_new=True)
+    base_queryset = Event.objects.filter(created_date=yesterday)
     for cue in custom_notification_cues_new:
-        custom_criteria_events = []
-        # TODO: critera
-        #{"Values": [], "Operator": ""}
-        # event
-        if len(cue.event['values']) > 0:
-            queryset = Event.objects.filter(created_date=yesterday)
-            values = cue.event['values']
-            if cue.event['operator'] == "OR":
-                queries = [Q(id=value) for value in values]
-                query = queries.pop()
-                for item in queries:
-                    query |= item
-                queryset = queryset.filter(query)
-            else:
-                # default to AND
-                # if there is more than one value, the query is pointless because there will never be a match
-                for value in values:
-                    queryset.filter(id=value)
-        # event_affected_count
-        # event_location_land_ownership
-        # event_location_administrative_level_one
-        # species
-        # species_diagnosis_diagnosis
+        queryset = build_custom_notifications_query(cue, base_queryset)
 
-        for event in custom_criteria_events:
-            send_email = cue.notification_cue_preference.send_email
-            # recipients: users with this notification configured
-            recipients = [cue.created_by.id, ]
-            # email forwarding: Optional, set by user.
-            email_to = [cue.created_by.email, ] if send_email else []
+        if queryset:
+            for event in queryset:
+                send_email = cue.notification_cue_preference.send_email
+                # recipients: users with this notification configured
+                recipients = [cue.created_by.id, ]
+                # email forwarding: Optional, set by user.
+                email_to = [cue.created_by.email, ] if send_email else []
 
-            field = ""
-            criteria = ""
-            subject = msg_tmp.subject_template.format(event_id=event.id)
-            body = msg_tmp.body_template.format(
-                new_updated="New", field=field, criteria=criteria, organization=event.created_by.organization.name,
-                created_updated="created", event_id=event.id, event_date=event.created_date, updates="N/A")
-            # source: any user who creates or updates an event that meets the trigger criteria
-            source = event.created_by.username
-            generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
+                field = ""
+                criteria = ""
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+                body = msg_tmp.body_template.format(
+                    new_updated="New", field=field, criteria=criteria, organization=event.created_by.organization.name,
+                    created_updated="created", event_id=event.id, event_date=event.created_date, updates="N/A")
+                # source: any user who creates or updates an event that meets the trigger criteria
+                source = event.created_by.username
+                generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
 
     custom_notification_cues_updated = NotificationCueCustom.objects.filter(
         notification_cue_preference__create_when_modified=True)
+    base_queryset = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
     for cue in custom_notification_cues_updated:
-        # TODO: critera
-        custom_criteria_events = []
-        for event in custom_criteria_events:
-            send_email = cue.notification_cue_preference.send_email
-            # recipients: users with this notification configured
-            recipients = [cue.created_by.id, ]
-            # email forwarding: Optional, set by user.
-            email_to = [cue.created_by.email, ] if send_email else []
+        queryset = build_custom_notifications_query(cue, base_queryset)
 
-            field = ""
-            criteria = ""
-            updates = ""
-            subject = msg_tmp.subject_template.format(event_id=event.id)
-            body = msg_tmp.body_template.format(
-                new_updated="Updated", field=field, criteria=criteria, organization=event.created_by.organization.name,
-                created_updated="updated", event_id=event.id, event_date=event.created_date, updates=updates)
-            # source: any user who creates or updates an event that meets the trigger criteria
-            source = event.modified_by.username
-            generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
+        if queryset:
+            for event in queryset:
+                send_email = cue.notification_cue_preference.send_email
+                # recipients: users with this notification configured
+                recipients = [cue.created_by.id, ]
+                # email forwarding: Optional, set by user.
+                email_to = [cue.created_by.email, ] if send_email else []
+
+                field = ""
+                criteria = ""
+                updates = ""
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+                body = msg_tmp.body_template.format(
+                    new_updated="Updated", field=field, criteria=criteria,
+                    organization=event.created_by.organization.name, created_updated="updated", event_id=event.id,
+                    event_date=event.created_date, updates=updates)
+                # source: any user who creates or updates an event that meets the trigger criteria
+                source = event.modified_by.username
+                generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
 
     return True
