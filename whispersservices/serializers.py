@@ -4588,7 +4588,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
                   'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
-                  'administrativeleveltwos', 'flyways', 'species', 'permissions', 'permission_source',)
+                  'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions', 'permission_source',)
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
@@ -4704,7 +4704,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                   'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
                   'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
                   'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
+                  'organizations', 'permissions', 'permission_source',)
 
 
 class EventSummaryAdminSerializer(serializers.ModelSerializer):
@@ -4973,7 +4973,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     eventlocations = EventLocationDetailPublicSerializer(many=True)
     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
+    organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
 
     def get_eventgroups(self, obj):
@@ -4987,7 +4987,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
                 pub_groups.append(group)
         return pub_groups
 
-    def get_eventorganizations(self, obj):
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -5010,7 +5010,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
                   'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'eventorganizations', 'permissions', 'permission_source',)
+                  'organizations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -5030,7 +5030,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
     combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()
+    organizations = serializers.SerializerMethodField()
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
@@ -5079,7 +5079,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 pub_groups.append(group)
         return pub_groups
 
-    def get_eventorganizations(self, obj):
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -5130,7 +5130,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
@@ -5156,7 +5156,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()
+    organizations = serializers.SerializerMethodField()
     eventgroups = EventGroupSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
@@ -5193,7 +5193,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
             combined_comments.append(comment)
         return sorted(combined_comments, key=itemgetter('date_sort'), reverse=True)
-    def get_eventorganizations(self, obj):
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -5245,7 +5245,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
                   'legal_status_string', 'legal_number', 'quality_check', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by',
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
