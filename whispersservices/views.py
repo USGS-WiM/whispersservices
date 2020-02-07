@@ -52,7 +52,7 @@ class PlainTextParser(BaseParser):
 
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
-LIST_DELIMETER = ','
+LIST_DELIMITER = ','
 
 
 def get_request_user(request):
@@ -1025,7 +1025,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
         queryset = AdministrativeLevelOne.objects.all()
         country = self.request.query_params.get('country', None) if self.request else None
         if country is not None and country != '':
-            if LIST_DELIMETER in country:
+            if LIST_DELIMITER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(country__in=country_list)
             else:
@@ -1077,7 +1077,7 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         queryset = AdministrativeLevelTwo.objects.all()
         administrative_level_one = self.request.query_params.get('administrativelevelone', None)
         if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMETER in administrative_level_one:
+            if LIST_DELIMITER in administrative_level_one:
                 administrative_level_one_list = administrative_level_one.split(',')
                 queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
             else:
@@ -1395,7 +1395,7 @@ class DiagnosisViewSet(HistoryViewSet):
         queryset = Diagnosis.objects.all()
         diagnosis_type = self.request.query_params.get('diagnosis_type', None) if self.request else None
         if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMETER in diagnosis_type:
+            if LIST_DELIMITER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
                 queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
             else:
@@ -1805,7 +1805,7 @@ class NotificationViewSet(HistoryViewSet):
             else:
                 recipient = self.request.query_params.get('recipient', None) if self.request else None
                 if recipient is not None and recipient != '':
-                    if LIST_DELIMETER in recipient:
+                    if LIST_DELIMITER in recipient:
                         recipient_list = recipient.split(',')
                         queryset = queryset.filter(recipient__in=recipient_list)
                     else:
@@ -2466,14 +2466,14 @@ class ContactViewSet(HistoryViewSet):
 
         org = query_params.get('org', None)
         if org is not None and org != '':
-            if LIST_DELIMETER in org:
+            if LIST_DELIMITER in org:
                 org_list = org.split(',')
                 queryset = queryset.filter(organization__in=org_list)
             else:
                 queryset = queryset.filter(organization__exact=org)
         owner_org = query_params.get('ownerorg', None)
         if owner_org is not None and owner_org != '':
-            if LIST_DELIMETER in owner_org:
+            if LIST_DELIMITER in owner_org:
                 owner_org_list = owner_org.split(',')
                 queryset = queryset.filter(owner_organization__in=owner_org_list)
             else:
@@ -2613,7 +2613,7 @@ class SearchViewSet(HistoryViewSet):
 
         owner = query_params.get('owner', None)
         if owner is not None and owner != '':
-            if LIST_DELIMETER not in owner:
+            if LIST_DELIMITER not in owner:
                 owner_list = owner.split(',')
                 queryset = queryset.filter(created_by__in=owner_list)
             else:
@@ -2884,7 +2884,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None and event_type != '':
-            if LIST_DELIMETER in event_type:
+            if LIST_DELIMITER in event_type:
                 event_type_list = event_type.split(',')
                 queryset = queryset.filter(event_type__in=event_type_list)
             else:
@@ -2892,7 +2892,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by diagnosis ID, exact list
         diagnosis = query_params.get('diagnosis', None)
         if diagnosis is not None and diagnosis != '':
-            if LIST_DELIMETER in diagnosis:
+            if LIST_DELIMITER in diagnosis:
                 diagnosis_list = diagnosis.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses').filter(
                     eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
@@ -2914,7 +2914,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by diagnosistype ID, exact list
         diagnosis_type = query_params.get('diagnosis_type', None)
         if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMETER in diagnosis_type:
+            if LIST_DELIMITER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
                     eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
@@ -2936,7 +2936,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by species ID, exact list
         species = query_params.get('species', None)
         if species is not None and species != '':
-            if LIST_DELIMETER in species:
+            if LIST_DELIMITER in species:
                 species_list = species.split(',')
                 queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
                     eventlocations__locationspecies__species__in=species_list).distinct()
@@ -2958,7 +2958,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by administrative_level_one, exact list
         administrative_level_one = query_params.get('administrative_level_one', None)
         if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMETER in administrative_level_one:
+            if LIST_DELIMITER in administrative_level_one:
                 admin_level_one_list = administrative_level_one.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
@@ -2985,7 +2985,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by administrative_level_two, exact list
         administrative_level_two = query_params.get('administrative_level_two', None)
         if administrative_level_two is not None and administrative_level_two != '':
-            if LIST_DELIMETER in administrative_level_two:
+            if LIST_DELIMITER in administrative_level_two:
                 admin_level_two_list = administrative_level_two.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
@@ -3008,7 +3008,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         flyway = query_params.get('flyway', None)
         if flyway is not None and flyway != '':
             queryset = queryset.prefetch_related('eventlocations__flyway')
-            if LIST_DELIMETER in flyway:
+            if LIST_DELIMITER in flyway:
                 flyway_list = flyway.split(',')
                 queryset = queryset.filter(eventlocations__flyway__in=flyway_list).distinct()
             else:
@@ -3017,7 +3017,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         country = query_params.get('country', None)
         if country is not None and country != '':
             queryset = queryset.prefetch_related('eventlocations__country')
-            if LIST_DELIMETER in country:
+            if LIST_DELIMITER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
             else:
@@ -3026,7 +3026,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         gnis_id = query_params.get('gnis_id', None)
         if gnis_id is not None and gnis_id != '':
             queryset = queryset.prefetch_related('eventlocations__gnis_id')
-            if LIST_DELIMETER in gnis_id:
+            if LIST_DELIMITER in gnis_id:
                 gnis_id_list = country.split(',')
                 queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
             else:

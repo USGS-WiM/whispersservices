@@ -1747,8 +1747,8 @@ class NotificationCueCustom(PermissionsHistoryModel):
     """
 
     notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuecustoms', help_text='A foreign key integer value identifying a notificationcuepreference')
-    event = JSONField(blank=True, help_text='A JSON object containing the event ID data')
-    event_affected_count = JSONField(blank=True, help_text='A JSON object containing the event affected_count data')
+    event = models.IntegerField(null=True, help_text='An integer representing an event ID')
+    event_affected_count = models.IntegerField(null=True, help_text='An integer representing the event affected_count')
     event_location_land_ownership = JSONField(blank=True, help_text='A JSON object containing the eventlocation land_ownership ID data')
     event_location_administrative_level_one = JSONField(blank=True, help_text='A JSON object containing the eventlocation administrativelevelone ID data')
     species = JSONField(blank=True, help_text='A JSON object containing the species ID data')
