@@ -256,8 +256,6 @@ def stale_events():
 
 
 def build_custom_notifications_query(cue, base_queryset):
-    # TODO: how to handle ANDs
-    # {"Values": [], "Operator": ""}
     queryset = None
 
     # event
@@ -316,84 +314,48 @@ def build_custom_notifications_query(cue, base_queryset):
                     queryset = queryset.exclude(pk=item.id)
 
     # species
-            # filter by species ID, exact list
-            species = query_params.get('species', None)
-            if species is not None and species != '':
-                if LIST_DELIMETER in species:
-                    species_list = species.split(',')
-                    queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
-                        eventlocations__locationspecies__species__in=species_list).distinct()
-                    if and_params is not None and 'species' in and_params:
-                        # first, count the species for each returned event
-                        # and only allow those with the same or greater count as the length of the query_param list
-                        queryset = queryset.annotate(count_species=Count(
-                            'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
-                        species_list_ints = [int(i) for i in species_list]
-                        # next, find only the events that have _all_ the requested values, not just any of them
-                        for item in queryset:
-                            evtlocs = EventLocation.objects.filter(event_id=item.id)
-                            locspecs = LocationSpecies.objects.filter(event_location__in=evtlocs)
-                            all_species = [locspec.species.id for locspec in locspecs]
-                            if not set(species_list_ints).issubset(set(all_species)):
-                                queryset = queryset.exclude(pk=item.id)
-                else:
-                    queryset = queryset.filter(eventlocations__locationspecies__species__exact=species).distinct()
-
     if len(cue.species['values']) > 0:
         if not queryset:
             queryset = base_queryset
         values = cue.species['values']
-        if cue.species['operator'] == "OR":
-            queries = [Q(eventlocations__locationspecies__species=value) for value in values]
-            query = queries.pop()
-            for item in queries:
-                query |= item
-            queryset = queryset.filter(query)
-        else:
-            # default to AND
-            # figure out how to query if an event has a child with one of each
-            for value in values:
-                queryset = queryset.filter(eventlocations__locationspecies__species=value)
+        species_list = values.split(',')
+        queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
+            eventlocations__locationspecies__species__in=species_list).distinct()
+        if cue.species['operator'] == "AND":
+            # first, count the species for each returned event
+            # and only allow those with the same or greater count as the length of the query_param list
+            queryset = queryset.annotate(count_species=Count(
+                'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
+            species_list_ints = [int(i) for i in species_list]
+            # next, find only the events that have _all_ the requested values, not just any of them
+            for item in queryset:
+                evtlocs = EventLocation.objects.filter(event_id=item.id)
+                locspecs = LocationSpecies.objects.filter(event_location__in=evtlocs)
+                all_species = [locspec.species.id for locspec in locspecs]
+                if not set(species_list_ints).issubset(set(all_species)):
+                    queryset = queryset.exclude(pk=item.id)
 
     # species_diagnosis_diagnosis
-            # filter by diagnosis ID, exact list
-            diagnosis = query_params.get('diagnosis', None)
-            if diagnosis is not None and diagnosis != '':
-                if LIST_DELIMETER in diagnosis:
-                    diagnosis_list = diagnosis.split(',')
-                    queryset = queryset.prefetch_related('eventdiagnoses').filter(
-                        eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
-                    if and_params is not None and 'diagnosis' in and_params:
-                        # first, count the species for each returned event
-                        # and only allow those with the same or greater count as the length of the query_param list
-                        queryset = queryset.annotate(count_diagnoses=Count(
-                            'eventdiagnoses__diagnosis', distinct=True)).filter(
-                            count_diagnoses__gte=len(diagnosis_list))
-                        diagnosis_list_ints = [int(i) for i in diagnosis_list]
-                        # next, find only the events that have _all_ the requested values, not just any of them
-                        for item in queryset:
-                            evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
-                            all_diagnoses = [evtdiag.diagnosis.id for evtdiag in evtdiags]
-                            if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
-                                queryset = queryset.exclude(pk=item.id)
-                else:
-                    queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis).distinct()
-
     if len(cue.species_diagnosis_diagnosis['values']) > 0:
         if not queryset:
             queryset = base_queryset
         values = cue.species_diagnosis_diagnosis['values']
-        if cue.species_diagnosis_diagnosis['operator'] == "OR":
-            queries = [Q(eventlocations__locationspecies__speciesdiagnoses_diagnosis=value) for value in values]
-            query = queries.pop()
-            for item in queries:
-                query |= item
-            queryset = queryset.filter(query)
-        else:
-            # default to AND
-            # figure out how to query if an event has a child with one of each
-            for value in values:
-                queryset = queryset.filter(eventlocations__locationspecies__speciesdiagnoses_diagnosis=value)
+        diagnosis_list = values.split(',')
+        queryset = queryset.prefetch_related('eventlocations__locationspecies__speciesdiagnoses__diagnosis').filter(
+            eventlocations__locationspecies__speciesdiagnoses__diagnosis__in=diagnosis_list).distinct()
+        if cue.species_diagnosis_diagnosis['operator'] == "AND":
+            # first, count the species for each returned event
+            # and only allow those with the same or greater count as the length of the query_param list
+            queryset = queryset.annotate(count_diagnoses=Count(
+                'eventlocations__locationspecies__speciesdiagnoses__diagnosis', distinct=True)).filter(
+                count_diagnoses__gte=len(diagnosis_list))
+            diagnosis_list_ints = [int(i) for i in diagnosis_list]
+            # next, find only the events that have _all_ the requested values, not just any of them
+            for item in queryset:
+                evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
+                all_diagnoses = [evtdiag.diagnosis.id for evtdiag in evtdiags]
+                if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
+                    queryset = queryset.exclude(pk=item.id)
 
     return queryset
 
