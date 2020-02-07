@@ -4581,6 +4581,7 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
@@ -4695,6 +4696,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
@@ -4813,6 +4815,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
+    organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
