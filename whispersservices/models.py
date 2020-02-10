@@ -300,9 +300,9 @@ class Event(PermissionsHistoryModel):
             source = 'system'
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
             # recipients: Epi staff
-            recipients = list(User.objects.filter(name='madisonepi').values_list('id', flat=True))
+            recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
             # email forwarding: Automatic, to nwhc-epi@usgs.gov
-            email_to = list(User.objects.filter(name='madisonepi').values_list('email', flat=True))
+            email_to = list(User.objects.filter(name='nwhc-epi').values_list('email', flat=True))
             subject = msg_tmp.subject_template.format(event_id=self.id)
             body = msg_tmp.body_template.format(event_id=self.id)
             from whispersservices.immediate_tasks import generate_notification
@@ -1355,7 +1355,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
             # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
             # email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI, event.created_by.email]
-            email_to = list(User.objects.filter(Q(id=1) | Q(name='madisonepi')).values_list('email', flat=True))
+            email_to = list(User.objects.filter(Q(id=1) | Q(name='nwhc-epi')).values_list('email', flat=True))
             email_to += [event.created_by.email, ]
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
@@ -1567,7 +1567,7 @@ class ServiceRequest(PermissionsHistoryModel):
 
         # if this is a new service request, create a 'Service Request' notification
         if is_new:
-            madison_epi = User.objects.filter(username='madisonepi').first()
+            madison_epi = User.objects.filter(username='nwhc-epi').first()
             user = self.created_by
             # source: User making a service request.
             source = user.username
@@ -1915,7 +1915,7 @@ class Comment(PermissionsHistoryModel):
         if is_new and self.content_type.model == 'servicerequest':
             service_request = ServiceRequest.objects.filter(id=self.object_id).first()
             event_id = service_request.event.id
-            madison_epi = User.objects.filter(username='madisonepi').first()
+            madison_epi = User.objects.filter(username='nwhc-epi').first()
             # TODO: Location-based routing was discarded, right?
             # source: NWHC Epi staff/HFS staff or user with read/write privileges
             # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
@@ -2107,7 +2107,7 @@ class User(AbstractUser):
     def save(self, *args, **kwargs):
         is_new = False if self.id else True
         # users with SuperAdmin role should always have is_superuser = True
-        self.is_superuser = True if self.role.is_superadmin else False
+        self.is_superuser = True if self.role is not None and self.role.is_superadmin else False
         super(User, self).save(*args, **kwargs)
 
         if is_new:

@@ -234,9 +234,9 @@ def stale_events():
             period_date = datetime.strftime(datetime.now() - timedelta(period), '%Y-%m-%d')
             all_stale_events = Event.objects.filter(complete=False, created_date=period_date)
             for event in all_stale_events:
-                recipients = list(User.objects.filter(name='madisonepi').values_list('id', flat=True))
+                recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
                 recipients += [event.created_by.id, ]
-                email_to = list(User.objects.filter(name='madisonepi').values_list('email', flat=True))
+                email_to = list(User.objects.filter(name='nwhc-epi').values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
 
                 eventlocations = EventLocation.objects.filter(event=event.id)
