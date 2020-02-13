@@ -4327,25 +4327,28 @@ class UserSerializer(serializers.ModelSerializer):
         generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         if new_user_change_request is not None:
-            role_requested = Role.objects.filter(id=new_user_change_request['role_requested']).first()
-            organization_requested = Organization.objects.filter(
-                id=new_user_change_request['organization_requested']).first()
+            role_requested = None
+            organization_requested = None
+            if ('role_requested' in new_user_change_request
+                    and new_user_change_request['role_requested'] is not None):
+                role_requested = new_user_change_request['role_requested']
+            if ('organization_requested' in new_user_change_request
+                    and new_user_change_request['organization_requested'] is not None):
+                organization_requested = new_user_change_request['organization_requested']
 
             if role_requested or organization_requested:
-                role_requested = role_requested if role_requested else user.role
-                organization_requested = organization_requested if organization_requested else user.organization
+                role_requested = role_requested if role_requested else user.role.id
+                organization_requested = organization_requested if organization_requested else user.organization.id
                 comment = new_user_change_request.pop('comment', None)
-                request_response = UserChangeRequestResponse.objects.filter(name='Pending').first()
-                # user_change_request = UserChangeRequest.objects.create(
-                #     requester=user, role_requested=role_requested, organization_requested=organization_requested,
-                #     request_response=request_response, created_by=user, modified_by=user)
-                user_change_request = {'requester': user, 'role_requested': role_requested,
+                user_change_request = {'requester': user.id, 'role_requested': role_requested,
                                        'organization_requested': organization_requested, 'comment': comment,
-                                       'request_response': request_response, 'created_by': user, 'modified_by': user}
+                                       'created_by': user.id, 'modified_by': user.id}
                 ucr_serializer = UserChangeRequestSerializer(data=user_change_request)
                 if ucr_serializer.is_valid():
                     ucr_serializer.save()
                 else:
+                    NotificationCueStandard.objects.filter(created_by=user.id).delete()
+                    NotificationCuePreference.objects.filter(created_by=user.id).delete()
                     user.delete()
                     raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
