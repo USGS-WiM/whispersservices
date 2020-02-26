@@ -275,8 +275,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # event_location_land_ownership
     if cue.event_location_land_ownership:
-        land_ownership = json.loads(cue.event_location_land_ownership)
-        if len(land_ownership['values']) > 0:
+        if len(cue.event_location_land_ownership['values']) > 0:
             if not queryset:
                 queryset = base_queryset
             values = cue.event_location_land_ownership['values']
@@ -294,8 +293,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # event_location_administrative_level_one
     if cue.event_location_administrative_level_one:
-        administrative_level_one = json.loads(cue.event_location_administrative_level_one)
-        if len(administrative_level_one['values']) > 0:
+        if len(cue.event_location_administrative_level_one['values']) > 0:
             if not queryset:
                 queryset = base_queryset
             values = cue.event_location_administrative_level_one['values']
@@ -322,8 +320,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # species
     if cue.species:
-        species = json.loads(cue.species)
-        if len(species['values']) > 0:
+        if len(cue.species['values']) > 0:
             if not queryset:
                 queryset = base_queryset
             values = cue.species['values']
@@ -346,8 +343,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # species_diagnosis_diagnosis
     if cue.species_diagnosis_diagnosis:
-        diagnosis = json.loads(cue.cue.species_diagnosis_diagnosis)
-        if len(diagnosis['values']) > 0:
+        if len(cue.species_diagnosis_diagnosis['values']) > 0:
             if not queryset:
                 queryset = base_queryset
             values = cue.species_diagnosis_diagnosis['values']

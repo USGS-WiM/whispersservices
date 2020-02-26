@@ -23,6 +23,14 @@ FLYWAYS_API = 'https://services.arcgis.com/'
 FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
 
 
+def is_json(x):
+    try:
+        json.dumps(x)
+        return True
+    except (TypeError, OverflowError):
+        return False
+
+
 def jsonify_errors(data):
     if isinstance(data, list) or isinstance(data, str):
         # Errors raised as a list are non-field errors.
@@ -4040,6 +4048,18 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
     new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
+
+    def validate(self, data):
+        # validate JSON fields
+        json_fields = ['event_location_land_ownership', 'event_location_administrative_level_one', 'species',
+                       'species_diagnosis_diagnosis']
+        for field in json_fields:
+            if field in data and data[field] is not None:
+                if not is_json(data[field]) or ('values' not in data[field] or 'operator' not in data[field]):
+                    message = field + " must be valid JSON with only two keys: values and operator"
+                    raise serializers.ValidationError(message)
+
+        return data
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
