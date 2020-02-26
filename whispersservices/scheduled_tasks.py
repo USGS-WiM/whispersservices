@@ -296,8 +296,7 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(cue.event_location_administrative_level_one['values']) > 0:
             if not queryset:
                 queryset = base_queryset
-            values = cue.event_location_administrative_level_one['values']
-            admin_level_one_list = values.split(',')
+            admin_level_one_list = cue.event_location_administrative_level_one['values']
             queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                 eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
             if cue.event_location_administrative_level_one['operator'].upper() == 'AND':
@@ -323,8 +322,7 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(cue.species['values']) > 0:
             if not queryset:
                 queryset = base_queryset
-            values = cue.species['values']
-            species_list = values.split(',')
+            species_list = cue.species['values']
             queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
                 eventlocations__locationspecies__species__in=species_list).distinct()
             if cue.species['operator'].upper() == "AND":
@@ -346,8 +344,7 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(cue.species_diagnosis_diagnosis['values']) > 0:
             if not queryset:
                 queryset = base_queryset
-            values = cue.species_diagnosis_diagnosis['values']
-            diagnosis_list = values.split(',')
+            diagnosis_list = cue.species_diagnosis_diagnosis['values']
             queryset = queryset.prefetch_related('eventlocations__locationspecies__speciesdiagnoses__diagnosis').filter(
                 eventlocations__locationspecies__speciesdiagnoses__diagnosis__in=diagnosis_list).distinct()
             if cue.species_diagnosis_diagnosis['operator'].upper() == "AND":
