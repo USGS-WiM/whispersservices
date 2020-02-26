@@ -2040,21 +2040,22 @@ class UserViewSet(HistoryViewSet):
     serializer_class = UserSerializer
 
     # TODO: is this still needed, now that we have notifications?
-    # anyone can request a new user, but an email address is required if the request comes from a non-user
-    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
-    def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
-            words = request.data.split(" ")
-            email_addresses = [word for word in words if '@' in word]
-            if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
-                msg = "You must submit at least a valid email address to create a new user account."
-                raise serializers.ValidationError(msg)
-            user_email = email_addresses[0]
-        else:
-            user_email = request.user.email
-
-        message = "Please add a new user:"
-        return construct_email(request.data or '', user_email, message)
+    # ANSWER: I think this can be deleted.
+    # # anyone can request a new user, but an email address is required if the request comes from a non-user
+    # @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
+    # def request_new(self, request):
+    #     if request is None or not request.user.is_authenticated:
+    #         words = request.data.split(" ")
+    #         email_addresses = [word for word in words if '@' in word]
+    #         if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
+    #             msg = "You must submit at least a valid email address to create a new user account."
+    #             raise serializers.ValidationError(msg)
+    #         user_email = email_addresses[0]
+    #     else:
+    #         user_email = request.user.email
+    #
+    #     message = "Please add a new user:"
+    #     return construct_email(request.data or '', user_email, message)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):

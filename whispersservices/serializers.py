@@ -4061,20 +4061,18 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                 send_email = new_pref['send_email']
         # if any of create_when_new, create_when_modified, and send_email are not present
         # in new_notification_cue_preference or are not boolean, default values will be assigned
-        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
-                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
-        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
-        if pref_serializer.is_valid():
-            pref_serializer.save()
-        else:
-            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
         # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
         #                                                 create_when_modified=create_when_modified,
         #                                                 send_email=send_email, created_by=user,
         #                                                 modified_by=user)
-        validated_data['notification_cue_preference'] = pref
-
-        return NotificationCueCustom.objects.create(**validated_data)
+        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
+                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
+        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
+        if pref_serializer.is_valid():
+            validated_data['notification_cue_preference'] = pref_serializer.save()
+            return NotificationCueCustom.objects.create(**validated_data)
+        else:
+            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
 
     def update(self, instance, validated_data):
         user = get_user(self.context, self.initial_data)

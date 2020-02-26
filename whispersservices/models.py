@@ -1711,9 +1711,9 @@ class NotificationCuePreference(PermissionsHistoryModel):
     Notification Cue Preference
     """
 
-    create_when_new = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is new')
-    create_when_modified = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be created when a record is modified')
-    send_email = models.BooleanField(default=True, help_text='A boolean value indicating if a notification should be sent by email or not')
+    create_when_new = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be created when a record is new')
+    create_when_modified = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be created when a record is modified')
+    send_email = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be sent by email or not')
 
     @staticmethod
     def has_create_permission(request):
@@ -1742,8 +1742,8 @@ class NotificationCuePreference(PermissionsHistoryModel):
 class NotificationCueCustom(PermissionsHistoryModel):
     """
     Notification Cue Custom
-    Each JSON field has the format of {"Values": [], "Operator": ""}
-    with Values being a list of integers and Operator being either "AND" or "OR"
+    Each JSON field has the format of {"values": [], "operator": ""}
+    with values being a list of integers and operator being either "AND" or "OR"
     """
 
     notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuecustoms', help_text='A foreign key integer value identifying a notificationcuepreference')
