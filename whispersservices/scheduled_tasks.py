@@ -387,6 +387,16 @@ def custom_notifications():
 
                 field = ""
                 criteria = ""
+                child_count = 0
+
+                for child in queryset.query.where.children:
+                    child_count += 1
+                    if child_count > 1:
+                        field += ", "
+                        criteria += ", "
+                    field += child.lhs.field.verbose_name
+                    criteria += child.rhs
+
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
                     new_updated="New", field=field, criteria=criteria, organization=event.created_by.organization.name,
@@ -412,6 +422,16 @@ def custom_notifications():
                 field = ""
                 criteria = ""
                 updates = ""
+                child_count = 0
+
+                for child in queryset.query.where.children:
+                    child_count += 1
+                    if child_count > 1:
+                        field += ", "
+                        criteria += ", "
+                    field += child.lhs.field.verbose_name
+                    criteria += child.rhs
+
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
                     new_updated="Updated", field=field, criteria=criteria,

@@ -1587,7 +1587,7 @@ class ServiceRequest(PermissionsHistoryModel):
             if comments:
                 combined_comment = ""
                 for comment in comments:
-                    combined_comment = combined_comment + "\r\n" + comment
+                    combined_comment = combined_comment + "\r\n" + comment.comment
             else:
                 combined_comment = "None"
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()

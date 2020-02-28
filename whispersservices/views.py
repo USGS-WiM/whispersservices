@@ -2208,8 +2208,26 @@ class UserChangeRequestViewSet(HistoryViewSet):
     delete:
     Deletes a role change request.
     """
-    queryset = UserChangeRequest.objects.all()
     serializer_class = UserChangeRequestSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return UserChangeRequest.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = UserChangeRequest.objects.all()
+        # partneradmins can see requests for their own org
+        elif user.role.is_partneradmin:
+            queryset = UserChangeRequest.objects.filter(created_by__organization__exact=user.organization)
+        # otherwise return nothing
+        else:
+            return UserChangeRequest.objects.none()
+
+        return queryset
 
 
 class UserChangeRequestResponseViewSet(HistoryViewSet):
