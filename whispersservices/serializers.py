@@ -4047,8 +4047,10 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                        'species_diagnosis_diagnosis']
         for field in json_fields:
             if field in data and data[field] is not None:
-                if not isinstance(data[field], dict) or ('values' not in data[field] or 'operator' not in data[field]):
+                if (not isinstance(data[field], dict)
+                        or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])):
                     message = field + " must be valid JSON with only two keys: values and operator"
+                    message += ", or an empty JSON object"
                     raise serializers.ValidationError(message)
 
         return data
