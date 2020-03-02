@@ -4041,9 +4041,9 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
     new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
-    cue_string = serializers.SerializerMethodField()
+    cue_strings = serializers.SerializerMethodField()
 
-    def get_cue_string(self, obj):
+    def get_cue_strings(self, obj):
         data = []
         model_fields = ['event', 'event_affected_count', 'event_location_land_ownership',
                         'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis']
@@ -4182,7 +4182,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
         model = NotificationCueCustom
         fields = ('id', 'notification_cue_preference', 'new_notification_cue_preference',
                   'event', 'event_affected_count', 'event_location_land_ownership',
-                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis', 'cue_string',
+                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis', 'cue_strings',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
