@@ -3,6 +3,7 @@ import requests
 import json
 from operator import itemgetter
 from datetime import datetime, timedelta
+from django.apps import apps
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
@@ -4040,6 +4041,54 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
     new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
+    cue_string = serializers.SerializerMethodField()
+
+    def get_cue_string(self, obj):
+        data = []
+        model_fields = ['event', 'event_affected_count', 'event_location_land_ownership',
+                        'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis']
+        string_repr_fields = ['Event', 'Affected Count', 'Land Ownership', 'Administrative Level One', 'Species',
+                              'Diagnosis']
+        model_fields_models = ['Event', 'Event', 'LandOwnership', 'AdministrativeLevelOne', 'Species', 'Diagnosis']
+        for field in model_fields:
+            field_value = getattr(obj, field)
+            if field_value is not None and field_value != {}:
+                string_repr = string_repr_fields[model_fields.index(field)] + ": "
+                # if field is admin level one, use locality name when possible
+                if field == 'event_location_administrative_level_one':
+                    al1 = obj.event_location_administrative_level_one
+                    if al1 is not None and 'values' in al1:
+                        al1s = obj.event_location_administrative_level_one['values']
+                        ctry_ids = list(Country.objects.filter(id__in=al1s).values_list('id', flat=True))
+                        locality = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
+                        if locality and locality.admin_level_one_name is not None:
+                            string_repr = locality.admin_level_one_name + ": "
+
+                if field in ['event', 'event_affected_count']:
+                    string_repr += str(field_value)
+                    data.append(string_repr)
+                else:
+                    # it is a JSON field
+                    values = getattr(obj, field)['values']
+                    ThisModel = apps.get_model('whispersservices', model_fields_models[model_fields.index(field)])
+                    if len(values) == 1:
+                        string_repr += str(ThisModel.objects.filter(id=values[0]).first())
+                        data.append(string_repr)
+                    elif len(values) > 1:
+                        list_len = len(values)
+                        count = 0
+                        operator = getattr(obj, field)['operator']
+                        values_items = ""
+                        for value in values:
+                            values_items += str(ThisModel.objects.filter(id=value).first())
+                            count += 1
+                            if count != list_len:
+                                values_items += " " + operator + " "
+                        string_repr += values_items
+                        data.append(string_repr)
+                    # ignore empty value lists
+
+        return data
 
     def validate(self, data):
         # validate JSON fields
@@ -4048,9 +4097,13 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
         for field in json_fields:
             if field in data and data[field] is not None:
                 if (not isinstance(data[field], dict)
-                        or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])):
-                    message = field + " must be valid JSON with only two keys: values and operator"
-                    message += ", or an empty JSON object"
+                        or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])
+                        or (not isinstance(data[field]['values'], list))
+                        or (not isinstance(data[field]['operator'], str)
+                            or data[field]['operator' not in ("AND", "OR")])):
+                    message = field + " must be valid JSON with only two keys:"
+                    message += " \"values\" (an array or list of integers)"
+                    message += " and \"operator\" (which can only be \"AND\" or \"OR\"), or an empty JSON object"
                     raise serializers.ValidationError(message)
 
         return data
@@ -4129,7 +4182,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
         model = NotificationCueCustom
         fields = ('id', 'notification_cue_preference', 'new_notification_cue_preference',
                   'event', 'event_affected_count', 'event_location_land_ownership',
-                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis',
+                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis', 'cue_string',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
