@@ -4100,7 +4100,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                         or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])
                         or (not isinstance(data[field]['values'], list))
                         or (not isinstance(data[field]['operator'], str)
-                            or data[field]['operator' not in ("AND", "OR")])):
+                            or data[field]['operator'] not in ("AND", "OR"))):
                     message = field + " must be valid JSON with only two keys:"
                     message += " \"values\" (an array or list of integers)"
                     message += " and \"operator\" (which can only be \"AND\" or \"OR\"), or an empty JSON object"
