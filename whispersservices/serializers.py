@@ -4064,8 +4064,16 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                         if locality and locality.admin_level_one_name is not None:
                             string_repr = locality.admin_level_one_name + ": "
 
-                if field in ['event', 'event_affected_count']:
+                if field == 'event':
                     string_repr += str(field_value)
+                    data.append(string_repr)
+                # if field is event affected_count, include the operators from event_affected_count_operator field
+                elif field == 'event_affected_count':
+                    operator = getattr(obj, 'event_affected_count_operator')
+                    if operator == 'LTE':
+                        string_repr += ">= " + str(field_value)
+                    else:
+                        string_repr += "<= " + str(field_value)
                     data.append(string_repr)
                 else:
                     # it is a JSON field
