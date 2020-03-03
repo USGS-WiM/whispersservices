@@ -4059,10 +4059,12 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                     al1 = obj.event_location_administrative_level_one
                     if al1 is not None and 'values' in al1:
                         al1s = obj.event_location_administrative_level_one['values']
-                        ctry_ids = list(Country.objects.filter(id__in=al1s).values_list('id', flat=True))
-                        locality = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
-                        if locality and locality.admin_level_one_name is not None:
-                            string_repr = locality.admin_level_one_name + ": "
+                        ctry_ids = list(Country.objects.filter(
+                            administrativelevelones__in=al1s).values_list('id', flat=True))
+                        if ctry_ids:
+                            locality = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
+                            if locality and locality.admin_level_one_name is not None:
+                                string_repr = locality.admin_level_one_name + ": "
 
                 if field == 'event':
                     string_repr += str(field_value)
