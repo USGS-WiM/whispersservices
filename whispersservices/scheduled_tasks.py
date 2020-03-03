@@ -271,7 +271,11 @@ def build_custom_notifications_query(cue, base_queryset):
     if cue.event_affected_count:
         if not queryset:
             queryset = base_queryset
-        queryset = queryset.filter(affected_count__gte=cue.event_affected_count)
+        if cue.event_affected_count_operator.upper() == "LTE":
+            queryset = queryset.filter(affected_count__lte=cue.event_affected_count)
+        else:
+            # default to GTE
+            queryset = queryset.filter(affected_count__gte=cue.event_affected_count)
 
     # event_location_land_ownership
     if cue.event_location_land_ownership:

@@ -4091,6 +4091,21 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
         return data
 
     def validate(self, data):
+        # validate that event_affected_count_operator is present when event_affected_count is present, and vice-versa
+        if ('event_affected_count_operator' in data and data['event_affected_count_operator'] is not None
+                and ('event_affected_count' not in data or data['event_affected_count'] is None)):
+            message = "event_affected_count must be submitted when event_affected_count_operator is submitted"
+            raise serializers.ValidationError(message)
+        elif ('event_affected_count' in data and data['event_affected_count'] is not None
+              and ('event_affected_count_operator' not in data or data['event_affected_count_operator'] is None)):
+            message = "event_affected_count_operator must be submitted when event_affected_count is submitted"
+            raise serializers.ValidationError(message)
+        # validate event_affected_count_operator field
+        if ('event_affected_count_operator' in data and data['event_affected_count_operator'] is not None
+                and data['event_affected_count_operator'] not in ['GTE', 'LTE']):
+            message = "event_affected_count_operator can only be \"GTE\" or \"LTE\""
+            message += " (greater-than-or-equal-to or less-than-or-equal-to)"
+            raise serializers.ValidationError(message)
         # validate JSON fields
         json_fields = ['event_location_land_ownership', 'event_location_administrative_level_one', 'species',
                        'species_diagnosis_diagnosis']
@@ -4100,7 +4115,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                         or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])
                         or (not isinstance(data[field]['values'], list))
                         or (not isinstance(data[field]['operator'], str)
-                            or data[field]['operator'] not in ("AND", "OR"))):
+                            or data[field]['operator'] not in ["AND", "OR"])):
                     message = field + " must be valid JSON with only two keys:"
                     message += " \"values\" (an array or list of integers)"
                     message += " and \"operator\" (which can only be \"AND\" or \"OR\"), or an empty JSON object"
@@ -4163,10 +4178,13 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
         # update the NotificationCueCustom object
         instance.event = validated_data.get('event', instance.event)
         instance.event_affected_count = validated_data.get('event_affected_count', instance.event_affected_count)
+        instance.event_affected_count_operator = validated_data.get(
+            'event_affected_count_operator', instance.event_affected_count_operator)
         instance.event_location_land_ownership = validated_data.get('event_location_land_ownership',
                                                                     instance.event_location_land_ownership)
-        instance.event_location_administrative_level_one = validated_data.get('event_location_administrative_level_one',
-                                                                              instance.event_location_administrative_level_one)
+        instance.event_location_administrative_level_one = validated_data.get(
+            'event_location_administrative_level_one',
+            instance.event_location_administrative_level_one)
         instance.species = validated_data.get('species', instance.species)
         instance.species_diagnosis_diagnosis = validated_data.get('species_diagnosis_diagnosis',
                                                                   instance.species_diagnosis_diagnosis)
@@ -4181,7 +4199,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationCueCustom
         fields = ('id', 'notification_cue_preference', 'new_notification_cue_preference',
-                  'event', 'event_affected_count', 'event_location_land_ownership',
+                  'event', 'event_affected_count', 'event_affected_count_operator', 'event_location_land_ownership',
                   'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis', 'cue_strings',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
