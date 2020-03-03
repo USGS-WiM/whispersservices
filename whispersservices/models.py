@@ -1567,7 +1567,9 @@ class ServiceRequest(PermissionsHistoryModel):
 
         # if this is a new service request, create a 'Service Request' notification
         if is_new:
-            madison_epi = User.objects.filter(username='nwhc-epi').first()
+            # TODO: determine which epi user to send notifcation to (depends on event location)
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            madison_epi = User.objects.filter(id=madison_epi_user_id).first()
             user = self.created_by
             # source: User making a service request.
             source = user.username
@@ -1916,7 +1918,8 @@ class Comment(PermissionsHistoryModel):
         if is_new and self.content_type.model == 'servicerequest':
             service_request = ServiceRequest.objects.filter(id=self.object_id).first()
             event_id = service_request.event.id
-            madison_epi = User.objects.filter(username='nwhc-epi').first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            madison_epi = User.objects.filter(id=madison_epi_user_id).first()
             # TODO: Location-based routing was discarded, right?
             # source: NWHC Epi staff/HFS staff or user with read/write privileges
             # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
