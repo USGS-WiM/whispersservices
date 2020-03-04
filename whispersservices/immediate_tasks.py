@@ -70,9 +70,9 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
                           send_email=False, email_to=None):
     if not recipients or not subject:
         # notify admins of error
-        email_address_whispers = Configuration.objects.filter(name='email_address_whispers').first()
-        if email_address_whispers and email_address_whispers.value.count('@') == 1:
-            new_recip = email_address_whispers.value
+        whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+        if whispers_email_address and whispers_email_address.value.count('@') == 1:
+            new_recip = whispers_email_address.value
         else:
             new_recip = settings.EMAIL_WHISPERS
         new_subject = "WHISPERS ADMIN: Problem Encountered During generate_notification_task"
