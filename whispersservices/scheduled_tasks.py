@@ -21,7 +21,8 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             eventlocations = EventLocation.objects.filter(event=event.id)
             event_location = "["
             for evtloc in eventlocations:
-                event_location += evtloc.administrative_level_two.name
+                if evtloc.administrative_level_two:
+                    event_location += evtloc.administrative_level_two.name
                 event_location += ", " + evtloc.administrative_level_one.abbreviation
                 event_location += ", " + evtloc.country.abbreviation + "; "
             event_location += "]"
@@ -44,7 +45,8 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             eventlocations = EventLocation.objects.filter(event=event.id)
             event_location = "["
             for evtloc in eventlocations:
-                event_location += evtloc.administrative_level_two.name
+                if evtloc.administrative_level_two:
+                    event_location += evtloc.administrative_level_two.name
                 event_location += ", " + evtloc.administrative_level_one.abbreviation
                 event_location += ", " + evtloc.country.abbreviation + "; "
             event_location += "]"
@@ -245,7 +247,8 @@ def stale_events():
                     eventlocations = EventLocation.objects.filter(event=event.id)
                     event_location = "["
                     for evtloc in eventlocations:
-                        event_location += evtloc.administrative_level_two.name
+                        if evtloc.administrative_level_two:
+                            event_location += evtloc.administrative_level_two.name
                         event_location += ", " + evtloc.administrative_level_one.abbreviation
                         event_location += ", " + evtloc.country.abbreviation + "; "
                     event_location += "]"

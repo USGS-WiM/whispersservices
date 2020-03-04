@@ -78,60 +78,6 @@ def determine_permission_source(user, obj):
     return permission_source
 
 
-def construct_service_request_email(event_id, requester_org_name, request_type_name, requester_email, comments):
-    # construct and send the request email
-    event_id_string = str(event_id)
-    url = settings.APP_WHISPERS_URL + 'event/' + event_id_string
-    subject = "Service request for Event " + event_id_string
-    body = "A user (" + requester_email + ") with organization " + requester_org_name + " has requested "
-    body += "<strong>" + request_type_name + "</strong> for event " + event_id_string + "."
-    if comments:
-        body += "<br><br>Comments:"
-        for comment in comments:
-            body += "<br>&nbsp;&nbsp;&nbsp;&nbsp;" + comment
-    body += "<br><br>Event Details:<br>&nbsp;&nbsp;&nbsp;&nbsp;"
-    html_body = body + "<a href='" + url + "/'>" + url + "/</a>"
-    body = body.replace('<strong>', '').replace('</strong>', '').replace('<br>', '    ').replace('&nbsp;', ' ')
-    body += url + "/"
-    from_address = settings.EMAIL_WHISPERS
-    if settings.ENVIRONMENT == 'production':
-        to_list = [settings.EMAIL_NWHC_EPI, ]
-    else:
-        to_list = [settings.EMAIL_WHISPERS, ]
-    bcc_list = []
-    reply_list = [requester_email, ]
-    headers = None  # {'Message-ID': 'foo'}
-    email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    email.attach_alternative(html_body, "text/html")
-    if settings.ENVIRONMENT in ['production', 'test']:
-        try:
-            email.send(fail_silently=False)
-        except TypeError:
-            message = "Service Request saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(jsonify_errors(message))
-    return email
-
-
-def construct_user_request_email(requester_email, message):
-    # construct and send the request email
-    subject = "Assistance Request"
-    body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
-    body += message
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
-    bcc_list = []
-    reply_list = [requester_email, ]
-    headers = None  # {'Message-ID': 'foo'}
-    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    if settings.ENVIRONMENT in ['production', 'test']:
-        try:
-            email.send(fail_silently=False)
-        except TypeError:
-            message = "User saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(jsonify_errors(message))
-    return email
-
-
 def construct_email(subject, message):
     # construct and send the email
     subject = subject
@@ -1092,15 +1038,6 @@ class EventSerializer(serializers.ModelSerializer):
                                                    comment_type=comment_type, created_by=user, modified_by=user)
                             # service_request_comments.append(comment['comment'])
 
-                # # construct and send the request email
-                # service_request_email = construct_service_request_email(service_request.event.id,
-                #                                                         user.organization.name,
-                #                                                         service_request.request_type.name,
-                #                                                         user.email,
-                #                                                         service_request_comments)
-                # if settings.ENVIRONMENT not in ['production', 'test']:
-                #     event.service_request_email = service_request_email.__dict__
-
         return event
 
     # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
@@ -1900,15 +1837,6 @@ class EventAdminSerializer(serializers.ModelSerializer):
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
                             # service_request_comments.append(comment['comment'])
-
-                # # construct and send the request email
-                # service_request_email = construct_service_request_email(service_request.event.id,
-                #                                                         user.organization.name,
-                #                                                         service_request.request_type.name,
-                #                                                         user.email,
-                #                                                         service_request_comments)
-                # if settings.ENVIRONMENT not in ['production', 'test']:
-                #     event.service_request_email = service_request_email.__dict__
 
         return event
 
@@ -3937,14 +3865,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
                     # service_request_comments.append(comment['comment'])
-
-        # # construct and send the request email
-        # service_request_email = construct_service_request_email(service_request.event.id,
-        #                                                         user.organization.name,
-        #                                                         service_request.request_type.name, user.email,
-        #                                                         service_request_comments)
-        # if settings.ENVIRONMENT not in ['production', 'test']:
-        #     service_request.service_request_email = vars(service_request_email)
 
         return service_request
 

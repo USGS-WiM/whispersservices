@@ -1567,21 +1567,28 @@ class ServiceRequest(PermissionsHistoryModel):
 
         # if this is a new service request, create a 'Service Request' notification
         if is_new:
-            # TODO: determine which epi user to send notifcation to (depends on event location)
-            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            madison_epi = User.objects.filter(id=madison_epi_user_id).first()
+            # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
+            evt_locs = EventLocation.objects.filter(event=event_id)
+            hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+            hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+            if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+                hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+                epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+            else:
+                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                epi_user = User.objects.filter(id=madison_epi_user_id).first()
             user = self.created_by
             # source: User making a service request.
             source = user.username
             # recipients: nwhc-epi@usgs.gov or HFS dropbox
-            recipients = [madison_epi.id, ]
-            # TODO: Location-based routing, need list from NWHC staff
+            recipients = [epi_user.id, ]
             # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
-            email_to = [madison_epi.email, ]
-            evt_locs = EventLocation.objects.filter(event=event_id)
+            email_to = [epi_user.email, ]
             short_evt_locs = ""
             for evt_loc in evt_locs:
-                short_evt_loc = evt_loc.administrative_level_two.name + ", "
+                short_evt_loc = ""
+                if evt_loc.administrative_level_two:
+                    short_evt_loc += evt_loc.administrative_level_two.name + ", "
                 short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
                 short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
             content_type = ContentType.objects.get_for_model(self, for_concrete_model=True)
@@ -1918,15 +1925,16 @@ class Comment(PermissionsHistoryModel):
         if is_new and self.content_type.model == 'servicerequest':
             service_request = ServiceRequest.objects.filter(id=self.object_id).first()
             event_id = service_request.event.id
+            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+            hfs_epi_user = User.objects.filter(id=hfs_epi_user_id).first()
             madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            madison_epi = User.objects.filter(id=madison_epi_user_id).first()
-            # TODO: Location-based routing was discarded, right?
+            madison_epi_user = User.objects.filter(id=madison_epi_user_id).first()
             # source: NWHC Epi staff/HFS staff or user with read/write privileges
             # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
             # email forwarding:
             #  Automatic, toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
-            if self.created_by.id == madison_epi.id:
-                source = service_request.created_by.username
+            if self.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
+                source = self.created_by.username
                 recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
                 email_to = [service_request.created_by.email, ]
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
@@ -1935,9 +1943,9 @@ class Comment(PermissionsHistoryModel):
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
             else:
-                source = madison_epi.username
-                recipients = [madison_epi.id, ]
-                email_to = [madison_epi.email, ]
+                source = service_request.created_by.username
+                recipients = [self.created_by.id, ]
+                email_to = [self.created_by.email, ]
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 subject = msg_tmp.subject_template.format(event_id=event_id)
                 body = msg_tmp.body_template.format(event_id=event_id)
