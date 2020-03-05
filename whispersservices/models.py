@@ -299,10 +299,11 @@ class Event(PermissionsHistoryModel):
             # source: system
             source = 'system'
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
             # recipients: Epi staff
-            recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
+            recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
             # email forwarding: Automatic, to nwhc-epi@usgs.gov
-            email_to = list(User.objects.filter(name='nwhc-epi').values_list('email', flat=True))
+            email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
             subject = msg_tmp.subject_template.format(event_id=self.id)
             body = msg_tmp.body_template.format(event_id=self.id)
             from whispersservices.immediate_tasks import generate_notification
