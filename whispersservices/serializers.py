@@ -62,7 +62,8 @@ def determine_permission_source(user, obj):
         permission_source = ''
     elif user.id == obj.created_by.id:
         permission_source = 'user'
-    elif user.organization.id == obj.created_by.organization.id:
+    elif (user.organization.id == obj.created_by.organization.id
+          or user.organization.id == obj.created_by.organization.parent_organizations):
         permission_source = 'organization'
     elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
         write_collaborators = list(User.objects.filter(writeevents__in=[obj.id]).values_list('id', flat=True))
@@ -1051,13 +1052,15 @@ class EventSerializer(serializers.ModelSerializer):
             # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
             # but if the complete field is not included or set to True, the event cannot be changed
             if new_complete is None or (new_complete and (user.id == instance.created_by.id or (
-                    user.organization.id == instance.created_by.organization.id and (
+                    (user.organization.id == instance.created_by.organization.id
+                     or user.organization.id in instance.created_by.organization.parent_organizations) and (
                     user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
                 raise serializers.ValidationError(jsonify_errors(message))
             elif (user != instance.created_by
-                  or (user.organization.id != instance.created_by.organization.id
+                  or ((user.organization.id == instance.created_by.organization.id
+                     or user.organization.id in instance.created_by.organization.parent_organizations)
                       and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
@@ -1065,7 +1068,8 @@ class EventSerializer(serializers.ModelSerializer):
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
         if not instance.complete and new_complete and (user.id == instance.created_by.id or (
-                user.organization.id == instance.created_by.organization.id and (
+                (user.organization.id == instance.created_by.organization.id
+                 or user.organization.id in instance.created_by.organization.parent_organizations) and (
                 user.role.is_partneradmin or user.role.is_partnermanager))):
             # only let the status be changed to 'complete=True' if
             # 1. All child locations have an end date and each location's end date is later than its start date
@@ -4517,12 +4521,13 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         source = ucr.created_by.username
         # recipients: WHISPers admin team, Admins of organization requested
         recipients = list(User.objects.filter(
-            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requester.organization.id)
+            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.requester.organization.id) | Q(
+                role=3, organization__in=ucr.requester.organization.parent_organizations)
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
         # TODO: include parent org admin
-        email_to = list(User.objects.filter(
-            Q(id=1) | Q(role=3, organization=ucr.requester.organization.id)).values_list('email', flat=True))
+        email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.requester.organization.id) | Q(
+            role=3,organization__in=ucr.requester.organization.parent_organizations)).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
@@ -4562,7 +4567,9 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             user = get_user(self.context, self.initial_data)
 
             if not (user.role.is_superadmin or user.role.is_admin or
-                    (user.role.is_partneradmin and user.organization.id == instance.created_by.organization.id)):
+                    (user.role.is_partneradmin
+                     and (user.organization.id == instance.created_by.organization.id
+                          or user.organization.id in instance.created_by.organization.parent_organizations))):
                 raise serializers.ValidationError(
                     jsonify_errors("You do not have permission to alter the request response."))
             else:
