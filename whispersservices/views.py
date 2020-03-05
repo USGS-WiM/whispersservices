@@ -216,6 +216,7 @@ class EventViewSet(HistoryViewSet):
         event_user_ids = set(list(User.objects.filter(
             Q(eventwriteusers__event_id=event.id) |
             Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+            Q(organization__in=event.created_by.parent_organizations, role__in=[3, 4]) |
             Q(id=event.created_by.id) |
             Q(role__in=[1, 2])).values_list('id', flat=True)))
         if user.id not in event_user_ids:
@@ -281,11 +282,13 @@ class EventViewSet(HistoryViewSet):
         event_owner = event.created_by
         # recipients: event owner, org manager, org admin
         recipients = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id)
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                role__in=[3, 4], organization__in=event_owner.parent_organizations)
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to event owner, organization manager, and organization admin
         email_to = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id)
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                role__in=[3, 4], organization__in=event_owner.parent_organizations)
         ).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
@@ -346,6 +349,7 @@ class EventViewSet(HistoryViewSet):
                                 User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id
                                 or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in read_collaborators or user.id in write_collaborators):
                             return queryset
                         else:
@@ -388,15 +392,18 @@ class EventViewSet(HistoryViewSet):
                         else:
                             raise PermissionDenied
                     # write_collaborators members and org partners can retrieve and update but not delete
-                    elif user.id in write_collaborators or (user.organization.id == obj.created_by.organization.id
-                                                            and (user.role.is_affiliate or user.role.is_partner)):
+                    elif user.id in write_collaborators or (
+                            (user.organization.id == obj.created_by.organization.id
+                             or user.organization.id in obj.created_by.parent_organizations)
+                            and (user.role.is_affiliate or user.role.is_partner)):
                         if self.action == 'delete':
                             raise PermissionDenied
                         else:
                             return EventSerializer
                     # owner and org partner managers and org partner admins have full access to non-admin fields
                     elif user.id == obj.created_by.id or (
-                            user.organization.id == obj.created_by.organization.id
+                            (user.organization.id == obj.created_by.organization.id
+                             or user.organization.id in obj.created_by.parent_organizations)
                             and (user.role.is_partnermanager or user.role.is_partneradmin)):
                         return EventSerializer
             return EventPublicSerializer
@@ -444,7 +451,8 @@ class EventEventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+        if (user.role.is_superadmin or user.role.is_admin
+                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventEventGroup.objects.all()
         else:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
@@ -536,7 +544,8 @@ class EventGroupCategoryViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+        if (user.role.is_superadmin or user.role.is_admin
+                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventGroupCategory.objects.all()
         else:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
@@ -801,7 +810,11 @@ class EventOrganizationViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = EventOrganization.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                        ).values_list('id', flat=True))):
                     return EventOrganizationSerializer
             return EventOrganizationPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -908,6 +921,7 @@ class EventLocationViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = EventLocation.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                         ).values_list('id', flat=True))):
@@ -967,6 +981,7 @@ class EventLocationContactViewSet(HistoryViewSet):
             queryset = EventLocationContact.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.parent_organizations) |
                 Q(event_location__event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -1247,6 +1262,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = LocationSpecies.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.event_location.event.id]) | Q(
                                 readevents__in=[obj.event_location.event.id])
@@ -1489,7 +1505,8 @@ class EventDiagnosisViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = EventDiagnosis.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations):
                     return EventDiagnosisSerializer
             return EventDiagnosisPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -1542,6 +1559,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = SpeciesDiagnosis.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
                                 readevents__in=[obj.location_species.event_location.event.id])
@@ -1682,6 +1700,7 @@ class ServiceRequestViewSet(HistoryViewSet):
             queryset = ServiceRequest.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.parent_organizations) |
                 Q(event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -1944,6 +1963,7 @@ class CommentViewSet(HistoryViewSet):
             queryset = Comment.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.parent_organizations) |
                 Q(content_type__model='event', object_id__in=collab_evt_ids) |
                 Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
                 Q(content_type__model='eventeventgroup', object_id__in=collab_evtgrp_ids) |
@@ -2102,7 +2122,8 @@ class UserViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = User.objects.filter(id=pk).first()
                 if obj and (user.password == obj.password or
-                            (user.organization.id == obj.organization.id and
+                            ((obj.organization.id == user.organization.id
+                              or obj.organization.id in user.organization.parent_organizations) and
                              (user.role.is_partneradmin or user.role.is_partnermanager))):
                     return UserSerializer
             return UserPublicSerializer
@@ -2125,8 +2146,8 @@ class UserViewSet(HistoryViewSet):
             return User.objects.filter(pk=user.id)
         # partneradmin can see data owned by the user or user's org
         elif user.role.is_partneradmin:
-            queryset = User.objects.all().filter(
-                Q(id__exact=user.id) | Q(organization__exact=user.organization))
+            queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
+                organization__in=user.organization.parent_organizations))
         # otherwise return nothing
         else:
             return User.objects.none()
@@ -2222,7 +2243,8 @@ class UserChangeRequestViewSet(HistoryViewSet):
             queryset = UserChangeRequest.objects.all()
         # partneradmins can see requests for their own org
         elif user.role.is_partneradmin:
-            queryset = UserChangeRequest.objects.filter(created_by__organization__exact=user.organization)
+            queryset = UserChangeRequest.objects.filter(Q(created_by__organization__exact=user.organization) | Q(
+                created_by__organization__in=user.organization.parent_organizations))
         # otherwise return nothing
         else:
             return UserChangeRequest.objects.none()
@@ -2289,7 +2311,8 @@ class CircleViewSet(HistoryViewSet):
         # otherwise return data owned by the user or user's org
         else:
             queryset = Circle.objects.all().filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
+                    created_by__organization__in=user.organization.parent_organizations))
 
         return queryset
 
@@ -2376,6 +2399,7 @@ class OrganizationViewSet(HistoryViewSet):
                 if queryset:
                     obj = queryset[0]
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.organization.parent_organizations
                                 or user.role.is_superadmin or user.role.is_admin):
                         return queryset
             raise NotFound
@@ -2475,7 +2499,8 @@ class ContactViewSet(HistoryViewSet):
         elif (get_user_contacts or user.role.is_affiliate
               or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin):
             queryset = Contact.objects.all().filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
+                    created_by__organization__in=user.organization.parent_organizations))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Contact.objects.all()
@@ -2832,6 +2857,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         return EventSummaryAdminSerializer
                     # owner and org members and collaborators have full access to non-admin fields
                     elif (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                          or user.organization.id == obj.created_by.organization.parent_organizations
                           or user.id in read_collaborators or user.id in write_collaborators):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
@@ -2885,6 +2911,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         elif get_user_events:
             queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(created_by__organization__in=user.organization.parent_organizations)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
@@ -3208,6 +3235,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             write_collaborators = list(
                                 User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.created_by.organization.parent_organizations
                                 or user.id in read_collaborators or user.id in write_collaborators
                                 or user.role.is_superadmin or user.role.is_admin):
                             return queryset
@@ -3242,6 +3270,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                     # owner and org members and collaborators have full access to non-admin fields
                     if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id == obj.created_by.organization.parent_organizations
                             or user.id in read_collaborators or user.id in write_collaborators):
                         return EventDetailSerializer
             return EventDetailPublicSerializer

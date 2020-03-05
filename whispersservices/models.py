@@ -302,10 +302,11 @@ class Event(PermissionsHistoryModel):
             # source: system
             source = 'system'
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
             # recipients: Epi staff
-            recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
+            recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
             # email forwarding: Automatic, to nwhc-epi@usgs.gov
-            email_to = list(User.objects.filter(name='nwhc-epi').values_list('email', flat=True))
+            email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
             subject = msg_tmp.subject_template.format(event_id=self.id)
             body = msg_tmp.body_template.format(event_id=self.id)
             from whispersservices.immediate_tasks import generate_notification
@@ -2119,6 +2120,10 @@ class User(AbstractUser):
                         and request.user.role.is_partneradmin))
 
     @property
+    def parent_organizations(self):
+        return self.organization.parent_organizations
+
+    @property
     def child_organizations(self):
         return self.organization.child_organizations
 
@@ -2461,6 +2466,13 @@ class Organization(AdminPermissionsHistoryNameModel):
     def has_request_new_permission(request):
         return True
 
+    def get_parent_organizations(self):
+        parents = [self]
+        if self.parent_organization is not None:
+            parent = self.parent_organization
+            parents.extend(parent.get_parent_organizations())
+        return parents
+
     def get_child_organizations(self):
         children = [self]
         try:
@@ -2472,10 +2484,19 @@ class Organization(AdminPermissionsHistoryNameModel):
         return children
 
     @property
+    def parent_organizations(self):
+        orgs = self.get_parent_organizations()
+        org_ids = [org.id for org in orgs]
+        if self.id in org_ids:
+            org_ids.pop(org_ids.index(self.id))
+        return org_ids
+
+    @property
     def child_organizations(self):
         orgs = self.get_child_organizations()
         org_ids = [org.id for org in orgs]
-        org_ids.pop(org_ids.index(self.id))
+        if self.id in org_ids:
+            org_ids.pop(org_ids.index(self.id))
         return org_ids
 
     private_name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the private name of this organization')
