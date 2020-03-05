@@ -116,7 +116,8 @@ def organization_events(events_created_yesterday, events_updated_yesterday):
         standard_type__name='Organization', notification_cue_preference__create_when_new=True)
     for event in events_created_yesterday:
         for cue in standard_notification_cues_new:
-            if cue.created_by.organization.id == event.created_by.organization.id:
+            if (cue.created_by.organization.id == event.created_by.organization.id
+                    or cue.created_by.organization.id in event.created_by.organization.parent_organizations):
                 send_email = cue.notification_cue_preference.send_email
                 recipients = [cue.created_by.id, ]
                 email_to = [cue.created_by.email, ] if send_email else []
@@ -134,7 +135,8 @@ def organization_events(events_created_yesterday, events_updated_yesterday):
         standard_type__name='Organization', notification_cue_preference__create_when_modified=True)
     for event in events_updated_yesterday:
         for cue in standard_notification_cues_updated:
-            if cue.created_by.organization.id == event.created_by.organization.id:
+            if (cue.created_by.organization.id == event.created_by.organization.id
+                    or cue.created_by.organization.id in event.created_by.organization.parent_organizations):
                 send_email = cue.notification_cue_preference.send_email
                 recipients = [cue.created_by.id, ]
                 email_to = [cue.created_by.email, ] if send_email else []
