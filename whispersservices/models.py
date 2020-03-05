@@ -36,7 +36,8 @@ def determine_create_permission(request, event):
         return True
     else:
         if (request.user.id == event.created_by.id
-                or (request.user.organization.id == event.created_by.organization.id
+                or ((event.created_by.organization.id == request.user.organization.id
+                     or event.created_by.organization.id in request.user.child_organizations)
                     and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
@@ -49,7 +50,8 @@ def determine_object_update_permission(self, request, event_id):
     if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
         return False
     elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-          or (request.user.organization.id == self.created_by.organization.id
+          or ((self.created_by.organization.id == request.user.organization.id
+               or self.created_by.organization.id in request.user.child_organizations)
               and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
         return True
     else:
@@ -183,7 +185,8 @@ class PermissionsHistoryModel(HistoryModel):
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
-                    or (request.user.organization.id == self.created_by.organization.id
+                    or ((request.created_by.organization.id == request.user.organization.id
+                         or request.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     class Meta:
@@ -1687,7 +1690,8 @@ class Notification(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1734,7 +1738,8 @@ class NotificationCuePreference(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1774,7 +1779,8 @@ class NotificationCueCustom(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1808,7 +1814,8 @@ class NotificationCueStandard(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1886,7 +1893,8 @@ class Comment(PermissionsHistoryModel):
                         event = EventEventGroup.objects.get(pk=int(request.data['object_id'])).event
                     if event:
                         if (request.user.id == event.created_by.id
-                                or (request.user.organization.id == event.created_by.organization.id
+                                or ((event.created_by.organization.id == request.user.organization.id
+                                     or event.created_by.organization.id in request.user.child_organizations)
                                     and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
                             return True
                         else:
@@ -2074,7 +2082,9 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
 
     @staticmethod
     def has_write_permission(request):
@@ -2094,7 +2104,9 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or an admin member of the creator's organization can delete
@@ -2102,7 +2114,13 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
+
+    @property
+    def child_organizations(self):
+        return self.organization.child_organizations
 
     email = models.EmailField(unique=True, blank=True, max_length=254, verbose_name='email address')
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
@@ -2249,7 +2267,8 @@ class EventReadUser(PermissionsHistoryModel):
             return True
         else:
             if (request.user.id == event.created_by.id
-                    or (request.user.organization.id == event.created_by.organization.id
+                    or ((event.created_by.organization.id == request.user.organization.id
+                         or event.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
                 return True
             else:
@@ -2260,7 +2279,8 @@ class EventReadUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
@@ -2316,7 +2336,8 @@ class EventWriteUser(PermissionsHistoryModel):
             return True
         else:
             if (request.user.id == event.created_by.id
-                    or (request.user.organization.id == event.created_by.organization.id
+                    or ((event.created_by.organization.id == request.user.organization.id
+                         or event.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
                 return True
             else:
@@ -2327,7 +2348,8 @@ class EventWriteUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
@@ -2382,7 +2404,8 @@ class Circle(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -2414,7 +2437,8 @@ class CircleUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -2436,6 +2460,23 @@ class Organization(AdminPermissionsHistoryNameModel):
     @staticmethod
     def has_request_new_permission(request):
         return True
+
+    def get_child_organizations(self):
+        children = [self]
+        try:
+            child_list = self.organizations.all()
+        except AttributeError:
+            return children
+        for child in child_list:
+            children.extend(child.get_child_organizations())
+        return children
+
+    @property
+    def child_organizations(self):
+        orgs = self.get_child_organizations()
+        org_ids = [org.id for org in orgs]
+        org_ids.pop(org_ids.index(self.id))
+        return org_ids
 
     private_name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the private name of this organization')
     address_one = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the address one of this organization')
@@ -2489,7 +2530,8 @@ class Contact(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -2537,7 +2579,8 @@ class Search(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
