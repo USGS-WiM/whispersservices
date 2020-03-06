@@ -261,7 +261,8 @@ class EventViewSet(HistoryViewSet):
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
         body = msg_tmp.body_template.format(
-            alert_creator=source, event_id=event.id, comment=comment, recipients=recipients)
+            first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
+            event_id=event.id, comment=comment, recipients=recipients)
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
