@@ -1355,11 +1355,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             self.__original_diagnosis = self.diagnosis
             # source: User that adds a species diagnosis that is a reportable disease
             source = self.created_by.username
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
             # recipients: WHISPers admin team, WHISPers Epi staff, event owner
-            recipients = list(User.objects.filter(role__in=[1,2]).values_list('id', flat=True))
+            recipients = list(User.objects.filter(
+                Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
             # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
             # email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI, event.created_by.email]
-            email_to = list(User.objects.filter(Q(id=1) | Q(name='nwhc-epi')).values_list('email', flat=True))
+            email_to = list(User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
             email_to += [event.created_by.email, ]
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
