@@ -234,6 +234,7 @@ class EventViewSet(HistoryViewSet):
                     Q(eventreadusers__event_id=event.id) |
                     Q(eventwriteusers__event_id=event.id) |
                     Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+                    Q(organization__in=event.created_by.parent_organizations, role__in=[3, 4]) |
                     Q(id=event.created_by.id) |
                     Q(role__in=[1, 2])).values_list('id', flat=True)))
                 # validate that the recipients are all collaborators of the event (or have access to the event)
