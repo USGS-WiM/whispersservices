@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
-from rest_framework.exceptions import PermissionDenied, APIException, NotFound
+from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.settings import api_settings
 from rest_framework_csv import renderers as csv_renderers
 from whispersservices.serializers import *
@@ -213,12 +213,12 @@ class EventViewSet(HistoryViewSet):
 
         # only 'qualified users' may send alerts (someone with edit permissions on event)
         # (admins or the creator or a manager/admin member of the creator's org or a write_collaborator)
-        event_user_ids = set(list(User.objects.filter(
+        qualified_event_user_ids = set(list(User.objects.filter(
             Q(eventwriteusers__event_id=event.id) |
             Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
             Q(id=event.created_by.id) |
             Q(role__in=[1, 2])).values_list('id', flat=True)))
-        if user.id not in event_user_ids:
+        if user.id not in qualified_event_user_ids:
             raise PermissionDenied
 
         # validate that the POST body contains a required recipients list and possibly an optional comment
@@ -227,21 +227,27 @@ class EventViewSet(HistoryViewSet):
         if 'recipients' in request.data:
             recipient_ids = request.data['recipients']
             if not isinstance(recipient_ids, list) or not all(isinstance(x, int) for x in recipient_ids):
-                raise APIException(recipients_message)
+                raise serializers.ValidationError(recipients_message)
             else:
+                event_user_ids = set(list(User.objects.filter(
+                    Q(eventreadusers__event_id=event.id) |
+                    Q(eventwriteusers__event_id=event.id) |
+                    Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+                    Q(id=event.created_by.id) |
+                    Q(role__in=[1, 2])).values_list('id', flat=True)))
                 # validate that the recipients are all collaborators of the event (or have access to the event)
                 if not all(r_id in event_user_ids for r_id in recipient_ids):
                     message = "One or more submitted recipient IDs are not eligible to receive alerts about this event."
                     message += " Eligible recipients are collaborators of this event or"
                     message += " users in the same organization as the creator of this event, or system administrators."
-                    raise APIException(message)
+                    raise serializers.ValidationError(message)
         else:
-            raise APIException(recipients_message)
+            raise serializers.ValidationError(recipients_message)
         comment_message = "A field named \"comment\" may only contain a string value."
         if 'comment' in request.data:
             comment = request.data['comment']
             if not isinstance(comment, str):
-                raise APIException(comment_message)
+                raise serializers.ValidationError(comment_message)
         else:
             comment = None
         # Collaborator alert is also logged as an event-level comment.
@@ -303,7 +309,7 @@ class EventViewSet(HistoryViewSet):
         if self.get_object().complete:
             message = "A complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         elif self.get_object().eventgroups:
             eventgroups_min_events = []
             eventgroups = EventGroup.objects.filter(events=self.get_object().id)
@@ -314,7 +320,7 @@ class EventViewSet(HistoryViewSet):
             if len(eventgroups_min_events) > 0:
                 message = "An event may not be deleted if any event group " + str(eventgroups_min_events)
                 message += " to which it belongs would have fewer than two events following this delete."
-                raise APIException(message)
+                raise serializers.ValidationError(message)
 
         return super(EventViewSet, self).destroy(request, *args, **kwargs)
 
@@ -435,7 +441,7 @@ class EventEventGroupViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "EventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventEventGroupViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by user type
@@ -683,7 +689,7 @@ class EventAbstractViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Abstracts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventAbstractViewSet, self).destroy(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -722,7 +728,7 @@ class EventCaseViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Cases from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventCaseViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -754,7 +760,7 @@ class EventLabsiteViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Labsites from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLabsiteViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -785,7 +791,7 @@ class EventOrganizationViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Organizations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -837,7 +843,7 @@ class EventContactViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Contacts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -891,7 +897,7 @@ class EventLocationViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Locations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -946,7 +952,7 @@ class EventLocationContactViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Contacts from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -1168,7 +1174,7 @@ class EventLocationFlywayViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Flyways from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationFlywayViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -1230,7 +1236,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(LocationSpeciesViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1457,7 +1463,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
         if instance.event.complete:
             message = "Diagnoses from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
 
         destroyed_event_diagnosis = super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
@@ -1525,7 +1531,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         if self.get_object().location_species.event_location.event.complete:
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(SpeciesDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1582,7 +1588,7 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
         if self.get_object().species_diagnosis.location_species.event_location.event.complete:
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -1764,7 +1770,7 @@ class NotificationViewSet(HistoryViewSet):
                 all(isinstance(x, int) for x in item['ids']) or all(x.isdigit() for x in item['ids'])):
             # recipients_message = "A field named \"ids\" containing a list/array of notification IDs"
             # recipients_message += " is required to bulk update notifications."
-            # raise APIException(recipients_message)
+            # raise serializers.ValidationError(recipients_message)
             response_errors.append("ids is a required field")
         else:
             if user.role.id not in [1,2]:
