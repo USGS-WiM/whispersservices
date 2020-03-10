@@ -991,7 +991,7 @@ class EventLocationContactViewSet(HistoryViewSet):
             queryset = EventLocationContact.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
-                Q(created_by__organization__in=user.parent_organizations) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(event_location__event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -1710,7 +1710,7 @@ class ServiceRequestViewSet(HistoryViewSet):
             queryset = ServiceRequest.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
-                Q(created_by__organization__in=user.parent_organizations) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -1973,7 +1973,7 @@ class CommentViewSet(HistoryViewSet):
             queryset = Comment.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
-                Q(created_by__organization__in=user.parent_organizations) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(content_type__model='event', object_id__in=collab_evt_ids) |
                 Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
                 Q(content_type__model='eventeventgroup', object_id__in=collab_evtgrp_ids) |
@@ -2157,7 +2157,7 @@ class UserViewSet(HistoryViewSet):
         # partneradmin can see data owned by the user or user's org
         elif user.role.is_partneradmin:
             queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
-                organization__in=user.organization.parent_organizations))
+                organization__in=user.organization.child_organizations))
         # otherwise return nothing
         else:
             return User.objects.none()
@@ -2254,7 +2254,7 @@ class UserChangeRequestViewSet(HistoryViewSet):
         # partneradmins can see requests for their own org
         elif user.role.is_partneradmin:
             queryset = UserChangeRequest.objects.filter(Q(created_by__organization__exact=user.organization) | Q(
-                created_by__organization__in=user.organization.parent_organizations))
+                created_by__organization__in=user.organization.child_organizations))
         # otherwise return nothing
         else:
             return UserChangeRequest.objects.none()
@@ -2322,7 +2322,7 @@ class CircleViewSet(HistoryViewSet):
         else:
             queryset = Circle.objects.all().filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
-                    created_by__organization__in=user.organization.parent_organizations))
+                    created_by__organization__in=user.organization.child_organizations))
 
         return queryset
 
@@ -2395,8 +2395,8 @@ class OrganizationViewSet(HistoryViewSet):
                 contacts_list = contacts.split(',')
                 queryset = queryset.filter(contacts__in=contacts_list)
             laboratory = self.request.query_params.get('laboratory', None)
-            if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
-                queryset = queryset.filter(laboratory__exact=laboratory)
+            if laboratory is not None and laboratory.capitalize() in ['True', 'False']:
+                queryset = queryset.filter(laboratory__exact=laboratory.capitalize())
 
         # all requests from anonymous users must only return published data
         if not user or not user.is_authenticated:
@@ -2510,7 +2510,7 @@ class ContactViewSet(HistoryViewSet):
               or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin):
             queryset = Contact.objects.all().filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
-                    created_by__organization__in=user.organization.parent_organizations))
+                    created_by__organization__in=user.organization.child_organizations))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Contact.objects.all()
@@ -2867,7 +2867,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         return EventSummaryAdminSerializer
                     # owner and org members and collaborators have full access to non-admin fields
                     elif (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                          or user.organization.id == obj.created_by.organization.parent_organizations
+                          or user.organization.id in obj.created_by.organization.parent_organizations
                           or user.id in read_collaborators or user.id in write_collaborators):
                         return EventSummarySerializer
             return EventSummaryPublicSerializer
@@ -2921,7 +2921,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         elif get_user_events:
             queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
-                | Q(created_by__organization__in=user.organization.parent_organizations)
+                | Q(created_by__organization__in=user.organization.child_organizations)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
@@ -2935,8 +2935,49 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # filter by complete, exact
         complete = query_params.get('complete', None)
-        if complete is not None and complete in ['True', 'true', 'False', 'false']:
-            queryset = queryset.filter(complete__exact=complete)
+        if complete is not None and complete.capitalize() in ['True', 'False']:
+            queryset = queryset.filter(complete__exact=complete.capitalize())
+        # filter by public, exact
+        public = query_params.get('public', None)
+        if public is not None and public.capitalize() in ['True', 'False']:
+            queryset = queryset.filter(public__exact=public.capitalize())
+        # filter by permission_source, exact list
+        permission_source = query_params.get('permission_source', None)
+        if permission_source is not None and permission_source != '':
+            if LIST_DELIMITER in permission_source:
+                permission_source_list = permission_source.split(',')
+                if ('own' in permission_source_list and 'organization' in permission_source_list
+                        and 'collaboration' in permission_source_list):
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
+                            created_by__organization__in=user.organization.child_organizations) | Q(
+                            read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+                elif 'own' in permission_source_list and 'organization' in permission_source_list:
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
+                            created_by__organization__in=user.organization.child_organizations)).distinct()
+                elif 'own' in permission_source_list and 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+                elif 'organization' in permission_source_list and 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations) | Q(
+                        read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).exclude(created_by=user.id).distinct()
+                elif 'own' in permission_source_list:
+                    queryset = queryset.filter(created_by=user.id)
+                elif 'organization' in permission_source_list:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
+                elif 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+            else:
+                if 'own' == permission_source:
+                    queryset = queryset.filter(created_by=user.id)
+                elif 'organization' == permission_source:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
+                elif 'collaboration' == permission_source:
+                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None and event_type != '':
@@ -3245,7 +3286,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             write_collaborators = list(
                                 User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id == obj.created_by.organization.parent_organizations
+                                or user.organization.id in obj.created_by.organization.parent_organizations
                                 or user.id in read_collaborators or user.id in write_collaborators
                                 or user.role.is_superadmin or user.role.is_admin):
                             return queryset
@@ -3280,7 +3321,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                     # owner and org members and collaborators have full access to non-admin fields
                     if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id == obj.created_by.organization.parent_organizations
+                            or user.organization.id in obj.created_by.organization.parent_organizations
                             or user.id in read_collaborators or user.id in write_collaborators):
                         return EventDetailSerializer
             return EventDetailPublicSerializer

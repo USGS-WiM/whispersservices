@@ -185,8 +185,8 @@ class PermissionsHistoryModel(HistoryModel):
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
-                    or ((request.created_by.organization.id == request.user.organization.id
-                         or request.created_by.organization.id in request.user.child_organizations)
+                    or ((self.created_by.organization.id == request.user.organization.id
+                         or self.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     class Meta:

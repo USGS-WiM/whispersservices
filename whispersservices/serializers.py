@@ -62,7 +62,8 @@ def determine_permission_source(user, obj):
         permission_source = ''
     elif user.id == obj.created_by.id:
         permission_source = 'user'
-    elif user.organization.id == obj.created_by.organization.id:
+    elif (user.organization.id == obj.created_by.organization.id
+          or user.organization.id in obj.created_by.organization.child_organizations):
         permission_source = 'organization'
     elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
         write_collaborators = list(User.objects.filter(writeevents__in=[obj.id]).values_list('id', flat=True))
@@ -4521,7 +4522,6 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 role=3, organization__in=ucr.organization_requested.parent_organizations)
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
-        # TODO: include parent org admin
         email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
             role=3, organization__in=ucr.organization_requested.parent_organizations)).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
