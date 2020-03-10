@@ -14,6 +14,49 @@ from whispersservices.field_descriptions import *
 # For more information, see: https://docs.djangoproject.com/en/2.0/ref/contrib/auth/#user
 
 
+def partner_create_permission(request):
+    # anyone with role of Partner or above can create
+    if (not request or not request.user or not request.user.is_authenticated or request.user.role.is_public
+            or request.user.role.is_affiliate):
+        return False
+    elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
+          or request.user.role.is_partnermanager or request.user.role.is_partner):
+        return True
+    else:
+        return False
+
+
+def determine_create_permission(request, event):
+    # For models that are children of events (e.g., eventlocation, locationspecies, speciesdiagnosis),
+    # only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can create
+    if (not request or not request.user or not request.user.is_authenticated
+            or request.user.role.is_public or request.user.role.is_affiliate):
+        return False
+    elif request.user.role.is_superadmin or request.user.role.is_admin:
+        return True
+    else:
+        if (request.user.id == event.created_by.id
+                or (request.user.organization.id == event.created_by.organization.id
+                    and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            return True
+        else:
+            write_collaborators = list(User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
+            return request.user.id in write_collaborators
+
+
+def determine_object_update_permission(self, request, event_id):
+    # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
+    if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+        return False
+    elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+          or (request.user.organization.id == self.created_by.organization.id
+              and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+        return True
+    else:
+        write_collaborators = list(User.objects.filter(writeevents__in=[event_id]).values_list('id', flat=True))
+        return request.user.id in write_collaborators
+
+
 ######
 #
 #  Abstract Base Classes
@@ -68,47 +111,91 @@ class PermissionsHistoryModel(HistoryModel):
     def has_write_permission(request):
         # Only users with specific roles can 'write'
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
-        # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner'
-        # (which only excludes 'Affiliate' and 'Public', but could possibly change... explicit is better than implicit)
-        if not request or not request.user or not request.user.is_authenticated:
+        # Currently this list is 'SuperAdmin', 'Admin', 'PartnerAdmin', 'PartnerManager', 'Partner', and 'Affiliate'
+        # (which only excludes 'Public', but could possibly change... explicit is better than implicit)
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
-                    or request.user.role.is_partnermanager or request.user.role.is_partner)
+                    or request.user.role.is_partnermanager or request.user.role.is_partner
+                    or request.user.role.is_affiliate)
 
-    def has_object_update_permission(self, request):
-        # Only admins or the creator or a manager/admin member of the creator's organization can update
-        if not request or not request.user or not request.user.is_authenticated:
-            return False
-        elif (request.user.role.is_superadmin or request.user.role.is_admin
-                    or request.user.id == self.created_by.id
-                    or (request.user.organization.id == self.created_by.organization.id
-                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
-            return True
-        else:
-            write_collaborators = list(User.objects.filter(writeevents__in=[self.id]).values_list('id', flat=True))
-            return True if request.user.id in write_collaborators else False
+    # # moved this to each child model instead of abstract model
+    # @staticmethod
+    # def has_create_permission(request):
+    #     # For models that are children of events (e.g., eventlocation, locationspecies, speciesdiagnosis),
+    #     # only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
+    #     if (not request or not request.user or not request.user.is_authenticated
+    #             or request.user.role.is_public or request.user.role.is_affiliate):
+    #         return False
+    #     elif request.user.role.is_superadmin or request.user.role.is_admin:
+    #         return True
+    #     elif request.user.role.is_partneradmin or request.user.role.is_partnermanager or request.user.role.is_partner:
+    #         model = request.parser_context['view'].get_serializer_class().Meta.model
+    #         model_name = ContentType.objects.get_for_model(model, for_concrete_model=True).model
+    #         if model_name in ['event', 'servicerequest', 'circle', 'circleuser', 'contact', 'search']:
+    #             return True
+    #         else:
+    #             if model_name not in ['eventlocation', 'eventdiagnosis', 'eventorganization', 'eventcontact',
+    #                                   'locationspecies', 'eventlocationcontact', 'eventlocationflyway',
+    #                                   'speciesdiagnosis', 'speciesdiagnosisorganization']:
+    #                 return False
+    #             elif model_name in ['eventlocation', 'eventdiagnosis', 'eventorganization', 'eventcontact']:
+    #                 event = Event.objects.get(pk=int(request.data['event']))
+    #             elif model_name in ['locationspecies', 'eventlocationcontact', 'eventlocationflyway']:
+    #                 event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+    #             elif model_name == 'speciesdiagnosis':
+    #                 event = LocationSpecies.objects.get(
+    #                     pk=int(request.data['location_species'])).event_location.event
+    #             elif model_name == 'speciesdiagnosisorganization':
+    #                 event = LocationSpecies.objects.get(
+    #                     pk=int(request.data['species_diagnosis'])).location_species.event_location.event
+    #             if (request.user.id == event.created_by.id
+    #                     or (request.user.organization.id == event.created_by.organization.id
+    #                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+    #                 return True
+    #             else:
+    #                 return False
+    #     else:
+    #         return False
+    #
+    # # moved this to each child model instead of abstract model
+    # def has_object_update_permission(self, request):
+    #     # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
+    #     if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+    #         return False
+    #     elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+    #           or (request.user.organization.id == self.created_by.organization.id
+    #               and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+    #         return True
+    #     else:
+    #         model_name = ContentType.objects.get_for_model(self, for_concrete_model=True).model
+    #         if model_name not in ['event', 'eventlocation', 'eventdiagnosis', 'eventorganization', 'eventcontact',
+    #                               'locationspecies', 'eventlocationcontact', 'eventlocationflyway',
+    #                               'speciesdiagnosis', 'speciesdiagnosisorganization']:
+    #             return False
+    #         elif model_name == 'event':
+    #             event_id = self.id
+    #         elif model_name in ['eventlocation', 'eventdiagnosis', 'eventorganization', 'eventcontact']:
+    #             event_id = self.event.id
+    #         elif model_name in ['locationspecies', 'eventlocationcontact', 'eventlocationflyway']:
+    #             event_id = self.event_location.event.id
+    #         elif model_name == 'speciesdiagnosis':
+    #             event_id = self.location_species.event_location.event.id
+    #         elif model_name == 'speciesdiagnosisorganization':
+    #             event_id = self.species_diagnosis.location_species.event_location.event.id
+    #         write_collaborators = list(User.objects.filter(writeevents__in=[event_id]).values_list('id', flat=True))
+    #         return True if request.user.id in write_collaborators else False
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
-        if not request or not request.user or not request.user.is_authenticated:
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
                     or (request.user.organization.id == self.created_by.organization.id
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
-
-    class Meta:
-        abstract = True
-
-
-class PermissionsHistoryNameModel(PermissionsHistoryModel):
-    """
-    An abstract base class model for common permissions with the common name field.
-    """
-
-    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this object')
 
     class Meta:
         abstract = True
@@ -194,6 +281,14 @@ class Event(PermissionsHistoryModel):
                                            help_text=event.organizations)
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event', help_text=event.contacts)
     comments = GenericRelation('Comment', related_name='events', help_text=event.comments)
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        return determine_object_update_permission(self, request, self.id)
 
     # override the save method to toggle quality check field when complete field changes
     # and update event diagnoses as necessary so there is always at least one
@@ -399,6 +494,18 @@ class EventAbstract(PermissionsHistoryModel):
     text = models.TextField(blank=True, help_text='An alphanumeric value of information')
     lab_id = models.IntegerField(null=True, help_text='An integer value identifying a lab')
 
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
+
     def __str__(self):
         return str(self.id)
 
@@ -415,6 +522,18 @@ class EventCase(PermissionsHistoryModel):
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventcases', help_text='A foreign key integer value identifying an event')
     case = models.CharField(max_length=6, blank=True, default='', help_text='An alphanumeric value of information on a case')
 
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
+
     def __str__(self):
         return str(self.id)
 
@@ -430,6 +549,18 @@ class EventLabsite(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventlabsites', help_text='A foreign key integer value identifying an event')
     lab_id = models.IntegerField(null=True, help_text='An integer value identifying a lab')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     def __str__(self):
         return str(self.id)
@@ -448,6 +579,18 @@ class EventOrganization(PermissionsHistoryModel):
     organization = models.ForeignKey('Organization', models.CASCADE, help_text='A foreign key integer value identifying a organization')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event organizations priority')
 
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
+
     def __str__(self):
         return str(self.id)
 
@@ -464,6 +607,18 @@ class EventContact(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
     contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value indentifying a contact')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     def __str__(self):
         return str(self.id)
@@ -505,6 +660,18 @@ class EventLocation(PermissionsHistoryModel):
     gnis_name = models.CharField(max_length=256, blank=True, default='', help_text='An alphanumeric value of the GNIS name of this event location')
     gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
     comments = GenericRelation('Comment', related_name='eventlocations')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     # override the save method to calculate the parent event's start_date and end_date and affected_count
     def save(self, *args, **kwargs):
@@ -570,6 +737,18 @@ class EventLocationContact(PermissionsHistoryModel):
     event_location = models.ForeignKey('EventLocation', models.CASCADE, help_text='A foreign key integer value identifying the event location')
     contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value identifying the contact')
     contact_type = models.ForeignKey('ContactType', models.PROTECT, null=True, related_name='eventlocationcontacts', help_text='A foreign key integer value identifying the contact type for this event location contact')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event_location.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     def __str__(self):
         return str(self.id)
@@ -676,6 +855,18 @@ class EventLocationFlyway(PermissionsHistoryModel):
     event_location = models.ForeignKey('EventLocation', models.CASCADE)
     flyway = models.ForeignKey('Flyway', models.CASCADE)
 
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event_location.event.id
+        return determine_object_update_permission(self, request, event_id)
+
     def __str__(self):
         return str(self.id)
 
@@ -721,6 +912,18 @@ class LocationSpecies(PermissionsHistoryModel):
     captive = models.BooleanField(default=False, help_text='A boolean value indicating if the location species was captive or not')
     age_bias = models.ForeignKey('AgeBias', models.PROTECT, null=True, related_name='locationspecies')
     sex_bias = models.ForeignKey('SexBias', models.PROTECT, null=True, related_name='locationspecies')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event_location' in request.data:
+            event = EventLocation.objects.get(pk=int(request.data['event_location'])).event
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event_location.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     # override the save method to calculate the parent event's affected_count
     def save(self, *args, **kwargs):
@@ -836,6 +1039,7 @@ class Diagnosis(AdminPermissionsHistoryNameModel):
     def has_request_new_permission(request):
         return True
 
+    high_impact = models.BooleanField(default=False, help_text='A boolean value indicating if the diagnosis is high impact (reportable) or not')
     diagnosis_type = models.ForeignKey('DiagnosisType', models.PROTECT, related_name='diagnoses', help_text='A foreign key integer value identifying the diagnosis type')
 
     def __str__(self):
@@ -877,6 +1081,18 @@ class EventDiagnosis(PermissionsHistoryModel):
     suspect = models.BooleanField(default=True, help_text='A boolean value where if "true" then the diagnosis is suspect')
     major = models.BooleanField(default=False, help_text='A boolean value indicating if the event diagnosis is major or not')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event diagnosis priority')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'event' in request.data:
+            event = Event.objects.get(pk=int(request.data['event']))
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
@@ -946,6 +1162,18 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     pooled = models.BooleanField(default=False, help_text='A boolean value indicating if the species diagnosis was pooled or not')
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
+
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'location_species' in request.data:
+            event = LocationSpecies.objects.get(pk=int(request.data['location_species'])).event_location.event
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.location_species.event_location.event.id
+        return determine_object_update_permission(self, request, event_id)
 
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # and to calculate the parent event's affected_count
@@ -1064,6 +1292,19 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     species_diagnosis = models.ForeignKey('SpeciesDiagnosis', models.CASCADE)
     organization = models.ForeignKey('Organization', models.CASCADE)
 
+    @staticmethod
+    def has_create_permission(request):
+        if request and 'species_diagnosis' in request.data:
+            event = SpeciesDiagnosis.objects.get(
+                pk=int(request.data['species_diagnosis'])).location_species.event_location.event
+            return determine_create_permission(request, event)
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        event_id = self.species_diagnosis.location_species.event_location.event.id
+        return determine_object_update_permission(self, request, event_id)
+
     def __str__(self):
         return str(self.id)
 
@@ -1114,12 +1355,26 @@ class ServiceRequest(PermissionsHistoryModel):
 
     event = models.ForeignKey('Event', models.CASCADE, related_name='servicerequests', help_text='A foreign key integer value identifying an event')
     request_type = models.ForeignKey('ServiceRequestType', models.PROTECT, related_name='servicerequests', help_text='A foreign key integer value identifying a request type for this service submission request')
-    request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True,
+    request_response = models.ForeignKey('ServiceRequestResponse', models.PROTECT, null=True, default=4,
                                          related_name='servicerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='servicerequests')
     created_time = models.TimeField(auto_now_add=True, help_text='The time this service request was submitted')
     comments = GenericRelation('Comment', related_name='servicerequests', help_text='An alphanumeric value for the comment of the service submission request')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone can create
+        return True
+
+    def has_object_update_permission(self, request):
+        # Only admins can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            return False
 
     def __str__(self):
         return str(self.id)
@@ -1162,18 +1417,66 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
 ######
 
 
+# TODO: revisit read permissions on comment
 class Comment(PermissionsHistoryModel):
     """
     Comment
     """
 
     comment = models.TextField(blank=True, help_text='An alphanumeric value of the comment of this object')
-    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', help_text='A foreigng key integer value identifying the comment time of this comment')
+    comment_type = models.ForeignKey('CommentType', models.PROTECT, related_name='comments', help_text='A foreign key integer value identifying the comment time of this comment')
 
     # Below the mandatory fields for generic relation
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, help_text='A foreign key integer value identifying the content type for this comment')
-    object_id = models.PositiveIntegerField(help_text='A positive integer value indentifying an object')
+    object_id = models.PositiveIntegerField(help_text='A positive integer value identifying an object')
     content_object = GenericForeignKey()
+
+    @staticmethod
+    def has_create_permission(request):
+        # For models that are children of events (e.g., eventlocation, locationspecies, speciesdiagnosis),
+        # only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can create
+        if (not request or not request.user or not request.user.is_authenticated
+                or request.user.role.is_public or request.user.role.is_affiliate):
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            model_name = None
+            if 'content_type' in request.data:
+                model_name = request.data['content_type'].model
+            elif 'new_content_type' in request.data:
+                model_name = request.data['new_content_type']
+            if model_name:
+                if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
+                    return False
+                if model_name == 'servicerequest':
+                    return True
+                if model_name in ['event', 'eventlocation', 'eventeventgroup']:
+                    if model_name == 'event':
+                        event = Event.objects.get(pk=int(request.data['object_id']))
+                    elif model_name == 'eventlocation':
+                        event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
+                    elif model_name == 'eventeventgroup':
+                        event = EventEventGroup.objects.get(pk=int(request.data['object_id'])).event
+                    if (request.user.id == event.created_by.id
+                            or (request.user.organization.id == event.created_by.organization.id
+                                and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                        return True
+                    else:
+                        write_collaborators = list(
+                            User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
+                        return request.user.id in write_collaborators
+                else:
+                    return False
+            else:
+                return False
+
+        # anyone with role of Partner or above can create
+        # return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
+        return determine_object_update_permission(self, request, None)
 
     def __str__(self):
         return str(self.id)
@@ -1203,6 +1506,15 @@ class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
 
     filename = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the filename of this artifact')
     keywords = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the keywords of this artifact')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
+        return determine_object_update_permission(self, request, None)
 
     def __str__(self):
         return str(self.id)
@@ -1247,8 +1559,10 @@ class User(AbstractUser):
 
     @staticmethod
     def has_write_permission(request):
-        # Prevent unsafe methods from appearing in the schema view/docs
-        return False
+        # # Prevent unsafe methods from appearing in the schema view/docs
+        # return False
+        # This must be true otherwise no one, not even superadmins or owners, can write objects (update or destroy)
+        return True
 
     @staticmethod
     def has_create_permission(request):
@@ -1271,6 +1585,7 @@ class User(AbstractUser):
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
                     or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
 
+    email = models.EmailField(unique=True, blank=True, max_length=254, verbose_name='email address')
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
     circles = models.ManyToManyField(
@@ -1337,6 +1652,34 @@ class EventReadUser(PermissionsHistoryModel):
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventreadusers')
     user = models.ForeignKey('User', models.CASCADE, related_name='eventreadusers')
 
+    @staticmethod
+    def has_create_permission(request):
+        event = Event.objects.get(pk=int(request.data['event']))
+        # only admins or the event creator or a manager/admin member of the creator's org can create
+        if (not request or not request.user or not request.user.is_authenticated
+                or request.user.role.is_public or request.user.role.is_affiliate):
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            if (request.user.id == event.created_by.id
+                    or (request.user.organization.id == event.created_by.organization.id
+                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                return True
+            else:
+                return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or a manager/admin member of the creator's org can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            return True
+        else:
+            return False
+
     def __str__(self):
         return str(self.id)
 
@@ -1353,6 +1696,34 @@ class EventWriteUser(PermissionsHistoryModel):
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventwriteusers')
     user = models.ForeignKey('User', models.CASCADE, related_name='eventwriteusers')
 
+    @staticmethod
+    def has_create_permission(request):
+        event = Event.objects.get(pk=int(request.data['event']))
+        # only admins or the event creator or a manager/admin member of the creator's org can create
+        if (not request or not request.user or not request.user.is_authenticated
+                or request.user.role.is_public or request.user.role.is_affiliate):
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            if (request.user.id == event.created_by.id
+                    or (request.user.organization.id == event.created_by.organization.id
+                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                return True
+            else:
+                return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or a manager/admin member of the creator's org can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            return True
+        else:
+            return False
+
     def __str__(self):
         return str(self.id)
 
@@ -1361,12 +1732,29 @@ class EventWriteUser(PermissionsHistoryModel):
         ordering = ['id']
 
 
-class Circle(PermissionsHistoryNameModel):
+class Circle(PermissionsHistoryModel):
     """
     Circle of Trust
     """
 
+    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this circle')
     description = models.TextField(blank=True, help_text='An alphanumeric value of the description of this circle')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
 
     def __str__(self):
         return self.name
@@ -1383,6 +1771,22 @@ class CircleUser(PermissionsHistoryModel):
 
     circle = models.ForeignKey('Circle', models.CASCADE, help_text='A foreign key integer value identifying a circle')
     user = models.ForeignKey('User', models.CASCADE, help_text='A foreign key integer value identifying a circle user')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
 
     def __str__(self):
         return str(self.id)
@@ -1443,6 +1847,22 @@ class Contact(PermissionsHistoryModel):
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='contacts', null=True, help_text='A foreign key integer value identifying the organization to which this contact belongs to')
 
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
     def __str__(self):
         return str(self.id)
 
@@ -1474,6 +1894,25 @@ class Search(PermissionsHistoryModel):
     name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of this search')
     data = JSONField(blank=True, help_text='A JSON object containing the search data')
     count = models.IntegerField(default=0, help_text='An integer value indentifying the count of searches')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Partner or above can create
+        return partner_create_permission(request)
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or (request.user.organization.id == self.created_by.organization.id
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return self.name
 
     class Meta:
         db_table = "whispers_search"

@@ -1,12 +1,14 @@
 import re
 import requests
 import json
+from operator import itemgetter
 from datetime import datetime, timedelta
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers, validators
+from rest_framework.settings import api_settings
 from whispersservices.models import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
@@ -19,6 +21,18 @@ GEONAMES_USERNAME = settings.GEONAMES_USERNAME
 GEONAMES_API = 'http://api.geonames.org/'
 FLYWAYS_API = 'https://services.arcgis.com/'
 FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+
+
+def jsonify_errors(data):
+    if isinstance(data, list) or isinstance(data, str):
+        # Errors raised as a list are non-field errors.
+        if hasattr(settings, 'NON_FIELD_ERRORS_KEY'):
+            key = settings.NON_FIELD_ERRORS_KEY
+        else:
+            key = api_settings.NON_FIELD_ERRORS_KEY
+        return {key: data}
+    else:
+        return data
 
 
 def decode_json(response):
@@ -37,7 +51,8 @@ def get_user(context, initial_data):
     elif 'created_by' in initial_data:
         user = User.objects.filter(id=initial_data['created_by']).first()
     else:
-        raise serializers.ValidationError("User could not be identified, please contact the administrator.")
+        raise serializers.ValidationError(
+            jsonify_errors("User could not be identified, please contact the administrator."))
     return user
 
 
@@ -92,7 +107,7 @@ def construct_service_request_email(event_id, requester_org_name, request_type_n
             email.send(fail_silently=False)
         except TypeError:
             message = "Service Request saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -112,7 +127,7 @@ def construct_user_request_email(requester_email, message):
             email.send(fail_silently=False)
         except TypeError:
             message = "User saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -131,7 +146,7 @@ def construct_email(subject, message):
             email.send(fail_silently=False)
         except TypeError:
             message = "Send email failed, please contact the administrator."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
     return email
 
 
@@ -422,7 +437,7 @@ class CommentSerializer(serializers.ModelSerializer):
         if not content_object:
             message = "An object of type (" + str(new_content_type)
             message += ") and ID (" + str(validated_data['object_id']) + ") could not be found."
-            raise serializers.ValidationError(message)
+            raise serializers.ValidationError(jsonify_errors(message))
         comment = Comment.objects.create(**validated_data, content_object=content_object)
         return comment
 
@@ -490,6 +505,7 @@ class EventPublicSerializer(serializers.ModelSerializer):
 
 
 # TODO: allow read-only staff field for event owner org
+# TODO: validate expected fields and field data types for all submitted nested objects
 class EventSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -713,7 +729,10 @@ class EventSerializer(serializers.ModelSerializer):
                                     specdiag_lab_is_valid = False
                     if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                         for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -922,20 +941,22 @@ class EventSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.get(id=read_user_id)
-                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+                read_user = User.objects.filter(id=read_user_id).first()
+                if read_user is not None:
+                    EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.get(id=write_user_id)
-                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
+                write_user = User.objects.filter(id=write_user_id).first()
+                if write_user is not None:
+                    EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -943,7 +964,7 @@ class EventSerializer(serializers.ModelSerializer):
             new_unique_organizations = list(set(new_organizations))
             for org_id in new_unique_organizations:
                 if org_id is not None:
-                    org = Organization.objects.filter(pk=org_id).first()
+                    org = Organization.objects.filter(id=org_id).first()
                     if org is not None:
                         event_org = EventOrganization.objects.create(event=event, organization=org,
                                                                      created_by=user, modified_by=user)
@@ -959,25 +980,34 @@ class EventSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=event, comment=comment['comment'],
-                                           comment_type=comment_type,
-                                           created_by=user, modified_by=user)
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if comment_type is not None:
+                            Comment.objects.create(content_object=event, comment=comment['comment'],
+                                                   comment_type=comment_type,
+                                                   created_by=user, modified_by=user)
 
         # create the child eventgroups for this event
         if new_eventgroups is not None:
             for eventgroup_id in new_eventgroups:
                 if eventgroup_id is not None:
-                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    eventgroup = EventGroup.objects.filter(id=eventgroup_id).first()
                     if eventgroup is not None:
                         EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
+        undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
+        existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
+        if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
+            remove_diagnoses = [pending, undetermined]
+        else:
+            remove_diagnoses = [pending, ]
 
         # remove Pending if in the list because it should never be submitted by the user
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
+        # and remove Undetermined if in the list and the event already has an Undetermined
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
 
         if new_event_diagnoses:
             is_valid = True
@@ -1004,7 +1034,7 @@ class EventSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
             # # Can only use diagnoses that are already used by this event's species diagnoses
             # valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
@@ -1039,8 +1069,11 @@ class EventSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
+                request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                admin = User.objects.filter(id=1).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -1084,13 +1117,13 @@ class EventSerializer(serializers.ModelSerializer):
                     user.role.is_partneradmin or user.role.is_partnermanager)))):
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
             elif (user != instance.created_by
                   or (user.organization.id != instance.created_by.organization.id
                       and not (user.role.is_partneradmin or user.role.is_partnermanager))):
                 message = "Complete events may not be changed"
                 message += " unless first re-opened by the event owner or an administrator."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
         if not instance.complete and new_complete and (user.id == instance.created_by.id or (
@@ -1114,7 +1147,7 @@ class EventSerializer(serializers.ModelSerializer):
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(location_message)
+                        raise serializers.ValidationError(jsonify_errors(location_message))
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
@@ -1159,9 +1192,9 @@ class EventSerializer(serializers.ModelSerializer):
                     message += " have a cause."
                     details.append(message)
                 if details:
-                    raise serializers.ValidationError(details)
+                    raise serializers.ValidationError(jsonify_errors(details))
             else:
-                raise serializers.ValidationError(location_message)
+                raise serializers.ValidationError(jsonify_errors(location_message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
@@ -1505,7 +1538,10 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                     specdiag_lab_is_valid = False
                     if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
                         for loc_contact in item['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -1715,20 +1751,22 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.get(id=read_user_id)
-                EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
+                read_user = User.objects.filter(id=read_user_id).first()
+                if read_user is not None:
+                    EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.get(id=write_user_id)
-                EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
+                write_user = User.objects.filter(id=write_user_id).first()
+                if write_user is not None:
+                    EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
         if new_organizations is not None:
@@ -1736,7 +1774,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             new_unique_organizations = list(set(new_organizations))
             for org_id in new_unique_organizations:
                 if org_id is not None:
-                    org = Organization.objects.filter(pk=org_id).first()
+                    org = Organization.objects.filter(id=org_id).first()
                     if org is not None:
                         event_org = EventOrganization.objects.create(event=event, organization=org,
                                                                      created_by=user, modified_by=user)
@@ -1752,24 +1790,33 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if new_comments is not None:
             for comment in new_comments:
                 if comment is not None:
-                    comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                    Comment.objects.create(content_object=event, comment=comment['comment'], comment_type=comment_type,
-                                           created_by=user, modified_by=user)
+                    if 'comment_type' in comment and comment['comment_type'] is not None:
+                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                        if comment_type is not None:
+                            Comment.objects.create(content_object=event, comment=comment['comment'],
+                                                   comment_type=comment_type, created_by=user, modified_by=user)
 
         # create the child eventgroups for this event
         if new_eventgroups is not None:
             for eventgroup_id in new_eventgroups:
                 if eventgroup_id is not None:
-                    eventgroup = EventGroup.objects.filter(pk=eventgroup_id).first()
+                    eventgroup = EventGroup.objects.filter(id=eventgroup_id).first()
                     if eventgroup is not None:
                         EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
                                                        created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
-        pending = Diagnosis.objects.filter(name='Pending').values_list('id', flat=True)[0]
+        pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
+        undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
+        existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
+        if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
+            remove_diagnoses = [pending, undetermined]
+        else:
+            remove_diagnoses = [pending, ]
 
         # remove Pending if in the list because it should never be submitted by the user
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) == pending]
+        # and remove Undetermined if in the list and the event already has an Undetermined
+        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
 
         if new_event_diagnoses:
             is_valid = True
@@ -1796,7 +1843,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 # delete this event (related collaborators, organizations, eventgroups, service requests,
                 # contacts, and comments will be cascade deleted automatically if any exist)
                 event.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
             # # Can only use diagnoses that are already used by this event's species diagnoses
             # valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
@@ -1831,8 +1878,11 @@ class EventAdminSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(pk=new_service_request['request_type']).first()
+                request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                admin = User.objects.filter(id=1).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                                                                request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
                 service_request_comments = []
 
@@ -1880,7 +1930,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
             if new_complete is None or new_complete:
                 message = "Complete events may only be changed by the event owner or an administrator"
                 message += " if the 'complete' field is set to False in the request."
-                raise serializers.ValidationError(message)
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise event is not yet complete
         if not instance.complete and new_complete:
@@ -1902,7 +1952,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
                 for location in locations:
                     if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(location_message)
+                        raise serializers.ValidationError(jsonify_errors(location_message))
                     if instance.event_type.id == mortality_morbidity.id:
                         location_species = LocationSpecies.objects.filter(event_location=location.id)
                         for spec in location_species:
@@ -1948,9 +1998,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                     message += " have a cause."
                     details.append(message)
                 if details:
-                    raise serializers.ValidationError(details)
+                    raise serializers.ValidationError(jsonify_errors(details))
             else:
-                raise serializers.ValidationError(location_message)
+                raise serializers.ValidationError(jsonify_errors(location_message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
@@ -2122,6 +2172,10 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
 
 
 class EventGroupPublicSerializer(serializers.ModelSerializer):
+    events = serializers.SerializerMethodField()
+
+    def get_events(self, obj):
+        return list(Event.objects.filter(public=True, eventgroups=obj.id).values_list('id', flat=True))
 
     class Meta:
         model = EventGroup
@@ -2137,14 +2191,14 @@ class EventGroupSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
-            raise serializers.ValidationError("An EventGroup must have at least two Events")
+            raise serializers.ValidationError(jsonify_errors("An EventGroup must have at least two Events"))
 
         # pull out event ID list from the request
         new_event_ids = set(validated_data.pop('new_events', []))
         event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
         not_event_ids = list(new_event_ids - event_ids)
         if not_event_ids:
-            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+            raise serializers.ValidationError(jsonify_errors("No Events were found with IDs of " + str(not_event_ids)))
 
         # pull out comment from the request
         new_comment = validated_data.pop("new_comment")
@@ -2168,14 +2222,14 @@ class EventGroupSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
-            raise serializers.ValidationError("An EventGroup must have at least two Events")
+            raise serializers.ValidationError(jsonify_errors("An EventGroup must have at least two Events"))
 
         # pull out event ID list from the request
         new_event_ids = set(validated_data.pop('new_events', []))
         event_ids = set(list(Event.objects.filter(id__in=new_event_ids).values_list('id', flat=True)))
         not_event_ids = list(new_event_ids - event_ids)
         if not_event_ids:
-            raise serializers.ValidationError("No Events were found with IDs of " + str(not_event_ids))
+            raise serializers.ValidationError(jsonify_errors("No Events were found with IDs of " + str(not_event_ids)))
 
         user = get_user(self.context, self.initial_data)
 
@@ -2658,7 +2712,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 specdiag_lab_is_valid = False
                     if 'new_location_contacts' in data and data['new_location_contacts'] is not None:
                         for loc_contact in data['new_location_contacts']:
-                            if Contact.objects.filter(id=loc_contact['contact']).first() is None:
+                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
+                                message = "A required contact ID was not included in new_location_contacts."
+                                details.append(message)
+                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
                                 message = "A submitted contact ID (" + str(loc_contact['contact'])
                                 message += ") in new_location_contacts was not found in the database."
                                 details.append(message)
@@ -2868,7 +2925,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     # delete this event location
                     # (related contacts and comments will be cascade deleted automatically if any exist)
                     evt_location.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         user = get_user(self.context, self.initial_data)
 
@@ -2890,11 +2947,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 location_contact['event_location'] = evt_location
 
                 # Convert ids to ForeignKey objects
-                location_contact['contact'] = Contact.objects.filter(pk=location_contact['contact']).first()
-                location_contact['contact_type'] = ContactType.objects.filter(
-                    pk=location_contact['contact_type']).first()
+                if 'contact' in location_contact and location_contact['contact'] is not None:
+                    location_contact['contact'] = Contact.objects.filter(id=location_contact['contact']).first()
+                    location_contact['contact_type'] = ContactType.objects.filter(
+                        pk=location_contact['contact_type']).first()
 
-                EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
+                    EventLocationContact.objects.create(created_by=user, modified_by=user, **location_contact)
 
         # calculate the priority value:
         evt_location.priority = calculate_priority_event_location(evt_location)
@@ -2903,6 +2961,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         return evt_location
 
     # on update, any submitted nested objects (new_location_contacts, new_location_species) will be ignored
+    # TODO: consider updating flyway if instance had null value and/or when lat/lng or country/state/county change
     def update(self, instance, validated_data):
         user = get_user(self.context, self.initial_data)
 
@@ -2935,7 +2994,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         # if an event_location has no name value but does have a gnis_name value, copy the value of gnis_name to name
         # this need only happen on creation since the two fields should maintain no durable relationship
-        if validated_data['name'] == '' and validated_data['gnis_name'] != '':
+        if ('name' in validated_data and 'gnis_name' in validated_data
+                and validated_data['name'] == '' and validated_data['gnis_name'] != ''):
             validated_data['name'] = validated_data['gnis_name']
 
         # calculate the priority value:
@@ -3188,6 +3248,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
+        # TODO: fix this to test against submitted data!!!
         # else this is an existing LocationSpecies
         elif self.instance:
             # check if parent Event is complete
@@ -3298,7 +3359,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 else:
                     # delete this location species
                     location_species.delete()
-                raise serializers.ValidationError(errors)
+                raise serializers.ValidationError(jsonify_errors(errors))
 
         # calculate the priority value:
         location_species.priority = calculate_priority_location_species(location_species)
@@ -3388,7 +3449,7 @@ class DiagnosisSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Diagnosis
-        fields = ('id', 'name', 'diagnosis_type', 'diagnosis_type_string',
+        fields = ('id', 'name', 'high_impact', 'diagnosis_type', 'diagnosis_type_string',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -3480,10 +3541,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # (false if any matching species diagnoses are false, otherwise true)
         event = validated_data['event']
         diagnosis = validated_data['diagnosis']
+        submitted_suspect = validated_data.pop('suspect') if 'suspect' in validated_data else True
         matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
             location_species__event_location__event=event.id, diagnosis=diagnosis.id
         ).values_list('suspect', flat=True)
-        suspect = False if False in matching_specdiags_suspect else True
+        suspect = False if False in matching_specdiags_suspect else submitted_suspect
         event_diagnosis = EventDiagnosis.objects.create(**validated_data, suspect=suspect)
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
         event_diagnosis.save()
@@ -3492,6 +3554,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
         [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
+
+        # If the parent event is complete, also check for existing Undetermined record and delete it
+        if event_diagnosis.event.complete:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3517,6 +3583,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         # Now that we have the new event diagnoses created, check for existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
         [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
+
+        # If the parent event is complete, also check for existing Undetermined record and delete it
+        if instance.event.complete:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
@@ -3665,8 +3735,8 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 org = Organization.objects.filter(id=org_id).first()
                 if org:
                     user = get_user(self.context, self.initial_data)
-                    SpeciesDiagnosisOrganization.objects.create(species_diagnosis=species_diagnosis, organization=org,
-                                                                created_by=user, modified_by=user)
+                    SpeciesDiagnosisOrganization.objects.create(species_diagnosis=species_diagnosis,
+                                                                organization=org, created_by=user, modified_by=user)
 
         return species_diagnosis
 
@@ -3840,9 +3910,15 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         # Only allow NWHC admins to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
             if not (user.role.is_superadmin or user.role.is_admin):
-                raise serializers.ValidationError("You do not have permission to alter the request response.")
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
             else:
                 validated_data['response_by'] = user
+
+        # if a request_response is not submitted, assign the default
+        if 'request_response' not in validated_data or validated_data['request_response'] is None:
+            validated_data['request_response'] = ServiceRequestResponse.objects.filter(name='Pending').first()
+            validated_data['response_by'] = User.objects.filter(id=1).first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
         service_request_comments = []
@@ -3858,7 +3934,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     else:
                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                     comment_type=comment_type, created_by=user, modified_by=user)
+                                           comment_type=comment_type, created_by=user, modified_by=user)
                     service_request_comments.append(comment['comment'])
 
         # construct and send the request email
@@ -3882,12 +3958,19 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             user = get_user(self.context, self.initial_data)
 
             if not (user.role.is_superadmin or user.role.is_admin):
-                raise serializers.ValidationError("You do not have permission to alter the request response.")
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
             else:
                 instance.response_by = user
+                instance.request_response = validated_data.get('request_response', instance.request_response)
+
+                # capture the service request response as a comment
+                cmt = "Service Request Response: " + instance.request_response.name
+                cmt_type = CommentType.objects.filter(name='Other').first()
+                Comment.objects.create(content_object=instance, comment=cmt,
+                                       comment_type=cmt_type, created_by=user, modified_by=user)
 
         instance.request_type = validated_data.get('request_type', instance.request_type)
-        instance.request_response = validated_data.get('request_response', instance.request_response)
 
         instance.save()
         return instance
@@ -3956,50 +4039,50 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
 
-        # validate updates
-        if self.instance:
+        if self.context['request'].method == 'POST':
             if 'role' not in data or ('role' in data and data['role'] is None):
                 data['role'] = Role.objects.filter(name='Public').first()
             if 'organization' not in data or ('organization' in data and data['organization'] is None):
                 data['organization'] = Organization.objects.filter(name='Public').first()
-            if 'password' not in data and self.context['request'].method == 'POST':
+            if 'password' not in data:
                 raise serializers.ValidationError("password is required")
-            elif 'password' in data:
-                password = data['password']
-                details = []
-                char_type_requirements_met = []
-                symbols = '~!@#$%^&*'
+        if 'password' in data:
+            password = data['password']
+            details = []
+            char_type_requirements_met = []
+            symbols = '~!@#$%^&*'
 
-                username = self.initial_data['username'] if 'username' in self.initial_data else self.instance.username
+            username = self.initial_data['username'] if 'username' in self.initial_data else self.instance.username
 
-                if len(password) < 12:
-                    details.append("Password must be at least 12 characters long.")
-                if username in password:
-                    details.append("Password cannot contain username.")
-                if any(character.islower() for character in password):
-                    char_type_requirements_met.append('lowercase')
-                if any(character.isupper() for character in password):
-                    char_type_requirements_met.append('uppercase')
-                if any(character.isdigit() for character in password):
-                    char_type_requirements_met.append('number')
-                if any(character in password for character in symbols):
-                    char_type_requirements_met.append('special')
-                if len(char_type_requirements_met) < 3:
-                    message = "Password must satisfy three of the following requirements: "
-                    message += "Contain lowercase letters (a, b, c, ..., z); "
-                    message += "Contain uppercase letters (A, B, C, ..., Z); "
-                    message += "Contain numbers (0, 1, 2, ..., 9); "
-                    message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(details)
+            if len(password) < 12:
+                details.append("Password must be at least 12 characters long.")
+            if username.lower() in password.lower():
+                details.append("Password cannot contain username.")
+            if any(character.islower() for character in password):
+                char_type_requirements_met.append('lowercase')
+            if any(character.isupper() for character in password):
+                char_type_requirements_met.append('uppercase')
+            if any(character.isdigit() for character in password):
+                char_type_requirements_met.append('number')
+            if any(character in password for character in symbols):
+                char_type_requirements_met.append('special')
+            if len(char_type_requirements_met) < 3:
+                message = "Password must satisfy three of the following requirements: "
+                message += "Contain lowercase letters (a, b, c, ..., z); "
+                message += "Contain uppercase letters (A, B, C, ..., Z); "
+                message += "Contain numbers (0, 1, 2, ..., 9); "
+                message += "Contain symbols (~, !, @, #, $, %, ^, &, *); "
+                details.append(message)
+            if details:
+                raise serializers.ValidationError(details)
+
         return data
 
     # currently only public users can be created through the API
     def create(self, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
 
-        password = validated_data['password']
+        password = validated_data.pop('password', None)
         message = validated_data.pop('message', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
@@ -4020,13 +4103,13 @@ class UserSerializer(serializers.ModelSerializer):
             if requesting_user.role.is_admin:
                 if validated_data['role'].name == 'SuperAdmin':
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
 
             # PartnerAdmins can only create users in their own org with equal or lower roles
             if requesting_user.role.is_partneradmin:
                 if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
         # only SuperAdmins and Admins can edit is_superuser, is_staff, and is_active fields
@@ -4054,14 +4137,14 @@ class UserSerializer(serializers.ModelSerializer):
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
-            raise serializers.ValidationError("You cannot edit user data.")
+            raise serializers.ValidationError(jsonify_errors("You cannot edit user data."))
         elif (requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
             if instance.id == requesting_user.id:
                 instance.first_name = validated_data.get('first_name', instance.first_name)
                 instance.last_name = validated_data.get('last_name', instance.last_name)
             else:
-                raise serializers.ValidationError("You can only edit your own user information.")
+                raise serializers.ValidationError(jsonify_errors("You can only edit your own user information."))
 
         elif (requesting_user.role.is_superadmin or requesting_user.role.is_admin
               or requesting_user.role.is_partneradmin):
@@ -4071,7 +4154,7 @@ class UserSerializer(serializers.ModelSerializer):
             if requesting_user.role.is_partneradmin:
                 if validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
-                    raise serializers.ValidationError(message)
+                    raise serializers.ValidationError(jsonify_errors(message))
                 instance.role = validated_data.get('role', instance.role)
                 instance.organization = requesting_user.organization
             else:
@@ -4492,21 +4575,21 @@ class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
     # TODO: improve help_text so that all are assigned to variables, not string literals
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
-    eventdiagnoses = serializers.SerializerMethodField(help_text='A list of diagnoses determined for this event')
-    administrativelevelones = serializers.SerializerMethodField(help_text='A list of administrative level ones in which this event is located')
-    administrativeleveltwos = serializers.SerializerMethodField(help_text='A list of administrative level twos in which this event is located')
-    flyways = serializers.SerializerMethodField(help_text='A list of flyways in which this event is located')
-    species = serializers.SerializerMethodField(help_text='A list of species affected in this event')
-    event_type_string = serializers.StringRelatedField(source='event_type', help_text='A string value representing the type of the event')
-    event_status_string = serializers.StringRelatedField(source='event_status', help_text='A string value representing the status of the event')
-    permissions = DRYPermissionsField(help_text='A list of permissions available to the current user')
-    permission_source = serializers.SerializerMethodField(help_text='A string value indicating the source of the permissions assigned to the current user')
+    eventdiagnoses = serializers.SerializerMethodField()
+    administrativelevelones = serializers.SerializerMethodField()
+    administrativeleveltwos = serializers.SerializerMethodField()
+    flyways = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
+    event_type_string = serializers.StringRelatedField(source='event_type')
+    event_status_string = serializers.StringRelatedField(source='event_status')
+    permissions = DRYPermissionsField()
+    permission_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Event
         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
                   'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
-                  'administrativeleveltwos', 'flyways', 'species', 'permissions', 'permission_source',)
+                  'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions', 'permission_source',)
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
@@ -4613,6 +4696,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
     species = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
@@ -4622,7 +4706,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                   'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
                   'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
                   'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
+                  'organizations', 'permissions', 'permission_source',)
 
 
 class EventSummaryAdminSerializer(serializers.ModelSerializer):
@@ -4731,6 +4815,7 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
+    organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
@@ -4868,12 +4953,20 @@ class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
 class ServiceRequestDetailSerializer(serializers.ModelSerializer):
     request_type_string = serializers.StringRelatedField(source='request_type')
     request_response_string = serializers.StringRelatedField(source='request_response')
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+    created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
+    created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
+    created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
+    created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
     comments = CommentSerializer(many=True)
 
     class Meta:
         model = ServiceRequest
         fields = ('id', 'request_type', 'request_type_string', 'request_response', 'request_response_string',
-                  'response_by', 'created_time', 'created_date', 'comments',)
+                  'response_by', 'created_time', 'created_date', 'created_by', 'created_by_string',
+                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string', 'comments',)
 
 
 class EventDetailPublicSerializer(serializers.ModelSerializer):
@@ -4883,7 +4976,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     event_status_string = serializers.StringRelatedField(source='event_status')
     eventlocations = EventLocationDetailPublicSerializer(many=True)
     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
+    organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
 
     def get_eventgroups(self, obj):
@@ -4892,12 +4985,12 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
             for evtgrp in evtgrps:
-                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
                 pub_groups.append(group)
         return pub_groups
 
-    def get_eventorganizations(self, obj):
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -4920,7 +5013,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
                   'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'eventorganizations', 'permissions', 'permission_source',)
+                  'organizations', 'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -4937,12 +5030,46 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
+    combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()
+    organizations = serializers.SerializerMethodField()
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
+
+    def get_combined_comments(self, obj):
+        event_content_type = ContentType.objects.filter(model='event').first()
+        event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
+        evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
+        evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
+        evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
+        servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
+        servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
+        servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
+        # return CommentSerializer(union_comments, many=True).data
+        combined_comments = []
+        for cmt in union_comments:
+            # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
+            date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
+                         + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
+            comment = {
+                "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
+                "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
+                "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
+                "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
+                "created_by_organization": cmt.created_by.organization.id,
+                "created_by_organization_string": cmt.created_by.organization.name,
+                "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
+                "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
+            }
+            if cmt.content_type.model == 'event':
+                comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
+            elif cmt.content_type.model == 'eventlocation':
+                comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
+            combined_comments.append(comment)
+        return combined_comments
 
     def get_eventgroups(self, obj):
         pub_groups = []
@@ -4955,7 +5082,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 pub_groups.append(group)
         return pub_groups
 
-    def get_eventorganizations(self, obj):
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -5006,8 +5133,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'eventorganizations',
-                  'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
+                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
@@ -5029,14 +5156,47 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventlocations = EventLocationDetailSerializer(many=True)
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
+    combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
-    eventorganizations = serializers.SerializerMethodField()
+    organizations = serializers.SerializerMethodField()
     eventgroups = EventGroupSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
 
-    def get_eventorganizations(self, obj):
+    def get_combined_comments(self, obj):
+        event_content_type = ContentType.objects.filter(model='event').first()
+        event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
+        evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
+        evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
+        evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
+        servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
+        servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
+        servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
+        union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
+        # return CommentSerializer(union_comments, many=True).data
+        combined_comments = []
+        for cmt in union_comments:
+            # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
+            date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
+                         + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
+            comment = {
+                "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
+                "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
+                "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
+                "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
+                "created_by_organization": cmt.created_by.organization.id,
+                "created_by_organization_string": cmt.created_by.organization.name,
+                "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
+                "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
+            }
+            if cmt.content_type.model == 'event':
+                comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
+            elif cmt.content_type.model == 'eventlocation':
+                comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
+            combined_comments.append(comment)
+        return sorted(combined_comments, key=itemgetter('date_sort'), reverse=True)
+    def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
             orgs = obj.organizations.all()
@@ -5086,10 +5246,10 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'eventorganizations', 'comments', 'servicerequests', 'created_date', 'created_by',
+                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
+                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'read_collaborators',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
+                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by',
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
