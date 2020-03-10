@@ -263,16 +263,18 @@ class EventViewSet(HistoryViewSet):
         # source: A qualified user (someone with edit permissions on event) who creates a collaborator alert.
         source = user.username
         # recipients: user(s) chosen from among the collaborator list
-        recipients = list(User.objects.filter(id__in=recipient_ids).values_list('id', flat=True))
+        recipients = User.objects.filter(id__in=recipient_ids)
+        recipient_ids = [user.id for user in recipients]
+        recipient_names = [user.first_name + " " + user.last_name for user in recipients]
         # email forwarding: Automatic, to all users included in the notificiation request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
         body = msg_tmp.body_template.format(
             first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
-            event_id=event.id, comment=comment, recipients=recipients)
+            event_id=event.id, comment=comment, recipients=recipient_names)
         from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+        generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
     @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))

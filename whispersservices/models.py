@@ -1359,6 +1359,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             # recipients: WHISPers admin team, WHISPers Epi staff, event owner
             recipients = list(User.objects.filter(
                 Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
+            recipients += [event.created_by.id, ]
             # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
             # email_to = [settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI, event.created_by.email]
             email_to = list(User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
