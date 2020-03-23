@@ -3867,6 +3867,48 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                            comment_type=comment_type, created_by=user, modified_by=user)
                     # service_request_comments.append(comment['comment'])
 
+        # Create a 'Service Request' notification
+        # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
+        event_id = service_request.event.id
+        evt_locs = EventLocation.objects.filter(event=event_id)
+        hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+        hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+        if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+            epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+        else:
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            epi_user = User.objects.filter(id=madison_epi_user_id).first()
+        # source: User making a service request.
+        source = user.username
+        # recipients: nwhc-epi@usgs.gov or HFS dropbox
+        recipients = [epi_user.id, ]
+        # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
+        email_to = [epi_user.email, ]
+        short_evt_locs = ""
+        for evt_loc in evt_locs:
+            short_evt_loc = ""
+            if evt_loc.administrative_level_two:
+                short_evt_loc += evt_loc.administrative_level_two.name + ", "
+            short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
+            short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
+        content_type = ContentType.objects.get_for_model(self.Meta.model, for_concrete_model=True)
+        comments = Comment.objects.filter(content_type=content_type, object_id=service_request.id)
+        if comments:
+            combined_comment = ""
+            for comment in comments:
+                combined_comment = combined_comment + "\r\n" + comment.comment
+        else:
+            combined_comment = "None"
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
+        subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name, event_id=event_id)
+        body = msg_tmp.body_template.format(
+            first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
+            service_request=service_request.request_type.name, event_id=event_id, event_location=short_evt_locs,
+            comment=combined_comment)
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+
         return service_request
 
     def update(self, instance, validated_data):

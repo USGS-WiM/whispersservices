@@ -42,11 +42,12 @@ def construct_notification_email(recipient_email, subject, html_body, include_bo
     body = body.replace('<h3>', '').replace('</h3>', '\r\n').replace('<h4>', '').replace('</h4>', '\r\n')
     body = body.replace('<h5>', '').replace('</h5>', '\r\n').replace('<p>', '').replace('</p>', '\r\n')
     body = body.replace('<span>', '').replace('</span>', ' ').replace('<strong>', '').replace('</strong>', '')
-    body = body.replace('<br>', '\r\n').replace('&nbsp;', ' ').replace('<table>', '').replace('</table>', '\r\n')
+    body = body.replace('<br>', '').replace('<br />', '\r\n').replace('<br/>', '\r\n')
+    body = body.replace('&nbsp;', ' ').replace('<table>', '').replace('</table>', '\r\n')
     body = body.replace('<thead>', '').replace('</thead>', '\r\n').replace('<tbody>', '').replace('</tbody>', '\r\n')
     body = body.replace('<tr>', '').replace('</tr>', '\r\n').replace('<td>', '').replace('</td>', ' ')
+    body = re.sub('<a.*?>|</a> ', '', body)
     body = body.replace('</a>', '')
-    re.sub(r'<a\s.*>', '', body)
     # body += url
     from_address = settings.EMAIL_WHISPERS
     to_list = [recipient_email, ]
