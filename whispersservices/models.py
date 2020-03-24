@@ -1628,7 +1628,6 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
 ######
 
 
-# TODO: revisit create/update permissions... perhaps no one should be allowed to create (aside from the system), and only the recipient (or admin) can update (and even then, only the 'read' field), and only the recipient (or admin) can delete
 class Notification(PermissionsHistoryModel):
     """
     Notification
@@ -1644,16 +1643,28 @@ class Notification(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        # anyone with role of Partner or above can create
-        return partner_create_permission(request)
+        # no one can create
+        return False
 
     def has_object_update_permission(self, request):
-        # Only admins or the creator or the creator's org admin can update
+        # Only admins or the recipient or the recipient's org admin can update
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
-        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or ((self.created_by.organization.id == request.user.organization.id
-                   or self.created_by.organization.id in request.user.child_organizations)
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.recipient.id
+              or ((self.recipient.organization.id == request.user.organization.id
+                   or self.recipient.organization.id in request.user.child_organizations)
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def has_object_destroy_permission(self, request):
+        # Only admins or the recipient or the recipient's org admin can delete
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.recipient.id
+              or ((self.recipient.organization.id == request.user.organization.id
+                   or self.recipient.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1664,6 +1675,7 @@ class Notification(PermissionsHistoryModel):
 
     class Meta:
         db_table = "whispers_notification"
+        ordering = ['-id']
 
 
 class NotificationMessageTemplate(AdminPermissionsHistoryModel):
@@ -1680,7 +1692,6 @@ class NotificationMessageTemplate(AdminPermissionsHistoryModel):
         db_table = "whispers_notificationmessagetemplate"
 
 
-# TODO: revisit create/update permissions... perhaps only user (or admins) (or partner admins?) can update
 class NotificationCuePreference(PermissionsHistoryModel):
     """
     Notification Cue Preference
@@ -1714,7 +1725,6 @@ class NotificationCuePreference(PermissionsHistoryModel):
         db_table = "whispers_notificationcuepreference"
 
 
-# TODO: revisit create/update permissions
 class NotificationCueCustom(PermissionsHistoryModel):
     """
     Notification Cue Custom
@@ -1733,8 +1743,14 @@ class NotificationCueCustom(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        # anyone with role of Partner or above can create
-        return partner_create_permission(request)
+        # anyone with role of Affiliate or above can create
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
+              or request.user.role.is_partnermanager or request.user.role.is_partner or request.user.role.is_affiliate):
+            return True
+        else:
+            return False
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or the creator's org admin can update
@@ -1756,7 +1772,6 @@ class NotificationCueCustom(PermissionsHistoryModel):
         # TODO: do we want to impose a unique_together constraint?
 
 
-# TODO: revisit create/update permissions... no one should be allowed to do anything (aside from the system)?
 class NotificationCueStandard(PermissionsHistoryModel):
     """
     Notification Cue Standard
@@ -1770,18 +1785,9 @@ class NotificationCueStandard(PermissionsHistoryModel):
         # no one can create
         return False
 
-    # TODO: check if this is true, of if no one should be able to update (really they should only be able to update the preference, right?)
     def has_object_update_permission(self, request):
-        # Only admins or the creator or the creator's org admin can update
-        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
-            return False
-        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or ((self.created_by.organization.id == request.user.organization.id
-                   or self.created_by.organization.id in request.user.child_organizations)
-                  and request.user.role.is_partneradmin)):
-            return True
-        else:
-            return False
+        # no one can update
+        return False
 
     def __str__(self):
         return str(self.id)
@@ -1811,7 +1817,6 @@ class NotificationCueStandardType(AdminPermissionsHistoryNameModel):
 ######
 
 
-# TODO: revisit read permissions on comment
 class Comment(PermissionsHistoryModel):
     """
     Comment
@@ -2023,7 +2028,6 @@ class Configuration(AdminPermissionsHistoryNameModel):
 ######
 
 
-# TODO: revisit settings; role should default to Public, org should default to Public
 class User(AbstractUser):
     """
     Extends the default User model.
@@ -2109,12 +2113,15 @@ class User(AbstractUser):
         self.is_superuser = True if self.role is not None and self.role.is_superadmin else False
         super(User, self).save(*args, **kwargs)
 
-        if is_new:
+        # all non-public users get standard notifications
+        if is_new and (self.role.is_superadmin or self.role.is_admin or self.role.is_partneradmin or
+                       self.role.is_partnermanager or self.role.is_partner or self.role.is_affiliate):
             std_notif_types = NotificationCueStandardType.objects.all()
             for std_notif_type in std_notif_types:
                 pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
                 NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
                                                        created_by=self, modified_by=self)
+        # when a user is deactivated, turn off the user's notifications
         elif not self.is_active:
             # deactivate all notifications (all cue preferences set to False) when user.is_active is False
             NotificationCuePreference.objects.filter(created_by=self.id).update(

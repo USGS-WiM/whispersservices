@@ -3981,6 +3981,11 @@ class NotificationSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
+    def update(self, instance, validated_data):
+        # only the 'read' field can be updated
+        instance.read  = validated_data.get('read', instance.request_response)
+        return instance
+
     class Meta:
         model = Notification
         fields = ('id', 'recipient', 'source', 'event', 'read', 'client_page', 'subject', 'body',
@@ -4036,9 +4041,9 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                 elif field == 'event_affected_count':
                     operator = getattr(obj, 'event_affected_count_operator')
                     if operator == 'LTE':
-                        string_repr += ">= " + str(field_value)
-                    else:
                         string_repr += "<= " + str(field_value)
+                    else:
+                        string_repr += ">= " + str(field_value)
                     data.append(string_repr)
                 else:
                     # it is a JSON field

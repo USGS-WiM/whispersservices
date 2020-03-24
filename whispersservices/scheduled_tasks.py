@@ -19,16 +19,17 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             email_to = [cue.created_by.email, ] if send_email else []
 
             eventlocations = EventLocation.objects.filter(event=event.id)
-            event_location = "["
+            short_evt_locs = ""
             for evtloc in eventlocations:
+                short_evt_loc = ""
                 if evtloc.administrative_level_two:
-                    event_location += evtloc.administrative_level_two.name
-                event_location += ", " + evtloc.administrative_level_one.abbreviation
-                event_location += ", " + evtloc.country.abbreviation + "; "
-            event_location += "]"
+                    short_evt_loc += evtloc.administrative_level_two.name
+                short_evt_loc += ", " + evtloc.administrative_level_one.abbreviation
+                short_evt_loc += ", " + evtloc.country.abbreviation
+                short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
             subject = msg_tmp.subject_template.format(event_id=event.id)
             body = msg_tmp.body_template.format(
-                event_id=event.id, organization=event.created_by.organization.name, event_location=event_location,
+                event_id=event.id, organization=event.created_by.organization.name, event_location=short_evt_locs,
                 event_date=event.created_date, new_updated="New", created_updated="created", updates="N/A")
             source = event.created_by.username
             notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
@@ -43,17 +44,18 @@ def all_events(events_created_yesterday, events_updated_yesterday):
             email_to = [cue.created_by.email, ] if send_email else []
 
             eventlocations = EventLocation.objects.filter(event=event.id)
-            event_location = "["
+            short_evt_locs = ""
             for evtloc in eventlocations:
+                short_evt_loc = ""
                 if evtloc.administrative_level_two:
-                    event_location += evtloc.administrative_level_two.name
-                event_location += ", " + evtloc.administrative_level_one.abbreviation
-                event_location += ", " + evtloc.country.abbreviation + "; "
-            event_location += "]"
+                    short_evt_loc += evtloc.administrative_level_two.name
+                short_evt_loc += ", " + evtloc.administrative_level_one.abbreviation
+                short_evt_loc += ", " + evtloc.country.abbreviation
+                short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
             updates = ""
             subject = msg_tmp.subject_template.format(event_id=event.id)
             body = msg_tmp.body_template.format(
-                event_id=event.id, organization=event.created_by.organization.name, event_location=event_location,
+                event_id=event.id, organization=event.modified_by.organization.name, event_location=short_evt_locs,
                 event_date=event.modified_date, new_updated="Updated", created_updated="updated", updates=updates)
             source = event.modified_by.username
             notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
@@ -97,8 +99,8 @@ def own_events(events_created_yesterday, events_updated_yesterday):
                 updates = ""
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
-                    first_name=event.created_by.first_name, last_name=event.created_by.last_name,
-                    created_updated="updated", event_id=event.id, event_date=event.created_date, updates=updates,
+                    first_name=event.modified_by.first_name, last_name=event.modified_by.last_name,
+                    created_updated="updated", event_id=event.id, event_date=event.modified_date, updates=updates,
                     new_updated="Updated")
                 source = event.modified_by.username
                 notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
@@ -144,8 +146,8 @@ def organization_events(events_created_yesterday, events_updated_yesterday):
                 updates = ""
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
-                    first_name=event.created_by.first_name, last_name=event.created_by.last_name,
-                    created_updated="updated", event_id=event.id, event_date=event.created_date, updates=updates,
+                    first_name=event.modified_by.first_name, last_name=event.modified_by.last_name,
+                    created_updated="updated", event_id=event.id, event_date=event.modified_date, updates=updates,
                     new_updated="Updated")
                 source = event.modified_by.username
                 notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
@@ -197,8 +199,8 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday):
                 updates = ""
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
-                    first_name=event.created_by.first_name, last_name=event.created_by.last_name,
-                    created_updated="updated", event_id=event.id, event_date=event.created_date, updates=updates,
+                    first_name=event.modified_by.first_name, last_name=event.modified_by.last_name,
+                    created_updated="updated", event_id=event.id, event_date=event.modified_date, updates=updates,
                     new_updated="Updated")
                 source = event.modified_by.username
                 notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
@@ -247,16 +249,18 @@ def stale_events():
                     email_to += [event.created_by.email, ]
 
                     eventlocations = EventLocation.objects.filter(event=event.id)
-                    event_location = "["
+                    short_evt_locs = ""
                     for evtloc in eventlocations:
+                        short_evt_loc = ""
                         if evtloc.administrative_level_two:
-                            event_location += evtloc.administrative_level_two.name
-                        event_location += ", " + evtloc.administrative_level_one.abbreviation
-                        event_location += ", " + evtloc.country.abbreviation + "; "
-                    event_location += "]"
+                            short_evt_loc += evtloc.administrative_level_two.name
+                        short_evt_loc += ", " + evtloc.administrative_level_one.abbreviation
+                        short_evt_loc += ", " + evtloc.country.abbreviation
+                        short_evt_locs = short_evt_loc if len(
+                            short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
                     subject = msg_tmp.subject_template.format(event_id=event.id)
                     body = msg_tmp.body_template.format(
-                        event_id=event.id, event_location=event_location, event_date=event.created_date,
+                        event_id=event.id, event_location=short_evt_locs, event_date=event.created_date,
                         stale_period=str(period))
                     source = 'system'
                     generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
@@ -444,8 +448,8 @@ def custom_notifications():
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
                     new_updated="Updated", field=field, criteria=criteria,
-                    organization=event.created_by.organization.name, created_updated="updated", event_id=event.id,
-                    event_date=event.created_date, updates=updates)
+                    organization=event.modified_by.organization.name, created_updated="updated", event_id=event.id,
+                    event_date=event.modified_date, updates=updates)
                 # source: any user who creates or updates an event that meets the trigger criteria
                 source = event.modified_by.username
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)

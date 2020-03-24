@@ -1845,7 +1845,7 @@ class NotificationViewSet(HistoryViewSet):
         else:
             queryset = Notification.objects.all().filter(recipient__exact=user.id)
 
-        return queryset
+        return queryset.order_by('-id')
 
 
 class NotificationCuePreferenceViewSet(HistoryViewSet):
@@ -1860,9 +1860,6 @@ class NotificationCuePreferenceViewSet(HistoryViewSet):
         # public users cannot see anything
         elif user.role.is_public:
             return NotificationCuePreference.objects.none()
-        # admins, superadmins, and superusers can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = NotificationCuePreference.objects.all()
         # otherwise return only what belongs to the user
         else:
             queryset = NotificationCuePreference.objects.all().filter(created_by__exact=user.id)
@@ -1882,9 +1879,6 @@ class NotificationCueCustomViewSet(HistoryViewSet):
         # public users cannot see anything
         elif user.role.is_public:
             return NotificationCueCustom.objects.none()
-        # admins, superadmins, and superusers can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = NotificationCueCustom.objects.all()
         # otherwise return only what belongs to the user
         else:
             queryset = NotificationCueCustom.objects.all().filter(created_by__exact=user.id)
@@ -1904,9 +1898,6 @@ class NotificationCueStandardViewSet(HistoryViewSet):
         # public users cannot see anything
         elif user.role.is_public:
             return NotificationCueStandard.objects.none()
-        # admins, superadmins, and superusers can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = NotificationCueStandard.objects.all()
         # otherwise return only what belongs to the user
         else:
             queryset = NotificationCueStandard.objects.all().filter(created_by__exact=user.id)
