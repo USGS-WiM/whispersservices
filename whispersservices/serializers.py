@@ -3984,6 +3984,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # only the 'read' field can be updated
         instance.read = validated_data.get('read', instance.read)
+        instance.save()
         return instance
 
     class Meta:
