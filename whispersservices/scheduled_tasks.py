@@ -443,7 +443,7 @@ def custom_notifications():
                         field += ", "
                         criteria += ", "
                     field += child.lhs.field.verbose_name
-                    criteria += child.rhs
+                    criteria += str(child.rhs)
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(

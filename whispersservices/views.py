@@ -53,6 +53,10 @@ class PlainTextParser(BaseParser):
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMITER = ','
+EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address and whispers_email_address.value.count('@') == 1:
+    EMAIL_WHISPERS = whispers_email_address.value
 
 
 def get_request_user(request):
@@ -68,8 +72,8 @@ def construct_email(request_data, requester_email, message):
     body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
     body += message + "\r\n\r\n"
     body += request_data
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
+    from_address = EMAIL_WHISPERS
+    to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
     reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}

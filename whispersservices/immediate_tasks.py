@@ -2,9 +2,14 @@ from celery import shared_task, current_task
 import re
 from datetime import datetime
 from rest_framework.settings import api_settings
-from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from whispersservices.models import *
+
+
+EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address and whispers_email_address.value.count('@') == 1:
+    EMAIL_WHISPERS = whispers_email_address.value
 
 
 def jsonify_errors(data):
@@ -20,15 +25,6 @@ def jsonify_errors(data):
 
 
 def construct_notification_email(recipient_email, subject, html_body, include_boilerplate=True):
-    # subject = "An action by " + source + " requires your attention" if not subject else subject
-    # if client_page == 'event':
-    #     event_id_string = str(event)
-    #     url = settings.APP_WHISPERS_URL + 'event/' + event_id_string + '/'
-    # elif client_page == 'userdashboard':
-    #     url = settings.APP_WHISPERS_URL + 'userdashboard' + '/'
-    # else:
-    #     url = settings.APP_WHISPERS_URL
-    # html_body = body + "<a href='" + url + ">" + url + "</a>"
 
     # append the boilerplate text to the end of the email body
     if include_boilerplate:
@@ -49,10 +45,10 @@ def construct_notification_email(recipient_email, subject, html_body, include_bo
     body = re.sub('<a.*?>|</a> ', '', body)
     body = body.replace('</a>', '')
     # body += url
-    from_address = settings.EMAIL_WHISPERS
+    from_address = EMAIL_WHISPERS
     to_list = [recipient_email, ]
     bcc_list = []
-    reply_list = [settings.EMAIL_WHISPERS, ]
+    reply_list = [EMAIL_WHISPERS, ]
     headers = None  # {'Message-ID': 'foo'}
     email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
     email.attach_alternative(html_body, "text/html")
@@ -71,11 +67,7 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
                           send_email=False, email_to=None):
     if not recipients or not subject:
         # notify admins of error
-        whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-        if whispers_email_address and whispers_email_address.value.count('@') == 1:
-            new_recip = whispers_email_address.value
-        else:
-            new_recip = settings.EMAIL_WHISPERS
+        new_recip = EMAIL_WHISPERS
         new_subject = "WHISPERS ADMIN: Problem Encountered During generate_notification_task"
         new_body = "While generating a notification, a problem was encountered. No notification was created."
         new_body += " The cause of the problem was"
@@ -97,7 +89,6 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
             Notification.objects.create(
                 recipient=user, source=source, event=event, read=False, client_page=client_page,
                 subject=subject, body=body, created_by=admin, modified_by=admin)
-            # email: settings.EMAIL_WHISPERS, settings.EMAIL_NWHC_EPI
         if send_email and email_to is not None:
             for recip in email_to:
                 notif_email = construct_notification_email(recip, subject, body, True)

@@ -38,7 +38,6 @@ ADMIN_ENABLED = False
 
 # ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-APP_WHISPERS_URL = CONFIG.get('general', 'APP_WHISPERS_URL')
 
 ENVIRONMENT = CONFIG.get('general', 'ENVIRONMENT')
 SSL_CERT = SETTINGS_DIR + '/ca-bundle.crt'
@@ -56,6 +55,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'dry_rest_permissions',
+    'django_celery_beat',
     'whispersservices',
 ]
 
@@ -91,7 +91,6 @@ TEMPLATES = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        # 'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
@@ -109,10 +108,7 @@ EMAIL_PORT = CONFIG.get('email', 'EMAIL_PORT')
 EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
 EMAIL_TIMEOUT = CONFIG.get('email', 'EMAIL_TIMEOUT')
 DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
-# EMAIL_HOST = '127.0.0.1'
-# EMAIL_PORT = '25'
 EMAIL_WHISPERS = CONFIG.get('email', 'EMAIL_WHISPERS')
-EMAIL_NWHC_EPI = CONFIG.get('email', 'EMAIL_NWHC_EPI')
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
@@ -125,13 +121,11 @@ DATABASES = {
         'PASSWORD': CONFIG.get('databases', 'PASSWORD'),
         'HOST': CONFIG.get('databases', 'HOST'),
         'PORT': CONFIG.get('databases', 'PORT'),
-        #'CONN_MAX_AGE': CONFIG.get('databases', 'CONN_MAX_AGE'),
         'CONN_MAX_AGE': 60,
     }
 }
 
 AUTH_USER_MODEL = 'whispersservices.User'
-GEONAMES_USERNAME = CONFIG.get('geonames', 'USERNAME')
 
 # Password validation
 # https://docs.djangoproject.com/en/2.0/ref/settings/#auth-password-validators
@@ -185,13 +179,4 @@ CORS_ORIGIN_ALLOW_ALL = True
 CELERY_IMPORTS = ['whispersservices.immediate_tasks', 'whispersservices.scheduled_tasks']
 CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
-# CELERY_TASK_ROUTES = {
-#     'immediate_tasks.*': 'default',
-#     'scheduled_tasks.*': 'beat'
-# }
-# CELERY_CREATE_MISSING_QUEUES = True
-# CELERY_RESULT_BACKEND = 'django-db'
-# CELERY_IGNORE_RESULT = False
-# CELERY_TASK_IGNORE_RESULT = False
-# CELERY_TRACK_STARTED = True
-# CELERY_TASK_TRACK_STARTED = True
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

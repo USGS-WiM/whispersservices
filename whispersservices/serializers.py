@@ -18,10 +18,13 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: turn every ListField into a set to prevent errors caused by duplicates
 
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
-GEONAMES_USERNAME = settings.GEONAMES_USERNAME
-GEONAMES_API = 'http://api.geonames.org/'
-FLYWAYS_API = 'https://services.arcgis.com/'
-FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+GEONAMES_USERNAME = Configuration.objects.filter(name='geonames_username').first().value
+GEONAMES_API = Configuration.objects.filter(name='geonames_api_url').first().value
+FLYWAYS_API = Configuration.objects.filter(name='flyways_api_url').first().value
+EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address and whispers_email_address.value.count('@') == 1:
+    EMAIL_WHISPERS = whispers_email_address.value
 
 
 def jsonify_errors(data):
@@ -83,8 +86,8 @@ def construct_email(subject, message):
     # construct and send the email
     subject = subject
     body = message
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
+    from_address = EMAIL_WHISPERS
+    to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
     reply_list = []
     headers = None
