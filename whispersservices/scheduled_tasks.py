@@ -403,12 +403,25 @@ def custom_notifications():
                 child_count = 0
 
                 for child in queryset.query.where.children:
-                    child_count += 1
-                    if child_count > 1:
-                        field += ", "
-                        criteria += ", "
-                    field += child.lhs.field.verbose_name
-                    criteria += child.rhs
+                    if not child.lhs.field.name == 'created_date':
+                        child_count += 1
+                        if child_count > 1:
+                            field += ", "
+                            criteria += ", "
+                        field += child.lhs.field.verbose_name
+                        # rhs = child.rhs
+                        # field_name = child.lhs.field.name
+                        # if field_name == 'land_ownership':
+                        #     criteria += LandOwnership.objects.filter(id__in=rhs).first().name
+                        # elif field_name == 'administrative_level_two':
+                        #     criteria += AdministrativeLevelTwo.objects.filter(id=rhs).first().name
+                        # elif field_name == 'species':
+                        #     criteria += Species.objects.filter(id=rhs).first().name
+                        # elif field_name == 'diagnosis':
+                        #     criteria += Diagnosis.objects.filter(id=rhs).first().name
+                        # else:
+                        #     criteria += rhs.strftime('%Y-%m-%d') if isinstance(rhs, date) else str(rhs)
+                        criteria += child.rhs.strftime('%Y-%m-%d') if isinstance(child.rhs, date) else str(child.rhs)
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
@@ -438,12 +451,13 @@ def custom_notifications():
                 child_count = 0
 
                 for child in queryset.query.where.children:
-                    child_count += 1
-                    if child_count > 1:
-                        field += ", "
-                        criteria += ", "
-                    field += child.lhs.field.verbose_name
-                    criteria += str(child.rhs)
+                    if not child.lhs.field.verbose_name == 'modified date':
+                        child_count += 1
+                        if child_count > 1:
+                            field += ", "
+                            criteria += ", "
+                        field += child.lhs.field.verbose_name
+                        criteria += child.rhs.strftime('%Y-%m-%d') if isinstance(child.rhs, date) else str(child.rhs)
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
