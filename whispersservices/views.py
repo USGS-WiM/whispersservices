@@ -257,9 +257,8 @@ class EventViewSet(HistoryViewSet):
         else:
             comment = None
         # Collaborator alert is also logged as an event-level comment.
-        # TODO: would the event-level comment just be the submitted comment, or also some boilerplate like a pre-pended "Alert Collaborator: "?
         if comment:
-            comment_type = CommentType.objects.filter(name='Other').first()
+            comment_type = CommentType.objects.filter(name='Collaborator Alert').first()
             if comment_type is not None:
                 Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
                                        created_by=user, modified_by=user)
@@ -269,8 +268,11 @@ class EventViewSet(HistoryViewSet):
         # recipients: user(s) chosen from among the collaborator list
         recipients = User.objects.filter(id__in=recipient_ids)
         recipient_ids = [user.id for user in recipients]
-        recipient_names = [user.first_name + " " + user.last_name for user in recipients]
-        # email forwarding: Automatic, to all users included in the notificiation request.
+        recipient_names = ''
+        for user in recipients:
+            recipient_names += ", " + user.first_name + " " + user.last_name
+        recipient_names = recipient_names.replace(", ", "", 1)
+        # email forwarding: Automatic, to all users included in the notification request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)

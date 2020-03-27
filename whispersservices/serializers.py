@@ -390,6 +390,38 @@ class CommentSerializer(serializers.ModelSerializer):
             message += ") and ID (" + str(validated_data['object_id']) + ") could not be found."
             raise serializers.ValidationError(jsonify_errors(message))
         comment = Comment.objects.create(**validated_data, content_object=content_object)
+
+        # if this is a comment with a service request content type, create a 'Service Request Comment' notification
+        if content_type.model == 'servicerequest':
+            service_request = ServiceRequest.objects.filter(id=comment.object_id).first()
+            event_id = service_request.event.id
+            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+            hfs_epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            madison_epi_user = User.objects.filter(id=madison_epi_user_id).first()
+            # source: NWHC Epi staff/HFS staff or user with read/write privileges
+            # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
+            # email forwarding:
+            #  Automatic, toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
+            if comment.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
+                source = comment.created_by.username
+                recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
+                email_to = [service_request.created_by.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            else:
+                source = service_request.created_by.username
+                recipients = [comment.created_by.id, ]
+                email_to = [comment.created_by.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+
         return comment
 
     def update(self, instance, validated_data):
@@ -3813,16 +3845,9 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
-    # comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
     new_comments = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
-
-    # def get_comments(self, obj):
-    #     content_type = ContentType.objects.get_for_model(self.Meta.model)
-    #     comments = Comment.objects.filter(object_id=obj.id, content_type=content_type)
-    #     comments_comments = [comment.comment for comment in comments]
-    #     return comments_comments
 
     def validate(self, data):
         if 'new_comments' in data and data['new_comments'] is not None:
@@ -3854,7 +3879,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             validated_data['response_by'] = User.objects.filter(id=1).first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
-        # service_request_comments = []
 
         # create the child comments for this service request
         if new_comments is not None:
@@ -3868,7 +3892,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
-                    # service_request_comments.append(comment['comment'])
 
         # Create a 'Service Request' notification
         # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
@@ -3900,7 +3923,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         if comments:
             combined_comment = ""
             for comment in comments:
-                combined_comment = combined_comment + "\r\n" + comment.comment
+                combined_comment = combined_comment + "<br />" + comment.comment
         else:
             combined_comment = "None"
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()

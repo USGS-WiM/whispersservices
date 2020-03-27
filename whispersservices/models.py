@@ -1892,42 +1892,7 @@ class Comment(PermissionsHistoryModel):
     # override the save method to create real time notifications
     # update the parent event's modified_date (if applicable)
     def save(self, *args, **kwargs):
-        is_new = False if self.id else True
         super(Comment, self).save(*args, **kwargs)
-
-        # if this is a new comment with a service request content type, create a 'Service Request Comment' notification
-        if is_new and self.content_type.model == 'servicerequest':
-            service_request = ServiceRequest.objects.filter(id=self.object_id).first()
-            # do not generate notifications if this is the first comment for a service request,
-            # since that comment will already be included in the service request notifications
-            if Comment.objects.filter(content_type=self.content_type, object_id=self.object_id).count() > 1:
-                event_id = service_request.event.id
-                hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
-                hfs_epi_user = User.objects.filter(id=hfs_epi_user_id).first()
-                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-                madison_epi_user = User.objects.filter(id=madison_epi_user_id).first()
-                # source: NWHC Epi staff/HFS staff or user with read/write privileges
-                # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
-                # email forwarding:
-                #  Automatic, toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
-                if self.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
-                    source = self.created_by.username
-                    recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
-                    email_to = [service_request.created_by.email, ]
-                    msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
-                    subject = msg_tmp.subject_template.format(event_id=event_id)
-                    body = msg_tmp.body_template.format(event_id=event_id)
-                    from whispersservices.immediate_tasks import generate_notification
-                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
-                else:
-                    source = service_request.created_by.username
-                    recipients = [self.created_by.id, ]
-                    email_to = [self.created_by.email, ]
-                    msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
-                    subject = msg_tmp.subject_template.format(event_id=event_id)
-                    body = msg_tmp.body_template.format(event_id=event_id)
-                    from whispersservices.immediate_tasks import generate_notification
-                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         # modified_date
         event = None
