@@ -42,7 +42,7 @@ def construct_notification_email(recipient_email, subject, html_body, include_bo
     body = body.replace('&nbsp;', ' ').replace('<table>', '').replace('</table>', '\r\n')
     body = body.replace('<thead>', '').replace('</thead>', '\r\n').replace('<tbody>', '').replace('</tbody>', '\r\n')
     body = body.replace('<tr>', '').replace('</tr>', '\r\n').replace('<td>', '').replace('</td>', ' ')
-    body = re.sub('<a.*?>|</a> ', '', body)
+    body = re.sub('<a.*?>|</a>', '', body)
     body = body.replace('</a>', '')
     # body += url
     from_address = EMAIL_WHISPERS

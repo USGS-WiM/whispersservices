@@ -269,30 +269,55 @@ def stale_events():
 
 def build_custom_notifications_query(cue, base_queryset):
     queryset = None
+    field = ''
+    criteria = ''
 
     # event
     if cue.event:
+        field = 'Event'
+        criteria = cue.event
         if not queryset:
             queryset = base_queryset
         queryset = queryset.filter(id=cue.event)
 
     # event_affected_count
     if cue.event_affected_count:
+        operator = cue.event_affected_count_operator.upper()
+
+        # field and criteria
+        field = 'Affected Count' if field == '' else field + ', Affected Count'
+        value = cue.event_affected_count
+
+        # queryset
         if not queryset:
             queryset = base_queryset
-        if cue.event_affected_count_operator.upper() == "LTE":
-            queryset = queryset.filter(affected_count__lte=cue.event_affected_count)
+        if operator == "LTE":
+            queryset = queryset.filter(affected_count__lte=value)
+            criteria = '<= ' + value if criteria == '' else criteria + ', <= ' + value
         else:
             # default to GTE
-            queryset = queryset.filter(affected_count__gte=cue.event_affected_count)
+            queryset = queryset.filter(affected_count__gte=value)
+            criteria = '>= ' + value if criteria == '' else criteria + ', >= ' + value
 
     # event_location_land_ownership
     if cue.event_location_land_ownership:
-        if len(cue.event_location_land_ownership['values']) > 0:
+        values = cue.event_location_land_ownership['values']
+        if len(values) > 0:
+            operator = cue.event_location_land_ownership['operator'].upper()
+
+            # field and criteria
+            field = 'Land Ownership' if field == '' else field + ', Land Ownership'
+            names_list = list(LandOwnership.objects.filter(id__in=values).values_list('name', flat=True))
+            if len(values) == 1:
+                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+            else:
+                names = (' ' + operator + ' ').join(names_list)
+                criteria = names if criteria == '' else criteria + ', ' + names
+
+            # queryset
             if not queryset:
                 queryset = base_queryset
-            values = cue.event_location_land_ownership['values']
-            if cue.event_location_land_ownership['operator'].upper() == "OR":
+            if operator == "OR":
                 queries = [Q(eventlocations__land_ownership=value) for value in values]
                 query = queries.pop()
                 for item in queries:
@@ -306,13 +331,25 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # event_location_administrative_level_one
     if cue.event_location_administrative_level_one:
-        if len(cue.event_location_administrative_level_one['values']) > 0:
+        values = cue.event_location_administrative_level_one['values']
+        if len(values) > 0:
+            operator = cue.event_location_administrative_level_one['operator'].upper()
+
+            # field and criteria
+            field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
+            names_list = list(AdministrativeLevelOne.objects.filter(id__in=values).values_list('name', flat=True))
+            if len(values) == 1:
+                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+            else:
+                names = (' ' + operator + ' ').join(names_list)
+                criteria = names if criteria == '' else criteria + ', ' + names
+
+            # queryset
             if not queryset:
                 queryset = base_queryset
-            admin_level_one_list = cue.event_location_administrative_level_one['values']
             queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
-                eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
-            if cue.event_location_administrative_level_one['operator'].upper() == 'AND':
+                eventlocations__administrative_level_one__in=values).distinct()
+            if operator == 'AND':
                 # this _should_ be fairly straight forward with the postgresql ArrayAgg function,
                 # (which would offload the hard work to postgresql and make this whole operation faster)
                 # but that function is just throwing an error about a Serial data type,
@@ -321,8 +358,8 @@ def build_custom_notifications_query(cue, base_queryset):
                 # first, count the eventlocations for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
                 queryset = queryset.annotate(
-                    count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_one_list))
-                admin_level_one_list_ints = [int(i) for i in admin_level_one_list]
+                    count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(values))
+                admin_level_one_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
                 for item in queryset:
                     evtlocs = EventLocation.objects.filter(event_id=item.id)
@@ -332,18 +369,30 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # species
     if cue.species:
-        if len(cue.species['values']) > 0:
+        values = cue.species['values']
+        if len(values) > 0:
+            operator = cue.species['operator'].upper()
+
+            # field and criteria
+            field = 'Species' if field == '' else field + ', Species'
+            names_list = list(Species.objects.filter(id__in=values).values_list('name', flat=True))
+            if len(values) == 1:
+                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+            else:
+                names = (' ' + operator + ' ').join(names_list)
+                criteria = names if criteria == '' else criteria + ', ' + names
+
+            # queryset
             if not queryset:
                 queryset = base_queryset
-            species_list = cue.species['values']
             queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
-                eventlocations__locationspecies__species__in=species_list).distinct()
-            if cue.species['operator'].upper() == "AND":
+                eventlocations__locationspecies__species__in=values).distinct()
+            if operator == "AND":
                 # first, count the species for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
                 queryset = queryset.annotate(count_species=Count(
-                    'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
-                species_list_ints = [int(i) for i in species_list]
+                    'eventlocations__locationspecies__species')).filter(count_species__gte=len(values))
+                species_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
                 for item in queryset:
                     evtlocs = EventLocation.objects.filter(event_id=item.id)
@@ -354,19 +403,31 @@ def build_custom_notifications_query(cue, base_queryset):
 
     # species_diagnosis_diagnosis
     if cue.species_diagnosis_diagnosis:
-        if len(cue.species_diagnosis_diagnosis['values']) > 0:
+        values = cue.species_diagnosis_diagnosis['values']
+        if len(values) > 0:
+            operator = cue.species_diagnosis_diagnosis['operator'].upper()
+
+            # field and criteria
+            field = 'Diagnosis' if field == '' else field + ', Diagnosis'
+            names_list = list(Diagnosis.objects.filter(id__in=values).values_list('name', flat=True))
+            if len(values) == 1:
+                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+            else:
+                names = (' ' + operator + ' ').join(names_list)
+                criteria = names if criteria == '' else criteria + ', ' + names
+
+            # queryset
             if not queryset:
                 queryset = base_queryset
-            diagnosis_list = cue.species_diagnosis_diagnosis['values']
             queryset = queryset.prefetch_related('eventlocations__locationspecies__speciesdiagnoses__diagnosis').filter(
-                eventlocations__locationspecies__speciesdiagnoses__diagnosis__in=diagnosis_list).distinct()
-            if cue.species_diagnosis_diagnosis['operator'].upper() == "AND":
+                eventlocations__locationspecies__speciesdiagnoses__diagnosis__in=values).distinct()
+            if operator == "AND":
                 # first, count the species for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
                 queryset = queryset.annotate(count_diagnoses=Count(
                     'eventlocations__locationspecies__speciesdiagnoses__diagnosis', distinct=True)).filter(
-                    count_diagnoses__gte=len(diagnosis_list))
-                diagnosis_list_ints = [int(i) for i in diagnosis_list]
+                    count_diagnoses__gte=len(values))
+                diagnosis_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
                 for item in queryset:
                     evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
@@ -374,7 +435,7 @@ def build_custom_notifications_query(cue, base_queryset):
                     if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
                         queryset = queryset.exclude(pk=item.id)
 
-    return queryset
+    return queryset, field, criteria
 
 
 @shared_task()
@@ -388,7 +449,7 @@ def custom_notifications():
         notification_cue_preference__create_when_new=True)
     base_queryset = Event.objects.filter(created_date=yesterday)
     for cue in custom_notification_cues_new:
-        queryset = build_custom_notifications_query(cue, base_queryset)
+        queryset, field, criteria = build_custom_notifications_query(cue, base_queryset)
 
         if queryset:
             for event in queryset:
@@ -397,31 +458,6 @@ def custom_notifications():
                 recipients = [cue.created_by.id, ]
                 # email forwarding: Optional, set by user.
                 email_to = [cue.created_by.email, ] if send_email else []
-
-                field = ""
-                criteria = ""
-                child_count = 0
-
-                for child in queryset.query.where.children:
-                    if not child.lhs.field.name == 'created_date':
-                        child_count += 1
-                        if child_count > 1:
-                            field += ", "
-                            criteria += ", "
-                        field += child.lhs.field.verbose_name
-                        # rhs = child.rhs
-                        # field_name = child.lhs.field.name
-                        # if field_name == 'land_ownership':
-                        #     criteria += LandOwnership.objects.filter(id__in=rhs).first().name
-                        # elif field_name == 'administrative_level_two':
-                        #     criteria += AdministrativeLevelTwo.objects.filter(id=rhs).first().name
-                        # elif field_name == 'species':
-                        #     criteria += Species.objects.filter(id=rhs).first().name
-                        # elif field_name == 'diagnosis':
-                        #     criteria += Diagnosis.objects.filter(id=rhs).first().name
-                        # else:
-                        #     criteria += rhs.strftime('%Y-%m-%d') if isinstance(rhs, date) else str(rhs)
-                        criteria += child.rhs.strftime('%Y-%m-%d') if isinstance(child.rhs, date) else str(child.rhs)
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
@@ -435,7 +471,7 @@ def custom_notifications():
         notification_cue_preference__create_when_modified=True)
     base_queryset = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
     for cue in custom_notification_cues_updated:
-        queryset = build_custom_notifications_query(cue, base_queryset)
+        queryset, field, criteria = build_custom_notifications_query(cue, base_queryset)
 
         if queryset:
             for event in queryset:
@@ -445,19 +481,8 @@ def custom_notifications():
                 # email forwarding: Optional, set by user.
                 email_to = [cue.created_by.email, ] if send_email else []
 
-                field = ""
-                criteria = ""
+                # TODO: implement population of updates text
                 updates = ""
-                child_count = 0
-
-                for child in queryset.query.where.children:
-                    if not child.lhs.field.verbose_name == 'modified date':
-                        child_count += 1
-                        if child_count > 1:
-                            field += ", "
-                            criteria += ", "
-                        field += child.lhs.field.verbose_name
-                        criteria += child.rhs.strftime('%Y-%m-%d') if isinstance(child.rhs, date) else str(child.rhs)
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
