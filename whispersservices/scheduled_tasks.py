@@ -336,7 +336,18 @@ def build_custom_notifications_query(cue, base_queryset):
             operator = cue.event_location_administrative_level_one['operator'].upper()
 
             # field and criteria
-            field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
+            # use locality name when possible
+            ctry_ids = list(Country.objects.filter(
+                administrativelevelones__in=values).values_list('id', flat=True))
+            if ctry_ids:
+                lcl = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
+                if lcl and lcl.admin_level_one_name is not None:
+                    field = lcl.admin_level_one_name if field == '' else field + (', ' + lcl.admin_level_one_name)
+                else:
+                    field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
+            else:
+                field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
+
             names_list = list(AdministrativeLevelOne.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
                 criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
