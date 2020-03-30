@@ -5004,6 +5004,96 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
                   'eventdiagnoses',)
 
 
+class FlatEventSummarySerializer(serializers.ModelSerializer):
+    # a flat (not nested) version of the essential fields of the EventSummaryPublicSerializer, to populate CSV files
+    # requested from the EventSummaries Search
+    def get_countries(self, obj):
+        unique_country_ids = []
+        unique_countries = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                country_id = eventlocation.get('country_id')
+                if country_id is not None and country_id not in unique_country_ids:
+                    unique_country_ids.append(country_id)
+                    country = Country.objects.filter(id=country_id).first()
+                    unique_countries += '; ' + country.name if unique_countries else country.name
+        return unique_countries
+
+    def get_states(self, obj):
+        unique_l1_ids = []
+        unique_l1s = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s += '; ' + al1.name if unique_l1s else al1.name
+        return unique_l1s
+
+    def get_counties(self, obj):
+        unique_l2_ids = []
+        unique_l2s = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    if unique_l2s:
+                        unique_l2s += '; ' + al2.name + ', ' + al2.administrative_level_one.abbreviation
+                    else:
+                        unique_l2s += al2.name + ', ' + al2.administrative_level_one.abbreviation
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species += '; ' + species.name if unique_species else species.name
+        return unique_species
+
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        unique_eventdiagnoses_ids = []
+        unique_eventdiagnoses = ''
+        for event_diagnosis in event_diagnoses:
+            diag_id = event_diagnosis.diagnosis.id if event_diagnosis.diagnosis else None
+            if diag_id:
+                diag = Diagnosis.objects.get(pk=diag_id).name
+                if event_diagnosis.suspect:
+                    diag = diag + " suspect"
+                if diag_id not in unique_eventdiagnoses_ids:
+                    unique_eventdiagnoses_ids.append(diag_id)
+                    unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses else diag
+        return unique_eventdiagnoses
+
+    type = serializers.StringRelatedField(source='event_type')
+    affected = serializers.IntegerField(source='affected_count', read_only=True)
+    states = serializers.SerializerMethodField()
+    countries = serializers.SerializerMethodField()
+    counties = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
+    eventdiagnoses = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Event
+        fields = ('id', 'type', 'public', 'affected', 'start_date', 'end_date', 'countries', 'states', 'counties',
+                  'species', 'eventdiagnoses',)
+
+
 # TODO: Make these three EventSummary serializers adhere to DRY Principle
 class EventSummaryPublicSerializer(serializers.ModelSerializer):
 
