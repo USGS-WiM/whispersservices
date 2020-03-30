@@ -255,13 +255,7 @@ class EventViewSet(HistoryViewSet):
             if not isinstance(comment, str):
                 raise serializers.ValidationError(comment_message)
         else:
-            comment = None
-        # Collaborator alert is also logged as an event-level comment.
-        if comment:
-            comment_type = CommentType.objects.filter(name='Collaborator Alert').first()
-            if comment_type is not None:
-                Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
-                                       created_by=user, modified_by=user)
+            comment = ''
 
         # source: A qualified user (someone with edit permissions on event) who creates a collaborator alert.
         source = user.username
@@ -281,6 +275,14 @@ class EventViewSet(HistoryViewSet):
             event_id=event.id, comment=comment, recipients=recipient_names)
         from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
+
+        # Collaborator alert is also logged as an event-level comment.
+        comment += "<br />Alert send to : " + recipient_names
+        comment_type = CommentType.objects.filter(name='Collaborator Alert').first()
+        if comment_type is not None:
+            Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
+                                   created_by=user, modified_by=user)
+
         return Response({"status": 'email sent'}, status=200)
 
     @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))
