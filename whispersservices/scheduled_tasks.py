@@ -275,7 +275,7 @@ def build_custom_notifications_query(cue, base_queryset):
     # event
     if cue.event:
         field = 'Event'
-        criteria = cue.event
+        criteria = str(cue.event)
         if not queryset:
             queryset = base_queryset
         queryset = queryset.filter(id=cue.event)
@@ -286,7 +286,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
         # field and criteria
         field = 'Affected Count' if field == '' else field + ', Affected Count'
-        value = cue.event_affected_count
+        value = str(cue.event_affected_count)
 
         # queryset
         if not queryset:
