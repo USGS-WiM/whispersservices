@@ -3,6 +3,7 @@ import requests
 import json
 from operator import itemgetter
 from datetime import datetime, timedelta
+from django.apps import apps
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
@@ -17,10 +18,13 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: turn every ListField into a set to prevent errors caused by duplicates
 
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
-GEONAMES_USERNAME = settings.GEONAMES_USERNAME
-GEONAMES_API = 'http://api.geonames.org/'
-FLYWAYS_API = 'https://services.arcgis.com/'
-FLYWAYS_API += 'QVENGdaPbd4LUkLV/ArcGIS/rest/services/FWS_HQ_MB_Waterfowl_Flyway_Boundaries/FeatureServer/0/query'
+GEONAMES_USERNAME = Configuration.objects.filter(name='geonames_username').first().value
+GEONAMES_API = Configuration.objects.filter(name='geonames_api_url').first().value
+FLYWAYS_API = Configuration.objects.filter(name='flyways_api_url').first().value
+EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address and whispers_email_address.value.count('@') == 1:
+    EMAIL_WHISPERS = whispers_email_address.value
 
 
 def jsonify_errors(data):
@@ -61,7 +65,8 @@ def determine_permission_source(user, obj):
         permission_source = ''
     elif user.id == obj.created_by.id:
         permission_source = 'user'
-    elif user.organization.id == obj.created_by.organization.id:
+    elif (user.organization.id == obj.created_by.organization.id
+          or user.organization.id in obj.created_by.organization.child_organizations):
         permission_source = 'organization'
     elif ContentType.objects.get_for_model(obj, for_concrete_model=True).model == 'event':
         write_collaborators = list(User.objects.filter(writeevents__in=[obj.id]).values_list('id', flat=True))
@@ -77,66 +82,12 @@ def determine_permission_source(user, obj):
     return permission_source
 
 
-def construct_service_request_email(event_id, requester_org_name, request_type_name, requester_email, comments):
-    # construct and send the request email
-    event_id_string = str(event_id)
-    url = settings.APP_WHISPERS_URL + 'event/' + event_id_string
-    subject = "Service request for Event " + event_id_string
-    body = "A user (" + requester_email + ") with organization " + requester_org_name + " has requested "
-    body += "<strong>" + request_type_name + "</strong> for event " + event_id_string + "."
-    if comments:
-        body += "<br><br>Comments:"
-        for comment in comments:
-            body += "<br>&nbsp;&nbsp;&nbsp;&nbsp;" + comment
-    body += "<br><br>Event Details:<br>&nbsp;&nbsp;&nbsp;&nbsp;"
-    html_body = body + "<a href='" + url + "/'>" + url + "/</a>"
-    body = body.replace('<strong>', '').replace('</strong>', '').replace('<br>', '    ').replace('&nbsp;', ' ')
-    body += url + "/"
-    from_address = settings.EMAIL_WHISPERS
-    if settings.ENVIRONMENT == 'production':
-        to_list = [settings.EMAIL_NWHC_EPI, ]
-    else:
-        to_list = [settings.EMAIL_WHISPERS, ]
-    bcc_list = []
-    reply_list = [requester_email, ]
-    headers = None  # {'Message-ID': 'foo'}
-    email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    email.attach_alternative(html_body, "text/html")
-    if settings.ENVIRONMENT in ['production', 'test']:
-        try:
-            email.send(fail_silently=False)
-        except TypeError:
-            message = "Service Request saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(jsonify_errors(message))
-    return email
-
-
-def construct_user_request_email(requester_email, message):
-    # construct and send the request email
-    subject = "Assistance Request"
-    body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
-    body += message
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
-    bcc_list = []
-    reply_list = [requester_email, ]
-    headers = None  # {'Message-ID': 'foo'}
-    email = EmailMessage(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
-    if settings.ENVIRONMENT in ['production', 'test']:
-        try:
-            email.send(fail_silently=False)
-        except TypeError:
-            message = "User saved but send email failed, please contact the administrator."
-            raise serializers.ValidationError(jsonify_errors(message))
-    return email
-
-
 def construct_email(subject, message):
     # construct and send the email
     subject = subject
     body = message
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
+    from_address = EMAIL_WHISPERS
+    to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
     reply_list = []
     headers = None
@@ -439,6 +390,38 @@ class CommentSerializer(serializers.ModelSerializer):
             message += ") and ID (" + str(validated_data['object_id']) + ") could not be found."
             raise serializers.ValidationError(jsonify_errors(message))
         comment = Comment.objects.create(**validated_data, content_object=content_object)
+
+        # if this is a comment with a service request content type, create a 'Service Request Comment' notification
+        if content_type.model == 'servicerequest':
+            service_request = ServiceRequest.objects.filter(id=comment.object_id).first()
+            event_id = service_request.event.id
+            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+            hfs_epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            madison_epi_user = User.objects.filter(id=madison_epi_user_id).first()
+            # source: NWHC Epi staff/HFS staff or user with read/write privileges
+            # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
+            # email forwarding:
+            #  Automatic, toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
+            if comment.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
+                source = comment.created_by.username
+                recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
+                email_to = [service_request.created_by.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            else:
+                source = service_request.created_by.username
+                recipients = [comment.created_by.id, ]
+                email_to = [comment.created_by.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+
         return comment
 
     def update(self, instance, validated_data):
@@ -1075,7 +1058,7 @@ class EventSerializer(serializers.ModelSerializer):
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
-                service_request_comments = []
+                # service_request_comments = []
 
                 # create the child comments for this service request
                 if new_comments is not None:
@@ -1089,16 +1072,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment['comment'])
-
-                # construct and send the request email
-                service_request_email = construct_service_request_email(service_request.event.id,
-                                                                        user.organization.name,
-                                                                        service_request.request_type.name,
-                                                                        user.email,
-                                                                        service_request_comments)
-                if settings.ENVIRONMENT not in ['production', 'test']:
-                    event.service_request_email = service_request_email.__dict__
+                            # service_request_comments.append(comment['comment'])
 
         return event
 
@@ -1884,7 +1858,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
-                service_request_comments = []
+                # service_request_comments = []
 
                 # create the child comments for this service request
                 if new_comments is not None:
@@ -1898,16 +1872,7 @@ class EventAdminSerializer(serializers.ModelSerializer):
                                 comment_type = CommentType.objects.filter(name='Diagnostic').first()
                             Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                                    comment_type=comment_type, created_by=user, modified_by=user)
-                            service_request_comments.append(comment['comment'])
-
-                # construct and send the request email
-                service_request_email = construct_service_request_email(service_request.event.id,
-                                                                        user.organization.name,
-                                                                        service_request.request_type.name,
-                                                                        user.email,
-                                                                        service_request_comments)
-                if settings.ENVIRONMENT not in ['production', 'test']:
-                    event.service_request_email = service_request_email.__dict__
+                            # service_request_comments.append(comment['comment'])
 
         return event
 
@@ -3880,16 +3845,9 @@ class DiagnosisCauseSerializer(serializers.ModelSerializer):
 
 
 class ServiceRequestSerializer(serializers.ModelSerializer):
-    # comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
     new_comments = serializers.ListField(write_only=True, required=False)
     service_request_email = serializers.JSONField(read_only=True)
-
-    # def get_comments(self, obj):
-    #     content_type = ContentType.objects.get_for_model(self.Meta.model)
-    #     comments = Comment.objects.filter(object_id=obj.id, content_type=content_type)
-    #     comments_comments = [comment.comment for comment in comments]
-    #     return comments_comments
 
     def validate(self, data):
         if 'new_comments' in data and data['new_comments'] is not None:
@@ -3921,7 +3879,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             validated_data['response_by'] = User.objects.filter(id=1).first()
 
         service_request = ServiceRequest.objects.create(**validated_data)
-        service_request_comments = []
 
         # create the child comments for this service request
         if new_comments is not None:
@@ -3935,15 +3892,48 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
                     Comment.objects.create(content_object=service_request, comment=comment['comment'],
                                            comment_type=comment_type, created_by=user, modified_by=user)
-                    service_request_comments.append(comment['comment'])
 
-        # construct and send the request email
-        service_request_email = construct_service_request_email(service_request.event.id,
-                                                                user.organization.name,
-                                                                service_request.request_type.name, user.email,
-                                                                service_request_comments)
-        if settings.ENVIRONMENT not in ['production', 'test']:
-            service_request.service_request_email = vars(service_request_email)
+        # Create a 'Service Request' notification
+        # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
+        event_id = service_request.event.id
+        evt_locs = EventLocation.objects.filter(event=event_id)
+        hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+        hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+        if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+            epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+        else:
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            epi_user = User.objects.filter(id=madison_epi_user_id).first()
+        # source: User making a service request.
+        source = user.username
+        # recipients: nwhc-epi@usgs.gov or HFS dropbox
+        recipients = [epi_user.id, ]
+        # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
+        email_to = [epi_user.email, ]
+        short_evt_locs = ""
+        for evt_loc in evt_locs:
+            short_evt_loc = ""
+            if evt_loc.administrative_level_two:
+                short_evt_loc += evt_loc.administrative_level_two.name + ", "
+            short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
+            short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
+        content_type = ContentType.objects.get_for_model(self.Meta.model, for_concrete_model=True)
+        comments = Comment.objects.filter(content_type=content_type, object_id=service_request.id)
+        if comments:
+            combined_comment = ""
+            for comment in comments:
+                combined_comment = combined_comment + "<br />" + comment.comment
+        else:
+            combined_comment = "None"
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
+        subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name, event_id=event_id)
+        body = msg_tmp.body_template.format(
+            first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
+            service_request=service_request.request_type.name, event_id=event_id, event_location=short_evt_locs,
+            comment=combined_comment)
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return service_request
 
@@ -4008,6 +3998,273 @@ class ServiceRequestResponseSerializer(serializers.ModelSerializer):
 
 ######
 #
+#  Service Requests
+#
+######
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    def update(self, instance, validated_data):
+        # only the 'read' field can be updated
+        instance.read = validated_data.get('read', instance.read)
+        instance.save()
+        return instance
+
+    class Meta:
+        model = Notification
+        fields = ('id', 'recipient', 'source', 'event', 'read', 'client_page', 'subject', 'body',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCuePreferenceSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCuePreference
+        fields = ('id', 'create_when_new', 'create_when_modified', 'send_email',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCueCustomSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+    notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
+    new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
+    cue_strings = serializers.SerializerMethodField()
+
+    def get_cue_strings(self, obj):
+        data = []
+        model_fields = ['event', 'event_affected_count', 'event_location_land_ownership',
+                        'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis']
+        string_repr_fields = ['Event', 'Affected Count', 'Land Ownership', 'Administrative Level One', 'Species',
+                              'Diagnosis']
+        model_fields_models = ['Event', 'Event', 'LandOwnership', 'AdministrativeLevelOne', 'Species', 'Diagnosis']
+        for field in model_fields:
+            field_value = getattr(obj, field)
+            if field_value is not None and field_value != {}:
+                string_repr = string_repr_fields[model_fields.index(field)] + ": "
+                # if field is admin level one, use locality name when possible
+                if field == 'event_location_administrative_level_one':
+                    al1 = obj.event_location_administrative_level_one
+                    if al1 is not None and 'values' in al1:
+                        al1s = obj.event_location_administrative_level_one['values']
+                        ctry_ids = list(Country.objects.filter(
+                            administrativelevelones__in=al1s).values_list('id', flat=True))
+                        if ctry_ids:
+                            locality = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
+                            if locality and locality.admin_level_one_name is not None:
+                                string_repr = locality.admin_level_one_name + ": "
+
+                if field == 'event':
+                    string_repr += str(field_value)
+                    data.append(string_repr)
+                # if field is event affected_count, include the operators from event_affected_count_operator field
+                elif field == 'event_affected_count':
+                    operator = getattr(obj, 'event_affected_count_operator')
+                    if operator == 'LTE':
+                        string_repr += "<= " + str(field_value)
+                    else:
+                        string_repr += ">= " + str(field_value)
+                    data.append(string_repr)
+                else:
+                    # it is a JSON field
+                    values = getattr(obj, field)['values']
+                    ThisModel = apps.get_model('whispersservices', model_fields_models[model_fields.index(field)])
+                    if len(values) == 1:
+                        string_repr += str(ThisModel.objects.filter(id=values[0]).first())
+                        data.append(string_repr)
+                    elif len(values) > 1:
+                        list_len = len(values)
+                        count = 0
+                        operator = getattr(obj, field)['operator']
+                        values_items = ""
+                        for value in values:
+                            values_items += str(ThisModel.objects.filter(id=value).first())
+                            count += 1
+                            if count != list_len:
+                                values_items += " " + operator + " "
+                        string_repr += values_items
+                        data.append(string_repr)
+                    # ignore empty value lists
+
+        return data
+
+    def validate(self, data):
+        # validate that event_affected_count_operator is present when event_affected_count is present, and vice-versa
+        if ('event_affected_count_operator' in data and data['event_affected_count_operator'] is not None
+                and ('event_affected_count' not in data or data['event_affected_count'] is None)):
+            message = "event_affected_count must be submitted when event_affected_count_operator is submitted"
+            raise serializers.ValidationError(message)
+        elif ('event_affected_count' in data and data['event_affected_count'] is not None
+              and ('event_affected_count_operator' not in data or data['event_affected_count_operator'] is None)):
+            message = "event_affected_count_operator must be submitted when event_affected_count is submitted"
+            raise serializers.ValidationError(message)
+        # validate event_affected_count_operator field
+        if ('event_affected_count_operator' in data and data['event_affected_count_operator'] is not None
+                and data['event_affected_count_operator'] not in ['GTE', 'LTE']):
+            message = "event_affected_count_operator can only be \"GTE\" or \"LTE\""
+            message += " (greater-than-or-equal-to or less-than-or-equal-to)"
+            raise serializers.ValidationError(message)
+        # validate JSON fields
+        json_fields = ['event_location_land_ownership', 'event_location_administrative_level_one', 'species',
+                       'species_diagnosis_diagnosis']
+        for field in json_fields:
+            if field in data and data[field] is not None:
+                if (not isinstance(data[field], dict)
+                        or (len(data[field]) > 0) and ('values' not in data[field] or 'operator' not in data[field])
+                        or (not isinstance(data[field]['values'], list))
+                        or (not isinstance(data[field]['operator'], str)
+                            or data[field]['operator'] not in ["AND", "OR"])):
+                    message = field + " must be valid JSON with only two keys:"
+                    message += " \"values\" (an array or list of integers)"
+                    message += " and \"operator\" (which can only be \"AND\" or \"OR\"), or an empty JSON object"
+                    raise serializers.ValidationError(message)
+
+        return data
+
+    def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue preferences from the request
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        create_when_new = NotificationCuePreference._meta.get_field('create_when_new').get_default()
+        create_when_modified = NotificationCuePreference._meta.get_field('create_when_modified').get_default()
+        send_email = NotificationCuePreference._meta.get_field('send_email').get_default()
+        if new_pref:
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                send_email = new_pref['send_email']
+        # if any of create_when_new, create_when_modified, and send_email are not present
+        # in new_notification_cue_preference or are not boolean, default values will be assigned
+        # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
+        #                                                 create_when_modified=create_when_modified,
+        #                                                 send_email=send_email, created_by=user,
+        #                                                 modified_by=user)
+        pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
+                'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
+        pref_serializer = NotificationCuePreferenceSerializer(data=pref)
+        if pref_serializer.is_valid():
+            validated_data['notification_cue_preference'] = pref_serializer.save()
+            return NotificationCueCustom.objects.create(**validated_data)
+        else:
+            raise serializers.ValidationError(jsonify_errors(pref_serializer.errors))
+
+    def update(self, instance, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue preferences from the request and update it if necessary
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        if new_pref:
+            pref = NotificationCuePreference.objects.filter(id=instance.notification_cue_preference.id).first()
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                pref.create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                pref.create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                pref.send_email = new_pref['send_email']
+            pref.modified_by = user if user else pref.modified_by
+            pref.save()
+
+        # update the NotificationCueCustom object
+        instance.event = validated_data.get('event', instance.event)
+        instance.event_affected_count = validated_data.get('event_affected_count', instance.event_affected_count)
+        instance.event_affected_count_operator = validated_data.get(
+            'event_affected_count_operator', instance.event_affected_count_operator)
+        instance.event_location_land_ownership = validated_data.get('event_location_land_ownership',
+                                                                    instance.event_location_land_ownership)
+        instance.event_location_administrative_level_one = validated_data.get(
+            'event_location_administrative_level_one',
+            instance.event_location_administrative_level_one)
+        instance.species = validated_data.get('species', instance.species)
+        instance.species_diagnosis_diagnosis = validated_data.get('species_diagnosis_diagnosis',
+                                                                  instance.species_diagnosis_diagnosis)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # ensure that the post-save instance and its nested objecs is returned, not the pre-saved instance
+        instance = NotificationCueCustom.objects.filter(id=instance.id).first()
+
+        return instance
+
+    class Meta:
+        model = NotificationCueCustom
+        fields = ('id', 'notification_cue_preference', 'new_notification_cue_preference',
+                  'event', 'event_affected_count', 'event_affected_count_operator', 'event_location_land_ownership',
+                  'event_location_administrative_level_one', 'species', 'species_diagnosis_diagnosis', 'cue_strings',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+# TODO: should this be read-only, or even hidden?
+# NOTE: these are only be created when a user is created, and only deleted when a user is deleted
+class NotificationCueStandardSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+    notification_cue_preference = NotificationCuePreferenceSerializer(read_only=True)
+    new_notification_cue_preference = serializers.JSONField(write_only=True, required=True)
+
+    def update(self, instance, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue preferences from the request and update it if necessary
+        new_pref = validated_data.pop('new_notification_cue_preference', None)
+        if new_pref:
+            pref = NotificationCuePreference.objects.filter(id=instance.notification_cue_preference.id).first()
+            if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                    and isinstance(new_pref['create_when_new'], bool)):
+                pref.create_when_new = new_pref['create_when_new']
+            if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                    and isinstance(new_pref['create_when_modified'], bool)):
+                pref.create_when_modified = new_pref['create_when_modified']
+            if ('send_email' in new_pref and new_pref['send_email'] is not None
+                    and isinstance(new_pref['send_email'], bool)):
+                pref.send_email = new_pref['send_email']
+            pref.modified_by = user if user else pref.modified_by
+            pref.save()
+
+        # update the NotificationCueStandard object (note that there is nothing that the user should be able to update)
+        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
+
+        # ensure that the post-save instance and its nested objecs is returned, not the pre-saved instance
+        instance = NotificationCueStandard.objects.filter(id=instance.id).first()
+
+        return instance
+
+    class Meta:
+        model = NotificationCueStandard
+        fields = ('id', 'standard_type', 'notification_cue_preference', 'new_notification_cue_preference',
+                  'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = NotificationCueStandardType
+        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+######
+#
 #  Users
 #
 ######
@@ -4034,8 +4291,11 @@ class UserPublicSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, allow_blank=True, required=False)
     organization_string = serializers.StringRelatedField(source='organization')
-    message = serializers.CharField(write_only=True, allow_blank=True, required=False)
-    user_email = serializers.JSONField(read_only=True)
+    # message = serializers.CharField(write_only=True, allow_blank=True, required=False)  # what is this?
+    # user_email = serializers.JSONField(read_only=True)  # what is this?
+    notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
+    new_user_change_request = serializers.JSONField(write_only=True, required=False)
+    new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
 
     def validate(self, data):
 
@@ -4046,6 +4306,18 @@ class UserSerializer(serializers.ModelSerializer):
                 data['organization'] = Organization.objects.filter(name='Public').first()
             if 'password' not in data:
                 raise serializers.ValidationError("password is required")
+            if 'new_user_change_request' in data and data['new_user_change_request'] is not None:
+                ucr = data['new_user_change_request']
+                if ('role_requested' in ucr and ucr['role_requested'] is not None
+                        and str(ucr['role_requested']).isdigit()):
+                    role_ids = list(Role.objects.values_list('id', flat=True))
+                    if int(ucr['role_requested']) not in role_ids:
+                        raise serializers.ValidationError("Requested role does not exist.")
+                if ('organization_requested' in ucr and ucr['organization_requested'] is not None
+                        and str(ucr['organization_requested']).isdigit()):
+                    org_ids = list(Organization.objects.values_list('id', flat=True))
+                    if int(ucr['organization_requested']) not in org_ids:
+                        raise serializers.ValidationError("Requested organization does not exist.")
         if 'password' in data:
             password = data['password']
             details = []
@@ -4082,8 +4354,13 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
 
+        # pull out child notification cue standard preferences from the request (cannot be created here, only in model)
+        validated_data.pop('new_notification_cue_standard_preferences', None)
+
         password = validated_data.pop('password', None)
-        message = validated_data.pop('message', None)
+
+        # pull out child service request from the request
+        new_user_change_request = validated_data.pop('new_user_change_request', None)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
@@ -4092,10 +4369,6 @@ class UserSerializer(serializers.ModelSerializer):
             requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
-            original_message = message
-            message = "Please change the role for this user to:" + requested_role.name + "\r\n"
-            message += "Please change the organization for this user to:" + requested_org.name + "\r\n"
-            message += "\r\n" + original_message
 
         else:
 
@@ -4112,28 +4385,102 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
-        # only SuperAdmins and Admins can edit is_superuser, is_staff, and is_active fields
+        # only SuperAdmins and Admins can edit is_staff and is_active fields
         if (requesting_user.is_authenticated
                 and not (requesting_user.role.is_superadmin or requesting_user.role.is_admin)):
-            validated_data['is_superuser'] = False
             validated_data['is_staff'] = False
             validated_data['is_active'] = True
 
-        user = User.objects.create(**validated_data)
-        requesting_user = user if not requesting_user.is_authenticated else requesting_user
+        # only SuperAdmins can edit is_superuser field
+        if (requesting_user.is_authenticated
+                and not (requesting_user.role.is_superadmin or requesting_user.is_superuser)):
+            validated_data['is_superuser'] = False
 
+        user = User.objects.create(**validated_data)
         user.set_password(password)
         user.save()
 
-        if message is not None:
-            user_email = construct_user_request_email(user.email, message)
-            if settings.ENVIRONMENT not in ['production', 'test']:
-                user.user_email = user_email.__dict__
+        # create a 'User Created' notification
+        # source: User that requests a public account
+        source = user.username
+        # recipients: user, WHISPers admin team
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+        # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+        email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+
+        if new_user_change_request is not None:
+            role_requested = None
+            organization_requested = None
+            if ('role_requested' in new_user_change_request
+                    and new_user_change_request['role_requested'] is not None):
+                role_requested = new_user_change_request['role_requested']
+            if ('organization_requested' in new_user_change_request
+                    and new_user_change_request['organization_requested'] is not None):
+                organization_requested = new_user_change_request['organization_requested']
+
+            if role_requested or organization_requested:
+                role_requested = role_requested if role_requested else user.role.id
+                organization_requested = organization_requested if organization_requested else user.organization.id
+                comment = new_user_change_request.pop('comment', None)
+                user_change_request = {'requester': user.id, 'role_requested': role_requested,
+                                       'organization_requested': organization_requested, 'comment': comment,
+                                       'created_by': user.id, 'modified_by': user.id}
+                ucr_serializer = UserChangeRequestSerializer(data=user_change_request)
+                if ucr_serializer.is_valid():
+                    ucr_serializer.save()
+                else:
+                    NotificationCueStandard.objects.filter(created_by=user.id).delete()
+                    NotificationCuePreference.objects.filter(created_by=user.id).delete()
+                    user.delete()
+                    raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
         return user
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
+
+        # pull out child notification cue standard preferences from the request and validate if necessary
+        new_prefs = validated_data.pop('new_notification_cue_standard_preferences', None)
+        if new_prefs:
+            if not isinstance(new_prefs, list):
+                message = "new_notification_cue_standard_preferences must be a list/array."
+                raise serializers.ValidationError(jsonify_errors(message))
+            else:
+                details = []
+                for new_cue in new_prefs:
+                    if 'standard_type' not in new_cue and 'id' not in new_cue:
+                        message = "Either id or standard_type is a required field"
+                        message += " for each new_notification_cue_standard_preference"
+                        details.append(jsonify_errors(message))
+                    if 'standard_type' in new_cue and new_cue['standard_type'] is not None:
+                        if not str(new_cue['standard_type']).isdigit():
+                            raise serializers.ValidationError("Submitted standard_type must be a valid integer.")
+                        else:
+                            std_type_ids = list(NotificationCueStandardType.objects.values_list('id', flat=True))
+                            if int(new_cue['standard_type']) not in std_type_ids:
+                                message = "Submitted standard_type does not exist."
+                                raise serializers.ValidationError(message)
+                    elif 'id' in new_cue and new_cue['id'] is not None:
+                        if not str(new_cue['id']).isdigit():
+                            raise serializers.ValidationError("Submitted id must be a valid integer.")
+                        else:
+                            cue_ids = list(NotificationCueStandard.objects.filter(
+                                created_by=instance.id).values_list('id', flat=True))
+                            if int(new_cue['id']) not in cue_ids:
+                                message = "Submitted id does not exist or you do not have permission to update it."
+                                raise serializers.ValidationError(message)
+                    if 'new_notification_cue_preference' not in new_cue:
+                        message = "new_notification_cue_standard_preferences is a required field"
+                        message += " for each new_notification_cue_standard_preference"
+                        details.append(jsonify_errors(message))
+                if details:
+                    raise serializers.ValidationError(details)
 
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) can only edit their first and last names and password
         if not requesting_user.is_authenticated:
@@ -4173,13 +4520,38 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(new_password)
         instance.save()
 
+        # update child notification cue standard preferences if necessary
+        if new_prefs:
+            for new_cue in new_prefs:
+                new_pref = new_cue['new_notification_cue_preference']
+                # use the standard_type to find the requested standard cue, since each user can only have one per type
+                if 'standard_type' in new_cue:
+                    std_cue_id = NotificationCueStandard.objects.filter(
+                        created_by=instance.id, standard_type=new_cue['standard_type']).values('id').first()['id']
+                else:
+                    # otherwise fall back to the standard cue ID (standard_type or ID must have been submitted)
+                    std_cue_id = new_cue['id']
+                pref = NotificationCuePreference.objects.filter(notificationcuestandard__id=std_cue_id).first()
+                if ('create_when_new' in new_pref and new_pref['create_when_new'] is not None
+                        and isinstance(new_pref['create_when_new'], bool)):
+                    pref.create_when_new = new_pref['create_when_new']
+                if ('create_when_modified' in new_pref and new_pref['create_when_modified'] is not None
+                        and isinstance(new_pref['create_when_modified'], bool)):
+                    pref.create_when_modified = new_pref['create_when_modified']
+                if ('send_email' in new_pref and new_pref['send_email'] is not None
+                        and isinstance(new_pref['send_email'], bool)):
+                    pref.send_email = new_pref['send_email']
+                pref.modified_by = requesting_user if requesting_user else pref.modified_by
+                pref.save()
+
         return instance
 
     class Meta:
         model = User
         fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                   'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'message', 'user_email')
+                  'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
+                  'new_user_change_request', )  # 'rolechangerequests_requester')
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -4188,6 +4560,158 @@ class RoleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Role
+        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class UserChangeRequestSerializer(serializers.ModelSerializer):
+    comment = serializers.CharField(write_only=True, required=False)
+
+    def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
+
+        # pull out child comments list from the request
+        comment = validated_data.pop('comment', None)
+
+        # Only allow NWHC admins to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            if not (user.role.is_superadmin or user.role.is_admin):
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
+            else:
+                validated_data['response_by'] = user
+
+        # if a request_response is not submitted, assign the default
+        if 'request_response' not in validated_data or validated_data['request_response'] is None:
+            validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
+
+        ucr = UserChangeRequest.objects.create(**validated_data)
+
+        # create a 'User Change Request' notification
+        # source: User that requests an account upgrade or requesting an account above public
+        source = ucr.created_by.username
+        # recipients: WHISPers admin team, Admins of organization requested
+        recipients = list(User.objects.filter(
+            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
+                role=3, organization__in=ucr.organization_requested.parent_organizations)
+        ).values_list('id', flat=True))
+        # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
+        email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
+            role=3, organization__in=ucr.organization_requested.parent_organizations)).values_list('email', flat=True))
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
+        subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
+        body = msg_tmp.body_template.format(
+            first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
+            username=ucr.requester.username, current_role=ucr.requester.role.name,
+            new_role=ucr.role_requested.name, current_organization=ucr.requester.organization.name,
+            new_organization=ucr.organization_requested.name, comment=comment)
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+
+        # also create a 'User Change Request Response Pending' notification
+        # source: User that requests the natural resource management professional account
+        source = ucr.created_by.username
+        # recipients: user
+        recipients = [ucr.created_by.id, ]
+        # email forwarding: Automatic to the user's email
+        email_to = [ucr.created_by.email, ]
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+
+        return ucr
+
+    def update(self, instance, validated_data):
+        request_response_updated = False
+
+        # remove child comments list from the request
+        if 'new_comments' in validated_data:
+            validated_data.pop('new_comments')
+
+        # Only allow NWHC admins or requester's org admin to alter the request response
+        if 'request_response' in validated_data and validated_data['request_response'] is not None:
+            user = get_user(self.context, self.initial_data)
+
+            if not (user.role.is_superadmin or user.role.is_admin or
+                    (user.role.is_partneradmin and user.organization.id == instance.created_by.organization.id)):
+                raise serializers.ValidationError(
+                    jsonify_errors("You do not have permission to alter the request response."))
+            else:
+                instance.request_response = validated_data.get('request_response', instance.request_response)
+                instance.response_by = user
+                request_response_updated = True
+
+                # capture the user change request response as a comment
+                cmt = "User Change Request Response: " + instance.request_response.name
+                cmt_type = CommentType.objects.filter(name='Other').first()
+                Comment.objects.create(content_object=instance, comment=cmt,
+                                       comment_type=cmt_type, created_by=user, modified_by=user)
+
+        instance.role_requested = validated_data.get('role_requested', instance.role_requested)
+        instance.organization_requested = validated_data.get('organization_requested', instance.organization_requested)
+        instance.save()
+
+        # if the response is updated to 'Yes' or 'No',
+        # update the User and create a 'User Change Request Response' notification
+        # TODO: what about 'Maybe'?
+        if request_response_updated:
+            if instance.request_response.name == 'Yes':
+                requester = User.objects.filter(id=instance.requester.id).first()
+                requester.role = instance.role_requested
+                requester.organization = instance.organization_requested
+                requester.save()
+                # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
+                source = instance.modified_by.username
+                # recipients: user, WHISPers admin team
+                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                    instance.requester.id, ]
+                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                                                    organization=instance.organization_requested.name)
+                event = None
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+            elif instance.request_response.name == 'No':
+                # source: WHISPer Admin or Org Admin who assigns a WHISPers role.
+                source = instance.modified_by.username
+                # recipients: user, WHISPers admin team
+                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                    instance.requester.id, ]
+                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template
+                event = None
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+
+        return instance
+
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+    response_by = serializers.StringRelatedField()
+
+    class Meta:
+        model = UserChangeRequest
+        fields = ('id', 'requester', 'role_requested', 'organization_requested', 'request_response', 'response_by',
+                  'comment', 'created_date', 'created_by', 'created_by_string',
+                  'modified_date', 'modified_by', 'modified_by_string',)
+
+
+class UserChangeRequestResponseSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    class Meta:
+        model = UserChangeRequestResponse
         fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -4478,6 +5002,96 @@ class FlatEventSummaryPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'type', 'affected', 'start_date', 'end_date', 'countries', 'states', 'counties',  'species',
                   'eventdiagnoses',)
+
+
+class FlatEventSummarySerializer(serializers.ModelSerializer):
+    # a flat (not nested) version of the essential fields of the EventSummaryPublicSerializer, to populate CSV files
+    # requested from the EventSummaries Search
+    def get_countries(self, obj):
+        unique_country_ids = []
+        unique_countries = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                country_id = eventlocation.get('country_id')
+                if country_id is not None and country_id not in unique_country_ids:
+                    unique_country_ids.append(country_id)
+                    country = Country.objects.filter(id=country_id).first()
+                    unique_countries += '; ' + country.name if unique_countries else country.name
+        return unique_countries
+
+    def get_states(self, obj):
+        unique_l1_ids = []
+        unique_l1s = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s += '; ' + al1.name if unique_l1s else al1.name
+        return unique_l1s
+
+    def get_counties(self, obj):
+        unique_l2_ids = []
+        unique_l2s = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2 = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    if unique_l2s:
+                        unique_l2s += '; ' + al2.name + ', ' + al2.administrative_level_one.abbreviation
+                    else:
+                        unique_l2s += al2.name + ', ' + al2.administrative_level_one.abbreviation
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = ''
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species += '; ' + species.name if unique_species else species.name
+        return unique_species
+
+    def get_eventdiagnoses(self, obj):
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        unique_eventdiagnoses_ids = []
+        unique_eventdiagnoses = ''
+        for event_diagnosis in event_diagnoses:
+            diag_id = event_diagnosis.diagnosis.id if event_diagnosis.diagnosis else None
+            if diag_id:
+                diag = Diagnosis.objects.get(pk=diag_id).name
+                if event_diagnosis.suspect:
+                    diag = diag + " suspect"
+                if diag_id not in unique_eventdiagnoses_ids:
+                    unique_eventdiagnoses_ids.append(diag_id)
+                    unique_eventdiagnoses += '; ' + diag if unique_eventdiagnoses else diag
+        return unique_eventdiagnoses
+
+    type = serializers.StringRelatedField(source='event_type')
+    affected = serializers.IntegerField(source='affected_count', read_only=True)
+    states = serializers.SerializerMethodField()
+    countries = serializers.SerializerMethodField()
+    counties = serializers.SerializerMethodField()
+    species = serializers.SerializerMethodField()
+    eventdiagnoses = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Event
+        fields = ('id', 'type', 'public', 'affected', 'start_date', 'end_date', 'countries', 'states', 'counties',
+                  'species', 'eventdiagnoses',)
 
 
 # TODO: Make these three EventSummary serializers adhere to DRY Principle

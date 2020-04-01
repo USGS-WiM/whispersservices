@@ -1,0 +1,7 @@
+CELERYD_NODES="beatworker1"
+CELERY_BIN="/var/www/whispersservices_django/env/bin/celery"
+CELERY_APP="whispersservices_django"
+CELERYBEAT_CHDIR="/var/www/whispersservices_django/"
+CELERYBEAT_USER="root"
+CELERYBEAT_GROUP="root"
+CELERY_CREATE_DIRS=1

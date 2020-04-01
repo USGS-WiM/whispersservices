@@ -1,9 +1,10 @@
 from django.db import models
 from datetime import date
+from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.postgres.fields import JSONField
+from django.contrib.postgres.fields import JSONField, ArrayField
 from django.conf import settings
 from simple_history.models import HistoricalRecords
 from whispersservices.field_descriptions import *
@@ -36,7 +37,8 @@ def determine_create_permission(request, event):
         return True
     else:
         if (request.user.id == event.created_by.id
-                or (request.user.organization.id == event.created_by.organization.id
+                or ((event.created_by.organization.id == request.user.organization.id
+                     or event.created_by.organization.id in request.user.child_organizations)
                     and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
@@ -49,7 +51,8 @@ def determine_object_update_permission(self, request, event_id):
     if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
         return False
     elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-          or (request.user.organization.id == self.created_by.organization.id
+          or ((self.created_by.organization.id == request.user.organization.id
+               or self.created_by.organization.id in request.user.child_organizations)
               and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
         return True
     else:
@@ -80,17 +83,6 @@ class HistoryModel(models.Model):
     class Meta:
         abstract = True
         default_permissions = ('add', 'change', 'delete', 'view')
-
-
-class HistoryNameModel(HistoryModel):
-    """
-    An abstract base class model for the common name field.
-    """
-
-    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this history')
-
-    class Meta:
-        abstract = True
 
 
 class PermissionsHistoryModel(HistoryModel):
@@ -194,7 +186,8 @@ class PermissionsHistoryModel(HistoryModel):
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin
                     or request.user.id == self.created_by.id
-                    or (request.user.organization.id == self.created_by.organization.id
+                    or ((self.created_by.organization.id == request.user.organization.id
+                         or self.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     class Meta:
@@ -282,6 +275,13 @@ class Event(PermissionsHistoryModel):
     contacts = models.ManyToManyField('Contact', through='EventContact', related_name='event', help_text=event.contacts)
     comments = GenericRelation('Comment', related_name='events', help_text=event.comments)
 
+    # keep track of "previous" event_status to detect if the value changes during save
+    __original_event_status = None
+
+    def __init__(self, *args, **kwargs):
+        super(Event, self).__init__(*args, **kwargs)
+        self.__original_event_status = self.event_status
+
     @staticmethod
     def has_create_permission(request):
         # anyone with role of Partner or above can create
@@ -292,12 +292,31 @@ class Event(PermissionsHistoryModel):
 
     # override the save method to toggle quality check field when complete field changes
     # and update event diagnoses as necessary so there is always at least one
+    # and send notifications if the event requires quality check
     def save(self, *args, **kwargs):
         # Disable Quality check field until field "complete" =1.
         # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
         if not self.complete:
             self.quality_check = None
         super(Event, self).save(*args, **kwargs)
+
+        # create real time notifications for quality check
+        # trigger: Event status (event_status) is set to "Quality Check Needed"
+        if self.event_status.name == 'Quality Check Needed' and self.event_status.id != self.__original_event_status.id:
+            self.__original_event_status = self.event_status
+            # source: system
+            source = 'system'
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            # recipients: Epi staff
+            recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
+            # email forwarding: Automatic, to nwhc-epi@usgs.gov
+            email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
+            subject = msg_tmp.subject_template.format(event_id=self.id)
+            body = msg_tmp.body_template.format(event_id=self.id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
+            return True
 
         def get_event_diagnoses():
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
@@ -402,7 +421,7 @@ class EventGroup(AdminPermissionsHistoryModel):
     def name(self):
         return "G" + str(self.id)
 
-    category = models.ForeignKey('EventGroupCategory', models.CASCADE)
+    category = models.ForeignKey('EventGroupCategory', models.CASCADE, related_name='eventgroups')
     comments = GenericRelation('Comment', related_name='eventgroups')
 
     def __str__(self):
@@ -673,7 +692,33 @@ class EventLocation(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to calculate the parent event's start_date and end_date and affected_count
+    def update_event_affected_count(self, event, locations):
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            return None
+        else:
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                return sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
+                return sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+            else:
+                return None
+
+    # override the save method to calculate the parent event's start_date, end_date, affected_count, and modified_date
     def save(self, *args, **kwargs):
         super(EventLocation, self).save(*args, **kwargs)
 
@@ -696,30 +741,29 @@ class EventLocation(PermissionsHistoryModel):
             event.end_date = None
 
         # affected_count
-        # If EventType = Morbidity/Mortality
-        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
-        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
-        event_type_id = event.event_type.id
-        if event_type_id not in [1, 2]:
-            event.affected_count = None
-        else:
-            loc_ids = [loc['id'] for loc in locations]
-            loc_species = LocationSpecies.objects.filter(
-                event_location_id__in=loc_ids).values(
-                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
-            if event_type_id == 1:
-                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                   for spec in loc_species]
-                event.affected_count = sum(affected_counts)
-            elif event_type_id == 2:
-                loc_species_ids = [spec['id'] for spec in loc_species]
-                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+        event.affected_count = self.update_event_affected_count(event, locations)
+
+        # modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
 
         event.save()
+
+    # override the delete method to update the parent event's modified_date and affected_count
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+
+        # affected_count
+        event.affected_count = self.update_event_affected_count(event, locations)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
+        event.save()
+        super(EventLocation, self).delete(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -749,6 +793,24 @@ class EventLocationContact(PermissionsHistoryModel):
     def has_object_update_permission(self, request):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
+
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventLocationContact, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(EventLocationContact, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -867,6 +929,24 @@ class EventLocationFlyway(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventLocationFlyway, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(EventLocationFlyway, self).delete(*args, **kwargs)
+
     def __str__(self):
         return str(self.id)
 
@@ -925,19 +1005,13 @@ class LocationSpecies(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to calculate the parent event's affected_count
-    def save(self, *args, **kwargs):
-        super(LocationSpecies, self).save(*args, **kwargs)
-
-        event = Event.objects.filter(id=self.event_location.event.id).first()
-
-        # affected_count
+    def update_event_affected_location(self, event):
         # If EventType = Morbidity/Mortality
         # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
         # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
         event_type_id = event.event_type.id
         if event_type_id not in [1, 2]:
-            event.affected_count = None
+            return None
         else:
             locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
             loc_ids = [loc['id'] for loc in locations]
@@ -948,15 +1022,45 @@ class LocationSpecies(PermissionsHistoryModel):
                 affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
                                    + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
                                    for spec in loc_species]
-                event.affected_count = sum(affected_counts)
+                return sum(affected_counts)
             elif event_type_id == 2:
                 loc_species_ids = [spec['id'] for spec in loc_species]
                 species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
                     location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
                 # positive_counts = [dx.get('positive_count') or 0 for dx in species_dx]
-                event.affected_count = sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+                return sum(species_dx_positive_counts) if len(species_dx_positive_counts) == 0 else None
+            else:
+                return None
+
+    # override the save method to calculate the parent event's affected_count and update the modified_date
+    def save(self, *args, **kwargs):
+        super(LocationSpecies, self).save(*args, **kwargs)
+
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+
+        # affected_count
+        event.affected_count = self.update_event_affected_location(event)
+
+        # modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
 
         event.save()
+
+    # override the delete method to update the parent event's modified_date and affected_count
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event_location.event.id).first()
+
+        # affected_count
+        event.affected_count = self.update_event_affected_location(event)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
+        event.save()
+        super(LocationSpecies, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -1097,10 +1201,26 @@ class EventDiagnosis(PermissionsHistoryModel):
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
     # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
     # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+    # and update the parent event's modified_date
     def save(self, *args, **kwargs):
         if self.diagnosis.name in ['Pending', 'Undetermined']:
             self.suspect = False
         super(EventDiagnosis, self).save(*args, **kwargs)
+
+        event = Event.objects.filter(id=self.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(EventDiagnosis, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1163,6 +1283,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     organizations = models.ManyToManyField(
         'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
 
+    # keep track of "previous" diagnosis to detect if the value changes during save
+    __original_diagnosis = None
+
+    def __init__(self, *args, **kwargs):
+        super(SpeciesDiagnosis, self).__init__(*args, **kwargs)
+        self.__original_diagnosis = self.diagnosis
+
     @staticmethod
     def has_create_permission(request):
         if request and 'location_species' in request.data:
@@ -1175,9 +1302,38 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         event_id = self.location_species.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    def update_event_affected_count(self, event):
+        # If EventType = Morbidity/Mortality
+        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
+        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
+        event_type_id = event.event_type.id
+        if event_type_id not in [1, 2]:
+            return None
+        else:
+            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
+            loc_ids = [loc['id'] for loc in locations]
+            loc_species = LocationSpecies.objects.filter(
+                event_location_id__in=loc_ids).values(
+                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
+            if event_type_id == 1:
+                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
+                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
+                                   for spec in loc_species]
+                return sum(affected_counts)
+            elif event_type_id == 2:
+                loc_species_ids = [spec['id'] for spec in loc_species]
+                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
+                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
+                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
+                return sum(positive_counts)
+            else:
+                return None
+
     # override the save method to ensure that a Pending or Undetermined diagnosis is never suspect
-    # and to calculate the parent event's affected_count
+    # and to create real time notifications for high impact diseases
+    # and to update the parent event's affected_count and modified_date
     def save(self, *args, **kwargs):
+        is_new = False if self.id else True
 
         # all "Pending" and "Undetermined" diagnosis must be confirmed (not suspect) = false, even if no lab OR
         # some other way of coding this such that we never see "Pending suspect" or "Undetermined suspect" on front end
@@ -1197,32 +1353,41 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
 
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
+
+        # create real time notifications for high impact diseases
+        # trigger: creating or updating a species diagnosis with a high impact diagnosis
+        if self.diagnosis.high_impact and (is_new or (self.diagnosis.id != self.__original_diagnosis.id)):
+            self.__original_diagnosis = self.diagnosis
+            # source: User that adds a species diagnosis that is a reportable disease
+            source = self.created_by.username
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            # recipients: WHISPers admin team, WHISPers Epi staff, event owner
+            recipients = list(User.objects.filter(
+                Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
+            recipients += [event.created_by.id, ]
+            # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
+            email_to = list(User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
+            email_to += [event.created_by.email, ]
+            evt_loc = self.location_species.event_location
+            short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
+            subject = msg_tmp.subject_template.format(
+                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
+            body = msg_tmp.body_template.format(
+                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
+                event_id=self.location_species.event_location.event.id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+
         diagnosis = self.diagnosis
 
         # affected_count
-        # If EventType = Morbidity/Mortality
-        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
-        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
-        event_type_id = event.event_type.id
-        if event_type_id not in [1, 2]:
-            event.affected_count = None
-        else:
-            locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
-            loc_ids = [loc['id'] for loc in locations]
-            loc_species = LocationSpecies.objects.filter(
-                event_location_id__in=loc_ids).values(
-                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
-            if event_type_id == 1:
-                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                   for spec in loc_species]
-                event.affected_count = sum(affected_counts)
-            elif event_type_id == 2:
-                loc_species_ids = [spec['id'] for spec in loc_species]
-                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
-                event.affected_count = sum(positive_counts)
+        event.affected_count = self.update_event_affected_count(event)
+
+        # modified_date
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
 
         event.save()
 
@@ -1251,8 +1416,9 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
 
     # override the delete method to ensure that when all speciesdiagnoses with a particular diagnosis are deleted,
     # then eventdiagnosis of same diagnosis for this parent event needs to be deleted as well
+    # and update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
-        event = self.location_species.event_location.event
+        event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
         diagnosis = self.diagnosis
         super(SpeciesDiagnosis, self).delete(*args, **kwargs)
 
@@ -1273,6 +1439,15 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             EventDiagnosis.objects.create(
                 event=event, diagnosis=new_diagnosis, suspect=False, priority=1,
                 created_by=self.created_by, modified_by=self.modified_by)
+
+        # affected_count
+        event.affected_count = self.update_event_affected_count(event)
+
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+
+        event.save()
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1304,6 +1479,24 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     def has_object_update_permission(self, request):
         event_id = self.species_diagnosis.location_species.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
+
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(SpeciesDiagnosisOrganization, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
+        if not event.modified_date == date.today():
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(SpeciesDiagnosisOrganization, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -1376,6 +1569,28 @@ class ServiceRequest(PermissionsHistoryModel):
         else:
             return False
 
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+        super(ServiceRequest, self).save(*args, **kwargs)
+
+        event_id = self.event.id
+
+        # Create a 'Service Request Response' notification if a service request response is updated.
+        # Only counts for a Yes, No, or Maybe value - Pending is automatic and should not trigger any notification.
+        if self.request_response.name in ['Yes', 'No', 'Maybe']:
+            # source: WHISPers admin who updates the request response value (i.e. responds).
+            source = self.modified_by.username
+            # recipients: user who made the request, event owner
+            recipients = [self.created_by.id, self.event.created_by.id, ]
+            # email forwarding: Automatic, to the user who made the request and event owner
+            email_to = [self.created_by.email, self.event.created_by.email, ]
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Response').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(event_id=event_id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+
     def __str__(self):
         return str(self.id)
 
@@ -1412,6 +1627,195 @@ class ServiceRequestResponse(AdminPermissionsHistoryNameModel):
 
 ######
 #
+#  Notifications
+#
+######
+
+
+class Notification(PermissionsHistoryModel):
+    """
+    Notification
+    """
+
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the user receiving this notification')
+    source = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the source of this notification')
+    event = models.ForeignKey('Event', models.CASCADE, null=True, related_name='notifications', help_text='A foreign key integer value identifying an event')
+    read = models.BooleanField(default=False, help_text='A boolean value indicating if this notification has been read or not')
+    client_page = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the page of the client application where the topic of this notification can be addressed')
+    subject = models.CharField(max_length=128, help_text='An alphanumeric value of the subject of this notification')
+    body = models.TextField(blank=True, help_text='An alphanumeric value of the message body of this notification')
+
+    @staticmethod
+    def has_create_permission(request):
+        # no one can create
+        return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the recipient or the recipient's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.recipient.id
+              or ((self.recipient.organization.id == request.user.organization.id
+                   or self.recipient.organization.id in request.user.child_organizations)
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def has_object_destroy_permission(self, request):
+        # Only admins or the recipient or the recipient's org admin can delete
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.recipient.id
+              or ((self.recipient.organization.id == request.user.organization.id
+                   or self.recipient.organization.id in request.user.child_organizations)
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notification"
+        ordering = ['-id']
+
+
+class NotificationMessageTemplate(AdminPermissionsHistoryModel):
+
+    name = models.CharField(max_length=128, unique=True, help_text='An alphanumeric value of the name of this notification')
+    subject_template = models.CharField(max_length=128, help_text='An alphanumeric value of the subject of this notification')
+    body_template = models.TextField(blank=True, help_text='An alphanumeric value of the message body of this notification')
+    message_variables = ArrayField(models.CharField(max_length=128), blank=True, help_text='An array of alphanumeric values of the variable names of this notification message')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationmessagetemplate"
+
+
+class NotificationCuePreference(PermissionsHistoryModel):
+    """
+    Notification Cue Preference
+    """
+
+    create_when_new = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be created when a record is new')
+    create_when_modified = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be created when a record is modified')
+    send_email = models.BooleanField(default=False, help_text='A boolean value indicating if a notification should be sent by email or not')
+
+    @staticmethod
+    def has_create_permission(request):
+        # no one can create
+        return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuepreference"
+
+
+class NotificationCueCustom(PermissionsHistoryModel):
+    """
+    Notification Cue Custom
+    Each JSON field has the format of {"values": [], "operator": ""}
+    with values being a list of integers and operator being either "AND" or "OR"
+    """
+
+    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuecustoms', help_text='A foreign key integer value identifying a notificationcuepreference')
+    event = models.IntegerField(null=True, help_text='An integer representing an event ID')
+    event_affected_count = models.IntegerField(null=True, help_text='An integer representing the event affected_count')
+    event_affected_count_operator = models.CharField(max_length=3, blank=True, default='', help_text='A string representing the operator for event affected_count')
+    event_location_land_ownership = JSONField(blank=True, default=dict, help_text='A JSON object containing the eventlocation land_ownership ID data')
+    event_location_administrative_level_one = JSONField(blank=True, default=dict, help_text='A JSON object containing the eventlocation administrativelevelone ID data')
+    species = JSONField(blank=True, default=dict, help_text='A JSON object containing the species ID data')
+    species_diagnosis_diagnosis = JSONField(blank=True, default=dict, help_text='A JSON object containing the speciesdiagnosis diagnosis ID data')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone with role of Affiliate or above can create
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.role.is_partneradmin
+              or request.user.role.is_partnermanager or request.user.role.is_partner or request.user.role.is_affiliate):
+            return True
+        else:
+            return False
+
+    def has_object_update_permission(self, request):
+        # Only admins or the creator or the creator's org admin can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
+                  and request.user.role.is_partneradmin)):
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuecustom"
+        # TODO: do we want to impose a unique_together constraint?
+
+
+class NotificationCueStandard(PermissionsHistoryModel):
+    """
+    Notification Cue Standard
+    """
+
+    notification_cue_preference = models.OneToOneField('NotificationCuePreference', models.CASCADE, related_name='notificationcuestandard', help_text='A foreign key integer value identifying a notificationcuepreference')
+    standard_type = models.ForeignKey('NotificationCueStandardType', models.CASCADE, related_name='notificationcuestandards', help_text='A foreign key integer value identifying a notificationcuestandardtype')
+
+    @staticmethod
+    def has_create_permission(request):
+        # no one can create
+        return False
+
+    def has_object_update_permission(self, request):
+        # no one can update
+        return False
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_notificationcuestandard"
+        ordering = ['id']
+        unique_together = ("notification_cue_preference", "standard_type", "created_by")
+
+
+class NotificationCueStandardType(AdminPermissionsHistoryNameModel):
+    """
+    Notification Cue Standard Types
+    """
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_notificationcuestandardtype"
+
+
+######
+#
 #  Misc
 #
 ######
@@ -1432,7 +1836,7 @@ class Comment(PermissionsHistoryModel):
     content_object = GenericForeignKey()
 
     @staticmethod
-    def has_create_permission(request):
+    def determine_comment_permission(request):
         # For models that are children of events (e.g., eventlocation, locationspecies, speciesdiagnosis),
         # only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can create
         if (not request or not request.user or not request.user.is_authenticated
@@ -1452,31 +1856,79 @@ class Comment(PermissionsHistoryModel):
                 if model_name == 'servicerequest':
                     return True
                 if model_name in ['event', 'eventlocation', 'eventeventgroup']:
+                    event = None
                     if model_name == 'event':
                         event = Event.objects.get(pk=int(request.data['object_id']))
                     elif model_name == 'eventlocation':
                         event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
                     elif model_name == 'eventeventgroup':
                         event = EventEventGroup.objects.get(pk=int(request.data['object_id'])).event
-                    if (request.user.id == event.created_by.id
-                            or (request.user.organization.id == event.created_by.organization.id
-                                and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
-                        return True
+                    if event:
+                        if (request.user.id == event.created_by.id
+                                or ((event.created_by.organization.id == request.user.organization.id
+                                     or event.created_by.organization.id in request.user.child_organizations)
+                                    and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+                            return True
+                        else:
+                            write_collaborators = list(
+                                User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
+                            return request.user.id in write_collaborators
                     else:
-                        write_collaborators = list(
-                            User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
-                        return request.user.id in write_collaborators
+                        return False
                 else:
                     return False
             else:
                 return False
 
-        # anyone with role of Partner or above can create
-        # return partner_create_permission(request)
+    # @classmethod
+    # def has_read_permission(cls, request):
+    #     return cls.determine_comment_permission(request)
+    #
+    # def has_object_read_permission(self, request):
+    #     return self.determine_comment_permission(request)
+
+    @classmethod
+    def has_create_permission(cls, request):
+        return cls.determine_comment_permission(request)
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
         return determine_object_update_permission(self, request, None)
+
+    # override the save method to create real time notifications
+    # update the parent event's modified_date (if applicable)
+    def save(self, *args, **kwargs):
+        super(Comment, self).save(*args, **kwargs)
+
+        # modified_date
+        event = None
+        model_name = self.content_type.model
+        if model_name == 'event':
+            event = Event.objects.filter(pk=self.object_id).first()
+        elif model_name == 'eventlocation':
+            event = EventLocation.objects.get(pk=self.object_id).event
+        elif model_name == 'eventeventgroup':
+            event = EventEventGroup.objects.get(pk=self.object_id).event
+        if event and not event.modified_date == self.modified_date:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+    # override the delete method to update the parent event's modified_date (if applicable)
+    def delete(self, *args, **kwargs):
+        event = None
+        model_name = self.content_type.model
+        if model_name == 'event':
+            event = Event.objects.filter(pk=self.object_id).first()
+        elif model_name == 'eventlocation':
+            event = EventLocation.objects.get(pk=self.object_id).event
+        elif model_name == 'eventeventgroup':
+            event = EventEventGroup.objects.get(pk=self.object_id).event
+        if event and not event.modified_date == self.modified_date:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+        super(Comment, self).delete(*args, **kwargs)
 
     def __str__(self):
         return str(self.id)
@@ -1524,6 +1976,21 @@ class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
         ordering = ['id']
 
 
+class Configuration(AdminPermissionsHistoryNameModel):
+    """
+    Global Configuration Setting
+    """
+
+    value = models.TextField(blank=True, default='', help_text='An alphanumeric value of the value paired to the name for this configuration')
+
+    def __str__(self):
+        return str(self.name)
+
+    class Meta:
+        db_table = "whispers_configuration"
+        ordering = ['id']
+
+
 ######
 #
 #  Users
@@ -1555,7 +2022,9 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
 
     @staticmethod
     def has_write_permission(request):
@@ -1575,7 +2044,9 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
 
     def has_object_destroy_permission(self, request):
         # Only superadmins or the creator or an admin member of the creator's organization can delete
@@ -1583,7 +2054,17 @@ class User(AbstractUser):
             return False
         else:
             return (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.id
-                    or (request.user.organization.id == self.organization.id and request.user.role.is_partneradmin))
+                    or ((self.organization.id == request.user.organization.id
+                         or self.organization.id in request.user.child_organizations)
+                        and request.user.role.is_partneradmin))
+
+    @property
+    def parent_organizations(self):
+        return self.organization.parent_organizations
+
+    @property
+    def child_organizations(self):
+        return self.organization.child_organizations
 
     email = models.EmailField(unique=True, blank=True, max_length=254, verbose_name='email address')
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
@@ -1594,6 +2075,28 @@ class User(AbstractUser):
     user_status = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the status for this user')
 
     history = HistoricalRecords()
+
+    # override the save method to create standard notifications and cue preferences on create
+    # also deactivate all notifications when the user is no longer active
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+        # users with SuperAdmin role should always have is_superuser = True
+        self.is_superuser = True if self.role is not None and self.role.is_superadmin else False
+        super(User, self).save(*args, **kwargs)
+
+        # all non-public users get standard notifications
+        if is_new and (self.role.is_superadmin or self.role.is_admin or self.role.is_partneradmin or
+                       self.role.is_partnermanager or self.role.is_partner or self.role.is_affiliate):
+            std_notif_types = NotificationCueStandardType.objects.all()
+            for std_notif_type in std_notif_types:
+                pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
+                NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
+                                                       created_by=self, modified_by=self)
+        # when a user is deactivated, turn off the user's notifications
+        elif not self.is_active:
+            # deactivate all notifications (all cue preferences set to False) when user.is_active is False
+            NotificationCuePreference.objects.filter(created_by=self.id).update(
+                create_when_new=False, create_when_modified=False, send_email=False)
 
     def __str__(self):
         return self.username
@@ -1644,13 +2147,61 @@ class Role(AdminPermissionsHistoryNameModel):
         ordering = ['id']
 
 
+class UserChangeRequest(PermissionsHistoryModel):
+    """
+    User Change Request
+    """
+
+    requester = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='userchangerequests_requester', help_text='A foreign key integer value identifying a user')
+    role_requested = models.ForeignKey('Role', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying a role requested for this user change request')
+    organization_requested = models.ForeignKey('Organization', models.PROTECT, related_name='userchangerequests', help_text='A foreign key integer value identifying an organization requested for this user change request')
+    request_response = models.ForeignKey('UserChangeRequestResponse', models.PROTECT, null=True, default=4,
+                                         related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
+    response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
+                                    related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')
+
+    @staticmethod
+    def has_create_permission(request):
+        # anyone can create
+        return True
+
+    def has_object_update_permission(self, request):
+        # Only admins can update
+        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            return False
+        elif request.user.role.is_superadmin or request.user.role.is_admin:
+            return True
+        else:
+            return False
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_userchangerequest"
+        ordering = ['id']
+
+
+class UserChangeRequestResponse(AdminPermissionsHistoryNameModel):
+    """
+    User Change Request Response
+    """
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        db_table = "whispers_userchangerequestresponse"
+        ordering = ['id']
+
+
 class EventReadUser(PermissionsHistoryModel):
     """
     Table to allow many-to-many relationship between Events and Read-Only Users.
     """
 
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventreadusers')
-    user = models.ForeignKey('User', models.CASCADE, related_name='eventreadusers')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='eventreadusers')
 
     @staticmethod
     def has_create_permission(request):
@@ -1663,7 +2214,8 @@ class EventReadUser(PermissionsHistoryModel):
             return True
         else:
             if (request.user.id == event.created_by.id
-                    or (request.user.organization.id == event.created_by.organization.id
+                    or ((event.created_by.organization.id == request.user.organization.id
+                         or event.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
                 return True
             else:
@@ -1674,11 +2226,34 @@ class EventReadUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
             return False
+
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+        super(EventReadUser, self).save(*args, **kwargs)
+
+        # if this is a new collaborator user, create a 'Collaborator Added' notification
+        if is_new:
+            user = self.created_by
+            # source: User who added another user as a collaborator.
+            source = user.username
+            # recipients: user(s) added as collaborator
+            recipients = [self.user.id, ]
+            # email forwarding: Automatic, to user that was made a collaborator.
+            email_to = [self.user.email, ]
+            event_id = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                username=user.username, collaborator_type="Read", event_id=event_id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -1686,6 +2261,7 @@ class EventReadUser(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_eventreaduser"
         ordering = ['id']
+        # TODO: do we want to impose a unique_together constraint?
 
 
 class EventWriteUser(PermissionsHistoryModel):
@@ -1694,7 +2270,7 @@ class EventWriteUser(PermissionsHistoryModel):
     """
 
     event = models.ForeignKey('Event', models.CASCADE, related_name='eventwriteusers')
-    user = models.ForeignKey('User', models.CASCADE, related_name='eventwriteusers')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='eventwriteusers')
 
     @staticmethod
     def has_create_permission(request):
@@ -1707,7 +2283,8 @@ class EventWriteUser(PermissionsHistoryModel):
             return True
         else:
             if (request.user.id == event.created_by.id
-                    or (request.user.organization.id == event.created_by.organization.id
+                    or ((event.created_by.organization.id == request.user.organization.id
+                         or event.created_by.organization.id in request.user.child_organizations)
                         and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
                 return True
             else:
@@ -1718,11 +2295,34 @@ class EventWriteUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
             return True
         else:
             return False
+
+    # override the save method to create real time notifications
+    def save(self, *args, **kwargs):
+        is_new = False if self.id else True
+        super(EventWriteUser, self).save(*args, **kwargs)
+
+        # if this is a new collaborator user, create a 'Collaborator Added' notification
+        if is_new:
+            user = self.created_by
+            # source: User who added another user as a collaborator.
+            source = user.username
+            # recipients: user(s) added as collaborator
+            recipients = [self.user.id, ]
+            # email forwarding: Automatic, to user that was made a collaborator.
+            email_to = [self.user.email, ]
+            event_id = self.event.id
+            msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            subject = msg_tmp.subject_template.format(event_id=event_id)
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                username=user.username, collaborator_type="Write", event_id=event_id)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -1730,6 +2330,7 @@ class EventWriteUser(PermissionsHistoryModel):
     class Meta:
         db_table = "whispers_eventwriteuser"
         ordering = ['id']
+        # TODO: do we want to impose a unique_together constraint?
 
 
 class Circle(PermissionsHistoryModel):
@@ -1750,7 +2351,8 @@ class Circle(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1770,7 +2372,7 @@ class CircleUser(PermissionsHistoryModel):
     """
 
     circle = models.ForeignKey('Circle', models.CASCADE, help_text='A foreign key integer value identifying a circle')
-    user = models.ForeignKey('User', models.CASCADE, help_text='A foreign key integer value identifying a circle user')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, help_text='A foreign key integer value identifying a circle user')
 
     @staticmethod
     def has_create_permission(request):
@@ -1782,7 +2384,8 @@ class CircleUser(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1804,6 +2407,39 @@ class Organization(AdminPermissionsHistoryNameModel):
     @staticmethod
     def has_request_new_permission(request):
         return True
+
+    def get_parent_organizations(self):
+        parents = [self]
+        if self.parent_organization is not None:
+            parent = self.parent_organization
+            parents.extend(parent.get_parent_organizations())
+        return parents
+
+    def get_child_organizations(self):
+        children = [self]
+        try:
+            child_list = self.organizations.all()
+        except AttributeError:
+            return children
+        for child in child_list:
+            children.extend(child.get_child_organizations())
+        return children
+
+    @property
+    def parent_organizations(self):
+        orgs = self.get_parent_organizations()
+        org_ids = [org.id for org in orgs]
+        if self.id in org_ids:
+            org_ids.pop(org_ids.index(self.id))
+        return org_ids
+
+    @property
+    def child_organizations(self):
+        orgs = self.get_child_organizations()
+        org_ids = [org.id for org in orgs]
+        if self.id in org_ids:
+            org_ids.pop(org_ids.index(self.id))
+        return org_ids
 
     private_name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the private name of this organization')
     address_one = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the address one of this organization')
@@ -1857,7 +2493,8 @@ class Contact(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:
@@ -1905,7 +2542,8 @@ class Search(PermissionsHistoryModel):
         if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-              or (request.user.organization.id == self.created_by.organization.id
+              or ((self.created_by.organization.id == request.user.organization.id
+                   or self.created_by.organization.id in request.user.child_organizations)
                   and request.user.role.is_partneradmin)):
             return True
         else:

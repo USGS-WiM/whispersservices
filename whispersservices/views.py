@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
-from rest_framework.exceptions import PermissionDenied, APIException, NotFound
+from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.settings import api_settings
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_csv import renderers as csv_renderers
@@ -54,7 +54,11 @@ class PlainTextParser(BaseParser):
 
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
-LIST_DELIMETER = ','
+LIST_DELIMITER = ','
+EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address and whispers_email_address.value.count('@') == 1:
+    EMAIL_WHISPERS = whispers_email_address.value
 
 
 def get_request_user(request):
@@ -70,8 +74,8 @@ def construct_email(request_data, requester_email, message):
     body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
     body += message + "\r\n\r\n"
     body += request_data
-    from_address = settings.EMAIL_WHISPERS
-    to_list = [settings.EMAIL_WHISPERS, ]
+    from_address = EMAIL_WHISPERS
+    to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
     reply_list = [requester_email, ]
     headers = None  # {'Message-ID': 'foo'}
@@ -84,6 +88,26 @@ def construct_email(request_data, requester_email, message):
             return Response({"status": "send email failed, please contact the administrator."}, status=500)
     else:
         return Response(email.__dict__, status=200)
+
+
+def generate_notification_request_new(lookup_table, request):
+    user = get_request_user(request)
+    user = user if user else User.objects.filter(id=1).first()
+    # source: User requesting a new option.
+    source = user.username
+    # recipients: WHISPers admin team
+    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+    # email forwarding: Automatic, to whispers@usgs.gov
+    email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
+    msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
+    subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
+    body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                  organization=user.organization.name, lookup_table=lookup_table,
+                                  lookup_item=request.data)
+    event = None
+    from whispersservices.immediate_tasks import generate_notification
+    generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+    return Response({"status": 'email sent'}, status=200)
 
 
 ######
@@ -181,13 +205,127 @@ class EventViewSet(HistoryViewSet):
     Deletes an event.
     """
 
+    @action(detail=True, methods=['post'])
+    def alert_collaborator(self, request, pk=None):
+        # expected JSON fields: "recipients" (list of integers, required), "comment" (string, optional)
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+            raise PermissionDenied
+
+        event = Event.objects.filter(id=pk).first()
+        if not event:
+            raise NotFound
+
+        user = get_request_user(self.request)
+
+        # only 'qualified users' may send alerts (someone with edit permissions on event)
+        # (admins or the creator or a manager/admin member of the creator's org or a write_collaborator)
+        qualified_event_user_ids = set(list(User.objects.filter(
+            Q(eventwriteusers__event_id=event.id) |
+            Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+            Q(organization__in=event.created_by.parent_organizations, role__in=[3, 4]) |
+            Q(id=event.created_by.id) |
+            Q(role__in=[1, 2])).values_list('id', flat=True)))
+        if user.id not in qualified_event_user_ids:
+            raise PermissionDenied
+
+        # validate that the POST body contains a required recipients list and possibly an optional comment
+        recipients_message = "A field named \"recipients\" containing a list/array of collaborator User IDs"
+        recipients_message += " is required to create collaborator alerts."
+        if 'recipients' in request.data:
+            recipient_ids = request.data['recipients']
+            if not isinstance(recipient_ids, list) or not all(isinstance(x, int) for x in recipient_ids):
+                raise serializers.ValidationError(recipients_message)
+            else:
+                event_user_ids = set(list(User.objects.filter(
+                    Q(eventreadusers__event_id=event.id) |
+                    Q(eventwriteusers__event_id=event.id) |
+                    Q(organization=event.created_by.organization.id, role__in=[3, 4]) |
+                    Q(organization__in=event.created_by.parent_organizations, role__in=[3, 4]) |
+                    Q(id=event.created_by.id) |
+                    Q(role__in=[1, 2])).values_list('id', flat=True)))
+                # validate that the recipients are all collaborators of the event (or have access to the event)
+                if not all(r_id in event_user_ids for r_id in recipient_ids):
+                    message = "One or more submitted recipient IDs are not eligible to receive alerts about this event."
+                    message += " Eligible recipients are collaborators of this event or"
+                    message += " users in the same organization as the creator of this event, or system administrators."
+                    raise serializers.ValidationError(message)
+        else:
+            raise serializers.ValidationError(recipients_message)
+        comment_message = "A field named \"comment\" may only contain a string value."
+        if 'comment' in request.data:
+            comment = request.data['comment']
+            if not isinstance(comment, str):
+                raise serializers.ValidationError(comment_message)
+        else:
+            comment = ''
+
+        # source: A qualified user (someone with edit permissions on event) who creates a collaborator alert.
+        source = user.username
+        # recipients: user(s) chosen from among the collaborator list
+        recipients = User.objects.filter(id__in=recipient_ids)
+        recipient_ids = [user.id for user in recipients]
+        recipient_names = ''
+        for user in recipients:
+            recipient_names += ", " + user.first_name + " " + user.last_name
+        recipient_names = recipient_names.replace(", ", "", 1)
+        # email forwarding: Automatic, to all users included in the notification request.
+        email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
+        subject = msg_tmp.subject_template.format(event_id=event.id)
+        body = msg_tmp.body_template.format(
+            first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
+            event_id=event.id, comment=comment, recipients=recipient_names)
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
+
+        # Collaborator alert is also logged as an event-level comment.
+        comment += "<br />Alert send to : " + recipient_names
+        comment_type = CommentType.objects.filter(name='Collaborator Alert').first()
+        if comment_type is not None:
+            Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
+                                   created_by=user, modified_by=user)
+
+        return Response({"status": 'email sent'}, status=200)
+
+    @action(detail=True, methods=['post'], parser_classes=(PlainTextParser,))
+    def request_collaboration(self, request, pk=None):
+        if request is None or not request.user.is_authenticated:
+            raise PermissionDenied
+
+        user = get_request_user(self.request)
+        # source: User requesting that they be a collaborator on an event.
+        source = user.username
+        event = Event.objects.filter(id=pk).first()
+        if not event:
+            raise NotFound
+
+        event_owner = event.created_by
+        # recipients: event owner, org manager, org admin
+        recipients = list(User.objects.filter(
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                role__in=[3, 4], organization__in=event_owner.parent_organizations)
+        ).values_list('id', flat=True))
+        # email forwarding: Automatic, to event owner, organization manager, and organization admin
+        email_to = list(User.objects.filter(
+            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                role__in=[3, 4], organization__in=event_owner.parent_organizations)
+        ).values_list('email', flat=True))
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
+        subject = msg_tmp.subject_template.format(event_id=event.id)
+        # {first_name,last_name,organization,event_id,comment,email}
+        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                            organization=user.organization, event_id=event.id, comment=request.data)
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+        return Response({"status": 'email sent'}, status=200)
+
     # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
         # if the event is complete, it cannot be deleted
         if self.get_object().complete:
             message = "A complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         elif self.get_object().eventgroups:
             eventgroups_min_events = []
             eventgroups = EventGroup.objects.filter(events=self.get_object().id)
@@ -198,7 +336,7 @@ class EventViewSet(HistoryViewSet):
             if len(eventgroups_min_events) > 0:
                 message = "An event may not be deleted if any event group " + str(eventgroups_min_events)
                 message += " to which it belongs would have fewer than two events following this delete."
-                raise APIException(message)
+                raise serializers.ValidationError(message)
 
         return super(EventViewSet, self).destroy(request, *args, **kwargs)
 
@@ -231,6 +369,7 @@ class EventViewSet(HistoryViewSet):
                                 User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id
                                 or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in read_collaborators or user.id in write_collaborators):
                             return queryset
                         else:
@@ -273,15 +412,18 @@ class EventViewSet(HistoryViewSet):
                         else:
                             raise PermissionDenied
                     # write_collaborators members and org partners can retrieve and update but not delete
-                    elif user.id in write_collaborators or (user.organization.id == obj.created_by.organization.id
-                                                            and (user.role.is_affiliate or user.role.is_partner)):
+                    elif user.id in write_collaborators or (
+                            (user.organization.id == obj.created_by.organization.id
+                             or user.organization.id in obj.created_by.parent_organizations)
+                            and (user.role.is_affiliate or user.role.is_partner)):
                         if self.action == 'delete':
                             raise PermissionDenied
                         else:
                             return EventSerializer
                     # owner and org partner managers and org partner admins have full access to non-admin fields
                     elif user.id == obj.created_by.id or (
-                            user.organization.id == obj.created_by.organization.id
+                            (user.organization.id == obj.created_by.organization.id
+                             or user.organization.id in obj.created_by.parent_organizations)
                             and (user.role.is_partnermanager or user.role.is_partneradmin)):
                         return EventSerializer
             return EventPublicSerializer
@@ -319,7 +461,7 @@ class EventEventGroupViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "EventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventEventGroupViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by user type
@@ -329,7 +471,8 @@ class EventEventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+        if (user.role.is_superadmin or user.role.is_admin
+                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventEventGroup.objects.all()
         else:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
@@ -421,7 +564,8 @@ class EventGroupCategoryViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if user.role.is_superadmin or user.role.is_admin or user.organization.id == 2:
+        if (user.role.is_superadmin or user.role.is_admin
+                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventGroupCategory.objects.all()
         else:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
@@ -567,7 +711,7 @@ class EventAbstractViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Abstracts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventAbstractViewSet, self).destroy(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -606,7 +750,7 @@ class EventCaseViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Cases from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventCaseViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -638,7 +782,7 @@ class EventLabsiteViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Labsites from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLabsiteViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -669,7 +813,7 @@ class EventOrganizationViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Organizations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -686,7 +830,11 @@ class EventOrganizationViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = EventOrganization.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                        ).values_list('id', flat=True))):
                     return EventOrganizationSerializer
             return EventOrganizationPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -721,7 +869,7 @@ class EventContactViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Contacts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -775,7 +923,7 @@ class EventLocationViewSet(HistoryViewSet):
         if self.get_object().event.complete:
             message = "Locations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -793,6 +941,7 @@ class EventLocationViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = EventLocation.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                         ).values_list('id', flat=True))):
@@ -830,7 +979,7 @@ class EventLocationContactViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Contacts from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -852,6 +1001,7 @@ class EventLocationContactViewSet(HistoryViewSet):
             queryset = EventLocationContact.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(event_location__event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -910,7 +1060,7 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
         queryset = AdministrativeLevelOne.objects.all()
         country = self.request.query_params.get('country', None) if self.request else None
         if country is not None and country != '':
-            if LIST_DELIMETER in country:
+            if LIST_DELIMITER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(country__in=country_list)
             else:
@@ -950,17 +1100,19 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        message = "Please add a new administrative level two:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new administrative level two:"
+        # return construct_email(request.data, request.user.email, message)
+        return generate_notification_request_new("administrativeleveltwos", request)
 
     def get_queryset(self):
         queryset = AdministrativeLevelTwo.objects.all()
         administrative_level_one = self.request.query_params.get('administrativelevelone', None)
         if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMETER in administrative_level_one:
+            if LIST_DELIMITER in administrative_level_one:
                 administrative_level_one_list = administrative_level_one.split(',')
                 queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
             else:
@@ -1050,7 +1202,7 @@ class EventLocationFlywayViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Flyways from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(EventLocationFlywayViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -1112,7 +1264,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
         if self.get_object().event_location.event.complete:
             message = "Species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(LocationSpeciesViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1130,6 +1282,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = LocationSpecies.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.event_location.event.id]) | Q(
                                 readevents__in=[obj.event_location.event.id])
@@ -1168,11 +1321,13 @@ class SpeciesViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        message = "Please add a new species:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new species:"
+        # return construct_email(request.data, request.user.email, message)
+        return generate_notification_request_new("species", request)
 
     def get_serializer_class(self):
         if self.request and 'slim' in self.request.query_params:
@@ -1263,18 +1418,20 @@ class DiagnosisViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        message = "Please add a new diagnosis:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new diagnosis:"
+        # return construct_email(request.data, request.user.email, message)
+        return generate_notification_request_new("diagnoses", request)
 
     # override the default queryset to allow filtering by URL argument diagnosis_type
     def get_queryset(self):
         queryset = Diagnosis.objects.all()
         diagnosis_type = self.request.query_params.get('diagnosis_type', None) if self.request else None
         if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMETER in diagnosis_type:
+            if LIST_DELIMITER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
                 queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
             else:
@@ -1335,7 +1492,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
         if instance.event.complete:
             message = "Diagnoses from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
 
         destroyed_event_diagnosis = super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
@@ -1368,7 +1525,8 @@ class EventDiagnosisViewSet(HistoryViewSet):
             pk = self.request.parser_context['kwargs'].get('pk', None)
             if pk is not None and pk.isdigit():
                 obj = EventDiagnosis.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id):
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations):
                     return EventDiagnosisSerializer
             return EventDiagnosisPublicSerializer
         # non-admins and non-owners (and non-owner orgs) must use the public serializer
@@ -1403,7 +1561,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
         if self.get_object().location_species.event_location.event.complete:
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(SpeciesDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1421,6 +1579,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = SpeciesDiagnosis.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
                             Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
                                 readevents__in=[obj.location_species.event_location.event.id])
@@ -1460,7 +1619,7 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
         if self.get_object().species_diagnosis.location_species.event_location.event.complete:
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
-            raise APIException(message)
+            raise serializers.ValidationError(message)
         return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -1561,6 +1720,7 @@ class ServiceRequestViewSet(HistoryViewSet):
             queryset = ServiceRequest.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(event__in=collab_evt_ids)
             )
         # otherwise return nothing
@@ -1620,6 +1780,154 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 ######
 #
+#  Notifications
+#
+######
+
+
+class NotificationViewSet(HistoryViewSet):
+    serializer_class = NotificationSerializer
+
+    @action(methods=['post'], detail=False)
+    def bulk_update(self, request):
+        user = get_request_user(self.request)
+
+        is_valid = True
+        response_errors = []
+        item = request.data
+        if 'action' not in item or item['action'] not in ['delete', 'set_read', 'set_unread']:
+            message = 'action is a required field (accepted values are "delete", "set_read", "set_unread")'
+            response_errors.append(message)
+        if 'ids' not in item or not isinstance(item['ids'], list) or not (
+                all(isinstance(x, int) for x in item['ids']) or all(x.isdigit() for x in item['ids'])):
+            # recipients_message = "A field named \"ids\" containing a list/array of notification IDs"
+            # recipients_message += " is required to bulk update notifications."
+            # raise serializers.ValidationError(recipients_message)
+            response_errors.append("ids is a required field")
+        else:
+            if user.role.id not in [1,2]:
+                user_notifications = list(
+                    Notification.objects.filter(recipient__id=user.id).values_list('id', flat=True))
+                if not all(x in user_notifications for x in item['ids']):
+                    message = "the requesting user must be the recipient of all notifications for all submitted ids"
+                    response_errors.append(message)
+        if len(response_errors) > 0:
+            is_valid = False
+
+        if is_valid:
+            if item['action'] == 'delete':
+                Notification.objects.filter(id__in=(item['ids'])).delete()
+            elif item['action'] == 'set_read':
+                Notification.objects.filter(id__in=(item['ids'])).update(read=True)
+            elif item['action'] == 'set_unread':
+                Notification.objects.filter(id__in=(item['ids'])).update(read=False)
+            return Response({"status": 'update completed'}, status=200)
+        else:
+            return Response({"non-field errors": response_errors}, status=400)
+
+    def get_queryset(self):
+        queryset = Notification.objects.all()
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return Notification.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return Notification.objects.none()
+        # admins and superadmins can see notifications that belong to anyone (if they use the 'recipient' query param)
+        # or everyone (if they use the 'all' query param, or get a single one), but default to just getting their own
+        elif user.role.is_superadmin or user.role.is_admin:
+            if self.action in PK_REQUESTS:
+                pk = self.request.parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    queryset = Notification.objects.filter(id=pk)
+                    return queryset
+                raise NotFound
+            get_all = True if self.request is not None and 'all' in self.request.query_params else False
+            if get_all:
+                return Notification.objects.all()
+            else:
+                recipient = self.request.query_params.get('recipient', None) if self.request else None
+                if recipient is not None and recipient != '':
+                    if LIST_DELIMITER in recipient:
+                        recipient_list = recipient.split(',')
+                        queryset = queryset.filter(recipient__in=recipient_list)
+                    else:
+                        queryset = queryset.filter(recipient__exact=recipient)
+                else:
+                    queryset = Notification.objects.all().filter(recipient__exact=user.id)
+        # otherwise return only what belongs to the user
+        else:
+            queryset = Notification.objects.filter(recipient__exact=user.id)
+
+        return queryset.order_by('-id')
+
+
+class NotificationCuePreferenceViewSet(HistoryViewSet):
+    serializer_class = NotificationCuePreferenceSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCuePreference.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCuePreference.objects.none()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCuePreference.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
+
+
+class NotificationCueCustomViewSet(HistoryViewSet):
+    serializer_class = NotificationCueCustomSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCueCustom.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCueCustom.objects.none()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCueCustom.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
+
+
+class NotificationCueStandardViewSet(HistoryViewSet):
+    serializer_class = NotificationCueStandardSerializer
+
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return NotificationCueStandard.objects.none()
+        # public users cannot see anything
+        elif user.role.is_public:
+            return NotificationCueStandard.objects.none()
+        # otherwise return only what belongs to the user
+        else:
+            queryset = NotificationCueStandard.objects.all().filter(created_by__exact=user.id)
+
+        return queryset
+
+
+class NotificationCueStandardTypeViewSet(HistoryViewSet):
+    queryset = NotificationCueStandardType.objects.all()
+    serializer_class = NotificationCueStandardTypeSerializer
+
+
+######
+#
 #  Misc
 #
 ######
@@ -1672,9 +1980,10 @@ class CommentViewSet(HistoryViewSet):
             queryset = Comment.objects.filter(
                 Q(created_by__exact=user.id) |
                 Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.child_organizations) |
                 Q(content_type__model='event', object_id__in=collab_evt_ids) |
                 Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-                Q(content_type__model='eventeventgroup',object_id__in=collab_evtgrp_ids) |
+                Q(content_type__model='eventeventgroup', object_id__in=collab_evtgrp_ids) |
                 Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
             )
         # otherwise return nothing
@@ -1767,21 +2076,23 @@ class UserViewSet(HistoryViewSet):
     """
     serializer_class = UserSerializer
 
-    # anyone can request a new user, but an email address is required if the request comes from a non-user
-    @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
-    def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
-            words = request.data.split(" ")
-            email_addresses = [word for word in words if '@' in word]
-            if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
-                msg = "You must submit at least a valid email address to create a new user account."
-                raise serializers.ValidationError(msg)
-            user_email = email_addresses[0]
-        else:
-            user_email = request.user.email
-
-        message = "Please add a new user:"
-        return construct_email(request.data or '', user_email, message)
+    # TODO: is this still needed, now that we have notifications?
+    # ANSWER: I think this can be deleted.
+    # # anyone can request a new user, but an email address is required if the request comes from a non-user
+    # @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
+    # def request_new(self, request):
+    #     if request is None or not request.user.is_authenticated:
+    #         words = request.data.split(" ")
+    #         email_addresses = [word for word in words if '@' in word]
+    #         if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
+    #             msg = "You must submit at least a valid email address to create a new user account."
+    #             raise serializers.ValidationError(msg)
+    #         user_email = email_addresses[0]
+    #     else:
+    #         user_email = request.user.email
+    #
+    #     message = "Please add a new user:"
+    #     return construct_email(request.data or '', user_email, message)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):
@@ -1828,7 +2139,8 @@ class UserViewSet(HistoryViewSet):
             if pk is not None and pk.isdigit():
                 obj = User.objects.filter(id=pk).first()
                 if obj and (user.password == obj.password or
-                            (user.organization.id == obj.organization.id and
+                            ((obj.organization.id == user.organization.id
+                              or obj.organization.id in user.organization.parent_organizations) and
                              (user.role.is_partneradmin or user.role.is_partnermanager))):
                     return UserSerializer
             return UserPublicSerializer
@@ -1851,8 +2163,8 @@ class UserViewSet(HistoryViewSet):
             return User.objects.filter(pk=user.id)
         # partneradmin can see data owned by the user or user's org
         elif user.role.is_partneradmin:
-            queryset = User.objects.all().filter(
-                Q(id__exact=user.id) | Q(organization__exact=user.organization))
+            queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
+                organization__in=user.organization.child_organizations))
         # otherwise return nothing
         else:
             return User.objects.none()
@@ -1914,6 +2226,73 @@ class RoleViewSet(HistoryViewSet):
     serializer_class = RoleSerializer
 
 
+class UserChangeRequestViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all role change requests.
+
+    create:
+    Creates a role change request.
+
+    read:
+    Returns a role change request by id.
+
+    update:
+    Updates a role change request.
+
+    partial_update:
+    Updates parts of a role change request.
+
+    delete:
+    Deletes a role change request.
+    """
+    serializer_class = UserChangeRequestSerializer
+
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return UserChangeRequest.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = UserChangeRequest.objects.all()
+        # partneradmins can see requests for their own org
+        elif user.role.is_partneradmin:
+            queryset = UserChangeRequest.objects.filter(Q(created_by__organization__exact=user.organization) | Q(
+                created_by__organization__in=user.organization.child_organizations))
+        # otherwise return nothing
+        else:
+            return UserChangeRequest.objects.none()
+
+        return queryset
+
+
+class UserChangeRequestResponseViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all role change request responses.
+
+    create:
+    Creates a role change request response.
+
+    read:
+    Returns a role change request response by id.
+
+    update:
+    Updates a role change request response.
+
+    partial_update:
+    Updates parts of a role change request response.
+
+    delete:
+    Deletes a role change request response.
+    """
+    queryset = UserChangeRequestResponse.objects.all().exclude(name="Pending")
+    serializer_class = UserChangeRequestResponseSerializer
+
+
 class CircleViewSet(HistoryViewSet):
     """
     list:
@@ -1949,7 +2328,8 @@ class CircleViewSet(HistoryViewSet):
         # otherwise return data owned by the user or user's org
         else:
             queryset = Circle.objects.all().filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
+                    created_by__organization__in=user.organization.child_organizations))
 
         return queryset
 
@@ -1980,11 +2360,13 @@ class OrganizationViewSet(HistoryViewSet):
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
-        if request is None or not request.user.is_authenticated:
+        # A request for a new lookup item is made. Partner or above.
+        if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        message = "Please add a new organization:"
-        return construct_email(request.data, request.user.email, message)
+        # message = "Please add a new organization:"
+        # return construct_email(request.data, request.user.email, message)
+        return generate_notification_request_new("organizations", request)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
@@ -2020,8 +2402,8 @@ class OrganizationViewSet(HistoryViewSet):
                 contacts_list = contacts.split(',')
                 queryset = queryset.filter(contacts__in=contacts_list)
             laboratory = self.request.query_params.get('laboratory', None)
-            if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
-                queryset = queryset.filter(laboratory__exact=laboratory)
+            if laboratory is not None and laboratory.capitalize() in ['True', 'False']:
+                queryset = queryset.filter(laboratory__exact=laboratory.capitalize())
 
         # all requests from anonymous users must only return published data
         if not user or not user.is_authenticated:
@@ -2034,6 +2416,7 @@ class OrganizationViewSet(HistoryViewSet):
                 if queryset:
                     obj = queryset[0]
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.organization.parent_organizations
                                 or user.role.is_superadmin or user.role.is_admin):
                         return queryset
             raise NotFound
@@ -2133,7 +2516,8 @@ class ContactViewSet(HistoryViewSet):
         elif (get_user_contacts or user.role.is_affiliate
               or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin):
             queryset = Contact.objects.all().filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization))
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
+                    created_by__organization__in=user.organization.child_organizations))
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Contact.objects.all()
@@ -2143,14 +2527,14 @@ class ContactViewSet(HistoryViewSet):
 
         org = query_params.get('org', None)
         if org is not None and org != '':
-            if LIST_DELIMETER in org:
+            if LIST_DELIMITER in org:
                 org_list = org.split(',')
                 queryset = queryset.filter(organization__in=org_list)
             else:
                 queryset = queryset.filter(organization__exact=org)
         owner_org = query_params.get('ownerorg', None)
         if owner_org is not None and owner_org != '':
-            if LIST_DELIMETER in owner_org:
+            if LIST_DELIMITER in owner_org:
                 owner_org_list = owner_org.split(',')
                 queryset = queryset.filter(owner_organization__in=owner_org_list)
             else:
@@ -2290,7 +2674,7 @@ class SearchViewSet(HistoryViewSet):
 
         owner = query_params.get('owner', None)
         if owner is not None and owner != '':
-            if LIST_DELIMETER not in owner:
+            if LIST_DELIMITER not in owner:
                 owner_list = owner.split(',')
                 queryset = queryset.filter(created_by__in=owner_list)
             else:
@@ -2311,6 +2695,15 @@ class CSVEventSummaryPublicRenderer(csv_renderers.PaginatedCSVRenderer):
     labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'start_date': 'Event Start Date',
               'end_date': 'Event End Date', 'countries': "Countries", 'states': 'States (or equivalent)',
               'counties': 'Counties (or equivalent)', 'species': 'Species', 'eventdiagnoses': 'Event Diagnosis'}
+
+
+class CSVEventSummaryRenderer(csv_renderers.PaginatedCSVRenderer):
+    header = ['id', 'type', 'public', 'affected', 'start_date', 'end_date', 'countries', 'states', 'counties',
+              'species', 'eventdiagnoses']
+    labels = {'id': 'Event ID', 'type': 'Event Type', 'affected': 'Number Affected', 'public': 'Public',
+              'start_date': 'Event Start Date', 'end_date': 'Event End Date', 'countries': 'Countries',
+              'states': 'States (or equivalent)', 'counties': 'Counties (or equivalent)', 'species': 'Species',
+              'eventdiagnoses': 'Event Diagnosis'}
 
 
 # TODO: event collaborators should be able to see private events if those have been shared to collaborators
@@ -2396,28 +2789,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             if queryset[0].write_collaborators:
                 write_collaborators = list(
                     User.objects.filter(eventwriteusers=queryset[0].id).values_list('id', flat=True))
-            # public users must use the public serializer unless collaborator
-            if user.role.is_public:
-                if user.id in read_collaborators or user.id in write_collaborators:
-                    if no_page:
-                        serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
-                    else:
-                        page = self.paginate_queryset(queryset)
-                        if page is not None:
-                            serializer = EventSummarySerializer(page, many=True, context={'request': request})
-                            return self.get_paginated_response(serializer.data)
-                        serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
-                else:
-                    if no_page:
-                        serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-                    else:
-                        page = self.paginate_queryset(queryset)
-                        if page is not None:
-                            serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
-                            return self.get_paginated_response(serializer.data)
-                        serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-            # partner users can see public fields and event_reference field
-            elif (user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager
+            # partner users can see all public fields and 'event_reference' and 'public' fields
+            if (user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager
                   or user.role.is_partneradmin or user.id in read_collaborators or user.id in write_collaborators):
                 if no_page:
                     serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
@@ -2427,7 +2800,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                         serializer = EventSummarySerializer(page, many=True, context={'request': request})
                         return self.get_paginated_response(serializer.data)
                     serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
+        # non-admins and non-owners (and non-owner orgs and non-collaborators) must use the public serializer
         if not serializer:
             if no_page:
                 serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
@@ -2443,8 +2816,14 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     # override the default renderers to use a csv renderer when requested
     def get_renderers(self):
         frmt = self.request.query_params.get('format', None) if self.request else None
+
         if frmt is not None and frmt == 'csv':
-            renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+            user = get_request_user(self.request)
+            serializer_class_name = self.get_serializer_class().__name__.lower()
+            if not user or not user.is_authenticated or 'public' in serializer_class_name:
+                renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+            else:
+                renderer_classes = (CSVEventSummaryRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -2465,42 +2844,20 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        frmt = self.request.query_params.get('format', None) if self.request else None
+        frmt = self.request.query_params.get('format', '') if self.request else ''
         user = get_request_user(self.request)
 
-        if frmt is not None and frmt == 'csv':
-            return FlatEventSummaryPublicSerializer
-        elif not user or not user.is_authenticated:
-            return EventSummaryPublicSerializer
+        if not user or not user.is_authenticated:
+            return FlatEventSummaryPublicSerializer if frmt == 'csv' else EventSummaryPublicSerializer
         # admins have access to all fields
         elif user.role.is_superadmin or user.role.is_admin:
-            return EventSummaryAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
-        elif self.action == 'retrieve':
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = Event.objects.filter(id=pk).first()
-                if obj is not None:
-                    read_collaborators = []
-                    write_collaborators = []
-                    if obj.read_collaborators:
-                        read_collaborators = list(
-                            User.objects.filter(eventreadusers=obj.id).values_list('id', flat=True))
-                    if obj.write_collaborators:
-                        write_collaborators = list(
-                            User.objects.filter(eventwriteusers=obj.id).values_list('id', flat=True))
-                    # admins have full access to all fields
-                    if user.role.is_superadmin or user.role.is_admin:
-                        return EventSummaryAdminSerializer
-                    # owner and org members and collaborators have full access to non-admin fields
-                    elif (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                          or user in read_collaborators or user in write_collaborators):
-                        return EventSummarySerializer
-            return EventSummaryPublicSerializer
+            return FlatEventSummarySerializer if frmt == 'csv' else EventSummaryAdminSerializer
+        # partner users have access to all the non-admin fields (public fields plus 'event_reference' and 'public'):
+        elif user.role.is_partneradmin or user.role.is_partnermanager or user.role.is_partner or user.role.is_affiliate:
+            return FlatEventSummarySerializer if frmt == 'csv' else EventSummarySerializer
         # everything else must use the public serializer
-        # (even the list action for partner roles, to avoid the performance hit of checking permissions on every object)
         else:
-            return EventSummaryPublicSerializer
+            return FlatEventSummaryPublicSerializer if frmt == 'csv' else EventSummaryPublicSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -2538,7 +2895,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         queryset = self.queryset
 
         # anonymous users can only see public data
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or user.role.is_public:
             if get_user_events:
                 return queryset.none()
             else:
@@ -2547,25 +2904,73 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         elif get_user_events:
             queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(created_by__organization__in=user.organization.child_organizations)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset
-        # non-user-specific event requests can only return public data
+        # for non-user-specific event requests, try to return the (old default) public data
+        #  AND any private data the user should be able to see
         else:
-            queryset = queryset.filter(public=True)
+            # queryset = queryset.filter(public=True)
+            public_queryset = queryset.filter(public=True).distinct()
+            personal_queryset = queryset.filter(
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+            queryset = public_queryset | personal_queryset
 
         # check for params that should use the 'and' operator
         and_params = query_params.get('and_params', None)
 
         # filter by complete, exact
         complete = query_params.get('complete', None)
-        if complete is not None and complete in ['True', 'true', 'False', 'false']:
-            queryset = queryset.filter(complete__exact=complete)
+        if complete is not None and complete.capitalize() in ['True', 'False']:
+            queryset = queryset.filter(complete__exact=complete.capitalize())
+        # filter by public, exact
+        public = query_params.get('public', None)
+        if public is not None and public.capitalize() in ['True', 'False']:
+            queryset = queryset.filter(public__exact=public.capitalize())
+        # filter by permission_source, exact list
+        permission_source = query_params.get('permission_source', None)
+        if permission_source is not None and permission_source != '':
+            if LIST_DELIMITER in permission_source:
+                permission_source_list = permission_source.split(',')
+                if ('own' in permission_source_list and 'organization' in permission_source_list
+                        and 'collaboration' in permission_source_list):
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
+                            created_by__organization__in=user.organization.child_organizations) | Q(
+                            read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+                elif 'own' in permission_source_list and 'organization' in permission_source_list:
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
+                            created_by__organization__in=user.organization.child_organizations)).distinct()
+                elif 'own' in permission_source_list and 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(
+                        Q(created_by=user.id) | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+                elif 'organization' in permission_source_list and 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations) | Q(
+                        read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).exclude(created_by=user.id).distinct()
+                elif 'own' in permission_source_list:
+                    queryset = queryset.filter(created_by=user.id)
+                elif 'organization' in permission_source_list:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
+                elif 'collaboration' in permission_source_list:
+                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+            else:
+                if 'own' == permission_source:
+                    queryset = queryset.filter(created_by=user.id)
+                elif 'organization' == permission_source:
+                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
+                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
+                elif 'collaboration' == permission_source:
+                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
         if event_type is not None and event_type != '':
-            if LIST_DELIMETER in event_type:
+            if LIST_DELIMITER in event_type:
                 event_type_list = event_type.split(',')
                 queryset = queryset.filter(event_type__in=event_type_list)
             else:
@@ -2573,7 +2978,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by diagnosis ID, exact list
         diagnosis = query_params.get('diagnosis', None)
         if diagnosis is not None and diagnosis != '':
-            if LIST_DELIMETER in diagnosis:
+            if LIST_DELIMITER in diagnosis:
                 diagnosis_list = diagnosis.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses').filter(
                     eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
@@ -2595,7 +3000,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by diagnosistype ID, exact list
         diagnosis_type = query_params.get('diagnosis_type', None)
         if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMETER in diagnosis_type:
+            if LIST_DELIMITER in diagnosis_type:
                 diagnosis_type_list = diagnosis_type.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
                     eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
@@ -2617,7 +3022,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by species ID, exact list
         species = query_params.get('species', None)
         if species is not None and species != '':
-            if LIST_DELIMETER in species:
+            if LIST_DELIMITER in species:
                 species_list = species.split(',')
                 queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
                     eventlocations__locationspecies__species__in=species_list).distinct()
@@ -2639,7 +3044,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by administrative_level_one, exact list
         administrative_level_one = query_params.get('administrative_level_one', None)
         if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMETER in administrative_level_one:
+            if LIST_DELIMITER in administrative_level_one:
                 admin_level_one_list = administrative_level_one.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
@@ -2666,7 +3071,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # filter by administrative_level_two, exact list
         administrative_level_two = query_params.get('administrative_level_two', None)
         if administrative_level_two is not None and administrative_level_two != '':
-            if LIST_DELIMETER in administrative_level_two:
+            if LIST_DELIMITER in administrative_level_two:
                 admin_level_two_list = administrative_level_two.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
@@ -2689,7 +3094,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         flyway = query_params.get('flyway', None)
         if flyway is not None and flyway != '':
             queryset = queryset.prefetch_related('eventlocations__flyway')
-            if LIST_DELIMETER in flyway:
+            if LIST_DELIMITER in flyway:
                 flyway_list = flyway.split(',')
                 queryset = queryset.filter(eventlocations__flyway__in=flyway_list).distinct()
             else:
@@ -2698,7 +3103,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         country = query_params.get('country', None)
         if country is not None and country != '':
             queryset = queryset.prefetch_related('eventlocations__country')
-            if LIST_DELIMETER in country:
+            if LIST_DELIMITER in country:
                 country_list = country.split(',')
                 queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
             else:
@@ -2707,7 +3112,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         gnis_id = query_params.get('gnis_id', None)
         if gnis_id is not None and gnis_id != '':
             queryset = queryset.prefetch_related('eventlocations__gnis_id')
-            if LIST_DELIMETER in gnis_id:
+            if LIST_DELIMITER in gnis_id:
                 gnis_id_list = country.split(',')
                 queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
             else:
@@ -2870,6 +3275,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             write_collaborators = list(
                                 User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                         if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.organization.parent_organizations
                                 or user.id in read_collaborators or user.id in write_collaborators
                                 or user.role.is_superadmin or user.role.is_admin):
                             return queryset
@@ -2904,6 +3310,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                             User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
                     # owner and org members and collaborators have full access to non-admin fields
                     if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.organization.parent_organizations
                             or user.id in read_collaborators or user.id in write_collaborators):
                         return EventDetailSerializer
             return EventDetailPublicSerializer
