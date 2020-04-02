@@ -269,13 +269,11 @@ def stale_events():
 
 def build_custom_notifications_query(cue, base_queryset):
     queryset = None
-    field = ''
-    criteria = ''
+    criteria = []
 
     # event
     if cue.event:
-        field = 'Event'
-        criteria = str(cue.event)
+        criteria.append(('Event', str(cue.event)))
         if not queryset:
             queryset = base_queryset
         queryset = queryset.filter(id=cue.event)
@@ -284,8 +282,7 @@ def build_custom_notifications_query(cue, base_queryset):
     if cue.event_affected_count:
         operator = cue.event_affected_count_operator.upper()
 
-        # field and criteria
-        field = 'Affected Count' if field == '' else field + ', Affected Count'
+        # criteria
         value = str(cue.event_affected_count)
 
         # queryset
@@ -293,11 +290,11 @@ def build_custom_notifications_query(cue, base_queryset):
             queryset = base_queryset
         if operator == "LTE":
             queryset = queryset.filter(affected_count__lte=value)
-            criteria = '<= ' + value if criteria == '' else criteria + ', <= ' + value
+            criteria.append(('Affected Count', '<= ' + value))
         else:
             # default to GTE
             queryset = queryset.filter(affected_count__gte=value)
-            criteria = '>= ' + value if criteria == '' else criteria + ', >= ' + value
+            criteria.append(('Affected Count', '>= ' + value))
 
     # event_location_land_ownership
     if cue.event_location_land_ownership:
@@ -305,14 +302,13 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(values) > 0:
             operator = cue.event_location_land_ownership['operator'].upper()
 
-            # field and criteria
-            field = 'Land Ownership' if field == '' else field + ', Land Ownership'
+            # criteria
             names_list = list(LandOwnership.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
-                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+                names = names_list[0]
             else:
                 names = (' ' + operator + ' ').join(names_list)
-                criteria = names if criteria == '' else criteria + ', ' + names
+            criteria.append(('Land Ownership', names))
 
             # queryset
             if not queryset:
@@ -335,25 +331,22 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(values) > 0:
             operator = cue.event_location_administrative_level_one['operator'].upper()
 
-            # field and criteria
+            # criteria
             # use locality name when possible
             ctry_ids = list(Country.objects.filter(
                 administrativelevelones__in=values).values_list('id', flat=True))
+            field_name = 'Administrative Level One'
             if ctry_ids:
                 lcl = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
                 if lcl and lcl.admin_level_one_name is not None:
-                    field = lcl.admin_level_one_name if field == '' else field + (', ' + lcl.admin_level_one_name)
-                else:
-                    field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
-            else:
-                field = 'Adminstrative Level One' if field == '' else field + ', Adminstrative Level One'
+                    field_name = lcl.admin_level_one_name
 
             names_list = list(AdministrativeLevelOne.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
-                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+                names = names_list[0]
             else:
                 names = (' ' + operator + ' ').join(names_list)
-                criteria = names if criteria == '' else criteria + ', ' + names
+            criteria.append((field_name, names))
 
             # queryset
             if not queryset:
@@ -384,14 +377,13 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(values) > 0:
             operator = cue.species['operator'].upper()
 
-            # field and criteria
-            field = 'Species' if field == '' else field + ', Species'
+            # criteria
             names_list = list(Species.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
-                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+                names = names_list[0]
             else:
                 names = (' ' + operator + ' ').join(names_list)
-                criteria = names if criteria == '' else criteria + ', ' + names
+            criteria.append(('Species', names))
 
             # queryset
             if not queryset:
@@ -418,14 +410,13 @@ def build_custom_notifications_query(cue, base_queryset):
         if len(values) > 0:
             operator = cue.species_diagnosis_diagnosis['operator'].upper()
 
-            # field and criteria
-            field = 'Diagnosis' if field == '' else field + ', Diagnosis'
+            # criteria
             names_list = list(Diagnosis.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
-                criteria = names_list[0] if criteria == '' else criteria + ', ' + names_list[0]
+                names = names_list[0]
             else:
                 names = (' ' + operator + ' ').join(names_list)
-                criteria = names if criteria == '' else criteria + ', ' + names
+            criteria.append(('Diagnosis', names))
 
             # queryset
             if not queryset:
@@ -446,7 +437,11 @@ def build_custom_notifications_query(cue, base_queryset):
                     if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
                         queryset = queryset.exclude(pk=item.id)
 
-    return queryset, field, criteria
+    criteria_string = ''
+    for criterion in criteria:
+        criteria_string += criterion[0] + ": " + criterion[1] + "<br />"
+
+    return queryset, criteria_string
 
 
 @shared_task()
@@ -460,7 +455,7 @@ def custom_notifications():
         notification_cue_preference__create_when_new=True)
     base_queryset = Event.objects.filter(created_date=yesterday)
     for cue in custom_notification_cues_new:
-        queryset, field, criteria = build_custom_notifications_query(cue, base_queryset)
+        queryset, criteria = build_custom_notifications_query(cue, base_queryset)
 
         if queryset:
             for event in queryset:
@@ -472,7 +467,7 @@ def custom_notifications():
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
-                    new_updated="New", field=field, criteria=criteria, organization=event.created_by.organization.name,
+                    new_updated="New", criteria=criteria, organization=event.created_by.organization.name,
                     created_updated="created", event_id=event.id, event_date=event.created_date, updates="N/A")
                 # source: any user who creates or updates an event that meets the trigger criteria
                 source = event.created_by.username
@@ -482,7 +477,7 @@ def custom_notifications():
         notification_cue_preference__create_when_modified=True)
     base_queryset = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
     for cue in custom_notification_cues_updated:
-        queryset, field, criteria = build_custom_notifications_query(cue, base_queryset)
+        queryset, criteria = build_custom_notifications_query(cue, base_queryset)
 
         if queryset:
             for event in queryset:
@@ -497,9 +492,8 @@ def custom_notifications():
 
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
-                    new_updated="Updated", field=field, criteria=criteria,
-                    organization=event.modified_by.organization.name, created_updated="updated", event_id=event.id,
-                    event_date=event.modified_date, updates=updates)
+                    new_updated="Updated", criteria=criteria, organization=event.modified_by.organization.name,
+                    created_updated="updated", event_id=event.id, event_date=event.modified_date, updates=updates)
                 # source: any user who creates or updates an event that meets the trigger criteria
                 source = event.modified_by.username
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, send_email, email_to)
