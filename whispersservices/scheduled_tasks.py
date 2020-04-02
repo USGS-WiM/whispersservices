@@ -215,12 +215,12 @@ def standard_notifications():
     new_events = Event.objects.filter(created_date=yesterday)
     updated_events = Event.objects.filter(modified_date=yesterday).exclude(created_date=yesterday)
 
-    all_evts = all_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
     own_evts = own_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
     org_evts = organization_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
     collab_evts = collaborator_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
+    all_evts = all_events(events_created_yesterday=new_events, events_updated_yesterday=updated_events)
 
-    all_notifications = all_evts + own_evts + org_evts + collab_evts
+    all_notifications = own_evts + org_evts + collab_evts + all_evts
     unique_notifications = []
 
     for notification in all_notifications:
