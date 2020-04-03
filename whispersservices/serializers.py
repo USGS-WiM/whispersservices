@@ -5094,329 +5094,235 @@ class FlatEventSummarySerializer(serializers.ModelSerializer):
                   'species', 'eventdiagnoses',)
 
 
-# TODO: Make these three EventSummary serializers adhere to DRY Principle
-class EventSummaryPublicSerializer(serializers.ModelSerializer):
-
-    # diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
-    # if diagnosis:
-    #     diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
-    # return diagnosis
-
-    def get_eventdiagnoses(self, obj):
-        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        eventdiagnoses = []
-        for event_diagnosis in event_diagnoses:
-            if event_diagnosis.diagnosis:
-                diag_id = event_diagnosis.diagnosis.id
-                diag_name = event_diagnosis.diagnosis.name
-                if event_diagnosis.suspect:
-                    diag_name = diag_name + " suspect"
-                diag_type = event_diagnosis.diagnosis.diagnosis_type
-                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority}
-                eventdiagnoses.append(altered_event_diagnosis)
-        return eventdiagnoses
-
-    def get_administrativelevelones(self, obj):
-        unique_l1_ids = []
-        unique_l1s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al1_id = eventlocation.get('administrative_level_one_id')
-                if al1_id is not None and al1_id not in unique_l1_ids:
-                    unique_l1_ids.append(al1_id)
-                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
-                    unique_l1s.append(model_to_dict(al1))
-        return unique_l1s
-
-    def get_administrativeleveltwos(self, obj):
-        unique_l2_ids = []
-        unique_l2s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al2_id = eventlocation.get('administrative_level_two_id')
-                if al2_id is not None and al2_id not in unique_l2_ids:
-                    unique_l2_ids.append(al2_id)
-                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    al2_dict = model_to_dict(al2_model)
-                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
-                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
-                    unique_l2s.append(al2_dict)
-        return unique_l2s
-
-    def get_species(self, obj):
-        unique_species_ids = []
-        unique_species = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-                if locationspecies is not None:
-                    for alocationspecies in locationspecies:
-                        species = Species.objects.filter(id=alocationspecies.species_id).first()
-                        if species is not None:
-                            if species.id not in unique_species_ids:
-                                unique_species_ids.append(species.id)
-                                unique_species.append(model_to_dict(species))
-        return unique_species
-
-    def get_flyways(self, obj):
-        unique_flyway_ids = []
-        unique_flyways = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                flyway_ids = list(EventLocationFlyway.objects.filter(
-                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
-                if flyway_ids is not None:
-                    for flyway_id in flyway_ids:
-                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
-                            unique_flyway_ids.append(flyway_id)
-                            flyway = Flyway.objects.filter(id=flyway_id).first()
-                            unique_flyways.append(model_to_dict(flyway))
-        return unique_flyways
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    # TODO: improve help_text so that all are assigned to variables, not string literals
-    # eventdiagnoses = EventDiagnosisSerializer(many=True)
-    eventdiagnoses = serializers.SerializerMethodField()
-    administrativelevelones = serializers.SerializerMethodField()
-    administrativeleveltwos = serializers.SerializerMethodField()
-    flyways = serializers.SerializerMethodField()
-    species = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Event
-        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
-                  'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
-                  'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions', 'permission_source',)
+# class EventSummaryPublicSerializer(serializers.ModelSerializer):
+#
+#     # diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
+#     # if diagnosis:
+#     #     diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
+#     # return diagnosis
+#
+#     def get_eventdiagnoses(self, obj):
+#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+#         eventdiagnoses = []
+#         for event_diagnosis in event_diagnoses:
+#             if event_diagnosis.diagnosis:
+#                 diag_id = event_diagnosis.diagnosis.id
+#                 diag_name = event_diagnosis.diagnosis.name
+#                 if event_diagnosis.suspect:
+#                     diag_name = diag_name + " suspect"
+#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
+#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
+#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+#                                            "priority": event_diagnosis.priority}
+#                 eventdiagnoses.append(altered_event_diagnosis)
+#         return eventdiagnoses
+#
+#     def get_administrativelevelones(self, obj):
+#         unique_l1_ids = []
+#         unique_l1s = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 al1_id = eventlocation.get('administrative_level_one_id')
+#                 if al1_id is not None and al1_id not in unique_l1_ids:
+#                     unique_l1_ids.append(al1_id)
+#                     al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+#                     unique_l1s.append(model_to_dict(al1))
+#         return unique_l1s
+#
+#     def get_administrativeleveltwos(self, obj):
+#         unique_l2_ids = []
+#         unique_l2s = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 al2_id = eventlocation.get('administrative_level_two_id')
+#                 if al2_id is not None and al2_id not in unique_l2_ids:
+#                     unique_l2_ids.append(al2_id)
+#                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+#                     al2_dict = model_to_dict(al2_model)
+#                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+#                     al2_dict.update({'country': al2_model.administrative_level_one.country.id})
+#                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+#                     unique_l2s.append(al2_dict)
+#         return unique_l2s
+#
+#     def get_species(self, obj):
+#         unique_species_ids = []
+#         unique_species = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+#                 if locationspecies is not None:
+#                     for alocationspecies in locationspecies:
+#                         species = Species.objects.filter(id=alocationspecies.species_id).first()
+#                         if species is not None:
+#                             if species.id not in unique_species_ids:
+#                                 unique_species_ids.append(species.id)
+#                                 unique_species.append(model_to_dict(species))
+#         return unique_species
+#
+#     def get_flyways(self, obj):
+#         unique_flyway_ids = []
+#         unique_flyways = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 flyway_ids = list(EventLocationFlyway.objects.filter(
+#                     event_location=eventlocation['id']).values_list('flyway_id', flat=True))
+#                 if flyway_ids is not None:
+#                     for flyway_id in flyway_ids:
+#                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
+#                             unique_flyway_ids.append(flyway_id)
+#                             flyway = Flyway.objects.filter(id=flyway_id).first()
+#                             unique_flyways.append(model_to_dict(flyway))
+#         return unique_flyways
+#
+#     def get_permission_source(self, obj):
+#         return determine_permission_source(self.context['request'].user, obj)
+#
+#     # TODO: improve help_text so that all are assigned to variables, not string literals
+#     # eventdiagnoses = EventDiagnosisSerializer(many=True)
+#     eventdiagnoses = serializers.SerializerMethodField()
+#     administrativelevelones = serializers.SerializerMethodField()
+#     administrativeleveltwos = serializers.SerializerMethodField()
+#     flyways = serializers.SerializerMethodField()
+#     species = serializers.SerializerMethodField()
+#     event_type_string = serializers.StringRelatedField(source='event_type')
+#     event_status_string = serializers.StringRelatedField(source='event_status')
+#     permissions = DRYPermissionsField()
+#     permission_source = serializers.SerializerMethodField()
+#
+#     class Meta:
+#         model = Event
+#         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+#                   'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
+#                   'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions', 'permission_source',)
+#
+#
+# class EventSummarySerializer(serializers.ModelSerializer):
+#
+#     def get_eventdiagnoses(self, obj):
+#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+#         eventdiagnoses = []
+#         for event_diagnosis in event_diagnoses:
+#             if event_diagnosis.diagnosis:
+#                 diag_id = event_diagnosis.diagnosis.id
+#                 diag_name = event_diagnosis.diagnosis.name
+#                 if event_diagnosis.suspect:
+#                     diag_name = diag_name + " suspect"
+#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
+#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+#                 created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
+#                 created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
+#                 modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
+#                 modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
+#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
+#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+#                                            "priority": event_diagnosis.priority,
+#                                            "created_by": created_by, "created_by_string": created_by_string,
+#                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
+#                                            "modified_by_string": modified_by_string}
+#                 eventdiagnoses.append(altered_event_diagnosis)
+#         return eventdiagnoses
+#
+#     def get_administrativelevelones(self, obj):
+#         unique_l1_ids = []
+#         unique_l1s = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 al1_id = eventlocation.get('administrative_level_one_id')
+#                 if al1_id is not None and al1_id not in unique_l1_ids:
+#                     unique_l1_ids.append(al1_id)
+#                     al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+#                     unique_l1s.append(model_to_dict(al1))
+#         return unique_l1s
+#
+#     def get_administrativeleveltwos(self, obj):
+#         unique_l2_ids = []
+#         unique_l2s = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 al2_id = eventlocation.get('administrative_level_two_id')
+#                 if al2_id is not None and al2_id not in unique_l2_ids:
+#                     unique_l2_ids.append(al2_id)
+#                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+#                     al2_dict = model_to_dict(al2_model)
+#                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+#                     al2_dict.update({'country': al2_model.administrative_level_one.country.id})
+#                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+#                     unique_l2s.append(al2_dict)
+#         return unique_l2s
+#
+#     def get_species(self, obj):
+#         unique_species_ids = []
+#         unique_species = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+#                 if locationspecies is not None:
+#                     for alocationspecies in locationspecies:
+#                         species = Species.objects.filter(id=alocationspecies.species_id).first()
+#                         if species is not None:
+#                             if species.id not in unique_species_ids:
+#                                 unique_species_ids.append(species.id)
+#                                 unique_species.append(model_to_dict(species))
+#         return unique_species
+#
+#     def get_flyways(self, obj):
+#         unique_flyway_ids = []
+#         unique_flyways = []
+#         eventlocations = obj.eventlocations.values()
+#         if eventlocations is not None:
+#             for eventlocation in eventlocations:
+#                 flyway_ids = list(EventLocationFlyway.objects.filter(
+#                     event_location=eventlocation['id']).values_list('flyway_id', flat=True))
+#                 if flyway_ids is not None:
+#                     for flyway_id in flyway_ids:
+#                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
+#                             unique_flyway_ids.append(flyway_id)
+#                             flyway = Flyway.objects.filter(id=flyway_id).first()
+#                             unique_flyways.append(model_to_dict(flyway))
+#         return unique_flyways
+#
+#     def get_permission_source(self, obj):
+#         return determine_permission_source(self.context['request'].user, obj)
+#
+#     created_by_string = serializers.StringRelatedField(source='created_by')
+#     modified_by_string = serializers.StringRelatedField(source='modified_by')
+#     # eventdiagnoses = EventDiagnosisSerializer(many=True)
+#     eventdiagnoses = serializers.SerializerMethodField()
+#     administrativelevelones = serializers.SerializerMethodField()
+#     administrativeleveltwos = serializers.SerializerMethodField()
+#     flyways = serializers.SerializerMethodField()
+#     species = serializers.SerializerMethodField()
+#     event_type_string = serializers.StringRelatedField(source='event_type')
+#     event_status_string = serializers.StringRelatedField(source='event_status')
+#     organizations = OrganizationSerializer(many=True)
+#     permissions = DRYPermissionsField()
+#     permission_source = serializers.SerializerMethodField()
+#
+#     class Meta:
+#         model = Event
+#         fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
+#                   'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
+#                   'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
+#                   'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+#                   'organizations', 'permissions', 'permission_source',)
 
 
 class EventSummarySerializer(serializers.ModelSerializer):
-
-    def get_eventdiagnoses(self, obj):
-        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        eventdiagnoses = []
-        for event_diagnosis in event_diagnoses:
-            if event_diagnosis.diagnosis:
-                diag_id = event_diagnosis.diagnosis.id
-                diag_name = event_diagnosis.diagnosis.name
-                if event_diagnosis.suspect:
-                    diag_name = diag_name + " suspect"
-                diag_type = event_diagnosis.diagnosis.diagnosis_type
-                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-                created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
-                created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
-                modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
-                modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority,
-                                           "created_by": created_by, "created_by_string": created_by_string,
-                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
-                                           "modified_by_string": modified_by_string}
-                eventdiagnoses.append(altered_event_diagnosis)
-        return eventdiagnoses
-
-    def get_administrativelevelones(self, obj):
-        unique_l1_ids = []
-        unique_l1s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al1_id = eventlocation.get('administrative_level_one_id')
-                if al1_id is not None and al1_id not in unique_l1_ids:
-                    unique_l1_ids.append(al1_id)
-                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
-                    unique_l1s.append(model_to_dict(al1))
-        return unique_l1s
-
-    def get_administrativeleveltwos(self, obj):
-        unique_l2_ids = []
-        unique_l2s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al2_id = eventlocation.get('administrative_level_two_id')
-                if al2_id is not None and al2_id not in unique_l2_ids:
-                    unique_l2_ids.append(al2_id)
-                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    al2_dict = model_to_dict(al2_model)
-                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
-                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
-                    unique_l2s.append(al2_dict)
-        return unique_l2s
-
-    def get_species(self, obj):
-        unique_species_ids = []
-        unique_species = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-                if locationspecies is not None:
-                    for alocationspecies in locationspecies:
-                        species = Species.objects.filter(id=alocationspecies.species_id).first()
-                        if species is not None:
-                            if species.id not in unique_species_ids:
-                                unique_species_ids.append(species.id)
-                                unique_species.append(model_to_dict(species))
-        return unique_species
-
-    def get_flyways(self, obj):
-        unique_flyway_ids = []
-        unique_flyways = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                flyway_ids = list(EventLocationFlyway.objects.filter(
-                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
-                if flyway_ids is not None:
-                    for flyway_id in flyway_ids:
-                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
-                            unique_flyway_ids.append(flyway_id)
-                            flyway = Flyway.objects.filter(id=flyway_id).first()
-                            unique_flyways.append(model_to_dict(flyway))
-        return unique_flyways
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
-    # eventdiagnoses = EventDiagnosisSerializer(many=True)
-    eventdiagnoses = serializers.SerializerMethodField()
-    administrativelevelones = serializers.SerializerMethodField()
-    administrativeleveltwos = serializers.SerializerMethodField()
-    flyways = serializers.SerializerMethodField()
-    species = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    organizations = OrganizationSerializer(many=True)
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Event
-        fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
-                  'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
-                  'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
-                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'organizations', 'permissions', 'permission_source',)
-
-
-class EventSummaryAdminSerializer(serializers.ModelSerializer):
-
-    def get_eventdiagnoses(self, obj):
-        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        eventdiagnoses = []
-        for event_diagnosis in event_diagnoses:
-            if event_diagnosis.diagnosis:
-                diag_id = event_diagnosis.diagnosis.id
-                diag_name = event_diagnosis.diagnosis.name
-                if event_diagnosis.suspect:
-                    diag_name = diag_name + " suspect"
-                diag_type = event_diagnosis.diagnosis.diagnosis_type
-                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-                created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
-                created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
-                modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
-                modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority,
-                                           "created_by": created_by, "created_by_string": created_by_string,
-                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
-                                           "modified_by_string": modified_by_string}
-                eventdiagnoses.append(altered_event_diagnosis)
-        return eventdiagnoses
-
-    def get_administrativelevelones(self, obj):
-        unique_l1_ids = []
-        unique_l1s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al1_id = eventlocation.get('administrative_level_one_id')
-                if al1_id is not None and al1_id not in unique_l1_ids:
-                    unique_l1_ids.append(al1_id)
-                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
-                    unique_l1s.append(model_to_dict(al1))
-        return unique_l1s
-
-    def get_administrativeleveltwos(self, obj):
-        unique_l2_ids = []
-        unique_l2s = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                al2_id = eventlocation.get('administrative_level_two_id')
-                if al2_id is not None and al2_id not in unique_l2_ids:
-                    unique_l2_ids.append(al2_id)
-                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-                    al2_dict = model_to_dict(al2_model)
-                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
-                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
-                    unique_l2s.append(al2_dict)
-        return unique_l2s
-
-    def get_species(self, obj):
-        unique_species_ids = []
-        unique_species = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-                if locationspecies is not None:
-                    for alocationspecies in locationspecies:
-                        species = Species.objects.filter(id=alocationspecies.species_id).first()
-                        if species is not None:
-                            if species.id not in unique_species_ids:
-                                unique_species_ids.append(species.id)
-                                unique_species.append(model_to_dict(species))
-        return unique_species
-
-    def get_flyways(self, obj):
-        unique_flyway_ids = []
-        unique_flyways = []
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                flyway_ids = list(EventLocationFlyway.objects.filter(
-                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
-                if flyway_ids is not None:
-                    for flyway_id in flyway_ids:
-                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
-                            unique_flyway_ids.append(flyway_id)
-                            flyway = Flyway.objects.filter(id=flyway_id).first()
-                            unique_flyways.append(model_to_dict(flyway))
-        return unique_flyways
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     # eventdiagnoses = EventDiagnosisSerializer(many=True)
@@ -5433,14 +5339,145 @@ class EventSummaryAdminSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
+    def get_eventdiagnoses(self, obj, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+        eventdiagnoses = []
+        for event_diagnosis in event_diagnoses:
+            if event_diagnosis.diagnosis:
+                diag_id = event_diagnosis.diagnosis.id
+                diag_name = event_diagnosis.diagnosis.name
+                if event_diagnosis.suspect:
+                    diag_name = diag_name + " suspect"
+                diag_type = event_diagnosis.diagnosis.diagnosis_type
+                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+                created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
+                created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
+                modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
+                modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
+                if not user or not user.is_authenticated or user.role.is_public:
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                              "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                              "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                              "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                              "priority": event_diagnosis.priority}
+                else:
+                    altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
+                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+                                           "priority": event_diagnosis.priority,
+                                           "created_by": created_by, "created_by_string": created_by_string,
+                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
+                                           "modified_by_string": modified_by_string}
+                eventdiagnoses.append(altered_event_diagnosis)
+        return eventdiagnoses
+
+    def get_administrativelevelones(self, obj):
+        unique_l1_ids = []
+        unique_l1s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al1_id = eventlocation.get('administrative_level_one_id')
+                if al1_id is not None and al1_id not in unique_l1_ids:
+                    unique_l1_ids.append(al1_id)
+                    al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
+                    unique_l1s.append(model_to_dict(al1))
+        return unique_l1s
+
+    def get_administrativeleveltwos(self, obj):
+        unique_l2_ids = []
+        unique_l2s = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                al2_id = eventlocation.get('administrative_level_two_id')
+                if al2_id is not None and al2_id not in unique_l2_ids:
+                    unique_l2_ids.append(al2_id)
+                    al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
+                    al2_dict = model_to_dict(al2_model)
+                    al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
+                    al2_dict.update({'country': al2_model.administrative_level_one.country.id})
+                    al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
+                    unique_l2s.append(al2_dict)
+        return unique_l2s
+
+    def get_species(self, obj):
+        unique_species_ids = []
+        unique_species = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
+                if locationspecies is not None:
+                    for alocationspecies in locationspecies:
+                        species = Species.objects.filter(id=alocationspecies.species_id).first()
+                        if species is not None:
+                            if species.id not in unique_species_ids:
+                                unique_species_ids.append(species.id)
+                                unique_species.append(model_to_dict(species))
+        return unique_species
+
+    def get_flyways(self, obj):
+        unique_flyway_ids = []
+        unique_flyways = []
+        eventlocations = obj.eventlocations.values()
+        if eventlocations is not None:
+            for eventlocation in eventlocations:
+                flyway_ids = list(EventLocationFlyway.objects.filter(
+                    event_location=eventlocation['id']).values_list('flyway_id', flat=True))
+                if flyway_ids is not None:
+                    for flyway_id in flyway_ids:
+                        if flyway_id is not None and flyway_id not in unique_flyway_ids:
+                            unique_flyway_ids.append(flyway_id)
+                            flyway = Flyway.objects.filter(id=flyway_id).first()
+                            unique_flyways.append(model_to_dict(flyway))
+        return unique_flyways
+
+    def get_permission_source(self, obj):
+        return determine_permission_source(self.context['request'].user, obj)
+
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+                      'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
+                      'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions',
+                      'permission_source',)
+        elif user.role.is_superadmin or user.role.is_admin:
+            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                      'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
+                      'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups', 'organizations',
+                      'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
+                      'species', 'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+        else:
+            fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
+                      'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
+                      'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
+                      'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                      'organizations', 'permissions', 'permission_source',)
+
+        super(EventSummarySerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
-                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups', 'organizations',
-                  'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
-                  'species', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+        fields = '__all__'
 
 
 class SpeciesDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
@@ -5557,11 +5594,11 @@ class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
         fields = ('diagnosis', 'diagnosis_string', 'suspect', 'major',)
 
 
-class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = EventDiagnosis
-        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'suspect', 'major', 'priority',)
+# class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
+#
+#     class Meta:
+#         model = EventDiagnosis
+#         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'suspect', 'major', 'priority',)
 
 
 class ServiceRequestDetailSerializer(serializers.ModelSerializer):
@@ -5583,51 +5620,175 @@ class ServiceRequestDetailSerializer(serializers.ModelSerializer):
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string', 'comments',)
 
 
-class EventDetailPublicSerializer(serializers.ModelSerializer):
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    eventlocations = EventLocationDetailPublicSerializer(many=True)
-    eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
-    organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
-    eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
-
-    def get_eventgroups(self, obj):
-        pub_groups = []
-        if obj.eventgroups is not None:
-            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
-            for evtgrp in evtgrps:
-                evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
-                group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
-                pub_groups.append(group)
-        return pub_groups
-
-    def get_organizations(self, obj):
-        pub_orgs = []
-        if obj.organizations is not None:
-            orgs = obj.organizations.all()
-            evtorgs = EventOrganization.objects.filter(
-                event=obj.id, organization__do_not_publish=False).order_by('priority')
-            for evtorg in evtorgs:
-                org = [org for org in orgs if org.id == evtorg.organization.id][0]
-                new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-                           'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                           'administrative_level_one': org.administrative_level_one.id,
-                           'administrative_level_one_string': org.administrative_level_one.name,
-                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
-        return pub_orgs
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    class Meta:
-        model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'organizations', 'permissions', 'permission_source',)
+# class EventDetailPublicSerializer(serializers.ModelSerializer):
+#     permissions = DRYPermissionsField()
+#     permission_source = serializers.SerializerMethodField()
+#     event_type_string = serializers.StringRelatedField(source='event_type')
+#     event_status_string = serializers.StringRelatedField(source='event_status')
+#     eventlocations = EventLocationDetailPublicSerializer(many=True)
+#     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
+#     organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
+#     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
+#
+#     def get_eventgroups(self, obj):
+#         pub_groups = []
+#         if obj.eventgroups is not None:
+#             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
+#             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+#             for evtgrp in evtgrps:
+#                 evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
+#                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
+#                 pub_groups.append(group)
+#         return pub_groups
+#
+#     def get_organizations(self, obj):
+#         pub_orgs = []
+#         if obj.organizations is not None:
+#             orgs = obj.organizations.all()
+#             evtorgs = EventOrganization.objects.filter(
+#                 event=obj.id, organization__do_not_publish=False).order_by('priority')
+#             for evtorg in evtorgs:
+#                 org = [org for org in orgs if org.id == evtorg.organization.id][0]
+#                 new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+#                            'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+#                            'administrative_level_one': org.administrative_level_one.id,
+#                            'administrative_level_one_string': org.administrative_level_one.name,
+#                            'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+#                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
+#         return pub_orgs
+#
+#     def get_permission_source(self, obj):
+#         return determine_permission_source(self.context['request'].user, obj)
+#
+#     class Meta:
+#         model = Event
+#         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+#                   'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+#                   'organizations', 'permissions', 'permission_source',)
+#
+#
+# class EventDetailSerializer(serializers.ModelSerializer):
+#     created_by_string = serializers.StringRelatedField(source='created_by')
+#     modified_by_string = serializers.StringRelatedField(source='modified_by')
+#     created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
+#     created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
+#     created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
+#     created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
+#     permissions = DRYPermissionsField()
+#     permission_source = serializers.SerializerMethodField()
+#     event_type_string = serializers.StringRelatedField(source='event_type')
+#     event_status_string = serializers.StringRelatedField(source='event_status')
+#     eventlocations = EventLocationDetailSerializer(many=True)
+#     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
+#     eventdiagnoses = serializers.SerializerMethodField()
+#     combined_comments = serializers.SerializerMethodField()
+#     comments = CommentSerializer(many=True)
+#     servicerequests = ServiceRequestDetailSerializer(many=True)
+#     organizations = serializers.SerializerMethodField()
+#     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
+#     read_collaborators = UserPublicSerializer(many=True)
+#     write_collaborators = UserPublicSerializer(many=True)
+#
+#     def get_combined_comments(self, obj):
+#         event_content_type = ContentType.objects.filter(model='event').first()
+#         event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
+#         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
+#         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
+#         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
+#         servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
+#         servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
+#         servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
+#         union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
+#         # return CommentSerializer(union_comments, many=True).data
+#         combined_comments = []
+#         for cmt in union_comments:
+#             # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
+#             date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
+#                          + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
+#             comment = {
+#                 "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
+#                 "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
+#                 "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
+#                 "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
+#                 "created_by_organization": cmt.created_by.organization.id,
+#                 "created_by_organization_string": cmt.created_by.organization.name,
+#                 "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
+#                 "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
+#             }
+#             if cmt.content_type.model == 'event':
+#                 comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
+#             elif cmt.content_type.model == 'eventlocation':
+#                 comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
+#             combined_comments.append(comment)
+#         return combined_comments
+#
+#     def get_eventgroups(self, obj):
+#         pub_groups = []
+#         if obj.eventgroups is not None:
+#             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
+#             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+#             for evtgrp in evtgrps:
+#                 evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+#                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
+#                 pub_groups.append(group)
+#         return pub_groups
+#
+#     def get_organizations(self, obj):
+#         pub_orgs = []
+#         if obj.organizations is not None:
+#             orgs = obj.organizations.all()
+#             evtorgs = EventOrganization.objects.filter(
+#                 event=obj.id, organization__do_not_publish=False).order_by('priority')
+#             for evtorg in evtorgs:
+#                 org = [org for org in orgs if org.id == evtorg.organization.id][0]
+#                 new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
+#                            'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
+#                            'administrative_level_one': org.administrative_level_one.id,
+#                            'administrative_level_one_string': org.administrative_level_one.name,
+#                            'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+#                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
+#         return pub_orgs
+#
+#     def get_eventdiagnoses(self, obj):
+#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
+#         eventdiagnoses = []
+#         for event_diagnosis in event_diagnoses:
+#             if event_diagnosis.diagnosis:
+#                 diag_id = event_diagnosis.diagnosis.id
+#                 diag_name = event_diagnosis.diagnosis.name
+#                 if event_diagnosis.suspect:
+#                     diag_name = diag_name + " suspect"
+#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
+#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
+#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
+#                 created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
+#                 created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
+#                 modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
+#                 modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
+#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
+#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
+#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
+#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
+#                                            "priority": event_diagnosis.priority,
+#                                            "created_date": event_diagnosis.created_date, "created_by": created_by,
+#                                            "created_by_string": created_by_string,
+#                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
+#                                            "modified_by_string": modified_by_string}
+#                 eventdiagnoses.append(altered_event_diagnosis)
+#         return eventdiagnoses
+#
+#     def get_permission_source(self, obj):
+#         return determine_permission_source(self.context['request'].user, obj)
+#
+#     class Meta:
+#         model = Event
+#         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+#                   'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+#                   'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
+#                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+#                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+#                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
+#                   'permissions', 'permission_source',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -5640,141 +5801,19 @@ class EventDetailSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    eventlocations = EventLocationDetailSerializer(many=True)
-    # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
-    eventdiagnoses = serializers.SerializerMethodField()
-    combined_comments = serializers.SerializerMethodField()
-    comments = CommentSerializer(many=True)
-    servicerequests = ServiceRequestDetailSerializer(many=True)
-    organizations = serializers.SerializerMethodField()
-    eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
-    read_collaborators = UserPublicSerializer(many=True)
-    write_collaborators = UserPublicSerializer(many=True)
-
-    def get_combined_comments(self, obj):
-        event_content_type = ContentType.objects.filter(model='event').first()
-        event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
-        evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
-        evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
-        evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-        servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
-        servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
-        servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
-        union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
-        # return CommentSerializer(union_comments, many=True).data
-        combined_comments = []
-        for cmt in union_comments:
-            # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
-            date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
-                         + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
-            comment = {
-                "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
-                "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
-                "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
-                "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
-                "created_by_organization": cmt.created_by.organization.id,
-                "created_by_organization_string": cmt.created_by.organization.name,
-                "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
-                "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
-            }
-            if cmt.content_type.model == 'event':
-                comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
-            elif cmt.content_type.model == 'eventlocation':
-                comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
-            combined_comments.append(comment)
-        return combined_comments
-
-    def get_eventgroups(self, obj):
-        pub_groups = []
-        if obj.eventgroups is not None:
-            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
-            for evtgrp in evtgrps:
-                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
-                group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
-                pub_groups.append(group)
-        return pub_groups
-
-    def get_organizations(self, obj):
-        pub_orgs = []
-        if obj.organizations is not None:
-            orgs = obj.organizations.all()
-            evtorgs = EventOrganization.objects.filter(
-                event=obj.id, organization__do_not_publish=False).order_by('priority')
-            for evtorg in evtorgs:
-                org = [org for org in orgs if org.id == evtorg.organization.id][0]
-                new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-                           'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                           'administrative_level_one': org.administrative_level_one.id,
-                           'administrative_level_one_string': org.administrative_level_one.name,
-                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-                pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
-        return pub_orgs
-
-    def get_eventdiagnoses(self, obj):
-        event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-        eventdiagnoses = []
-        for event_diagnosis in event_diagnoses:
-            if event_diagnosis.diagnosis:
-                diag_id = event_diagnosis.diagnosis.id
-                diag_name = event_diagnosis.diagnosis.name
-                if event_diagnosis.suspect:
-                    diag_name = diag_name + " suspect"
-                diag_type = event_diagnosis.diagnosis.diagnosis_type
-                diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-                diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-                created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
-                created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
-                modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
-                modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
-                altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-                                           "diagnosis": diag_id, "diagnosis_string": diag_name,
-                                           "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-                                           "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-                                           "priority": event_diagnosis.priority,
-                                           "created_date": event_diagnosis.created_date, "created_by": created_by,
-                                           "created_by_string": created_by_string,
-                                           "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
-                                           "modified_by_string": modified_by_string}
-                eventdiagnoses.append(altered_event_diagnosis)
-        return eventdiagnoses
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    class Meta:
-        model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
-                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
-                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
-                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
-
-
-class EventDetailAdminSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
-    created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
-    created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
-    created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
-    created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
-    eventlocations = EventLocationDetailSerializer(many=True)
+    # eventlocations = EventLocationDetailSerializer(many=True)
+    eventlocations = serializers.SerializerMethodField()
     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     organizations = serializers.SerializerMethodField()
-    eventgroups = EventGroupSerializer(many=True)
+    # eventgroups = EventGroupSerializer(many=True)
+    eventgroups = serializers.SerializerMethodField()
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
 
@@ -5810,6 +5849,24 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
             combined_comments.append(comment)
         return sorted(combined_comments, key=itemgetter('date_sort'), reverse=True)
+
+    def get_eventgroups(self, obj, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+        if user and (user.role.is_superadmin or user.role.is_admin):
+            return EventGroupSerializer(many=True)
+        else:
+            pub_groups = []
+            if obj.eventgroups is not None:
+                evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
+                evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+                for evtgrp in evtgrps:
+                    evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                    group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
+                    pub_groups.append(group)
+            return pub_groups
+
     def get_organizations(self, obj):
         pub_orgs = []
         if obj.organizations is not None:
@@ -5826,7 +5883,22 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
         return pub_orgs
 
-    def get_eventdiagnoses(self, obj):
+    def get_eventlocations(self, obj, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+        if not user or not user.is_authenticated or user.role.is_public:
+            return EventLocationDetailPublicSerializer(many=True)
+        else:
+            return EventLocationDetailSerializer(many=True)
+
+    def get_eventdiagnoses(self, obj, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+        if not user or not user.is_authenticated or user.role.is_public:
+            return EventDiagnosisDetailPublicSerializer(many=True)
+
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         eventdiagnoses = []
         for event_diagnosis in event_diagnoses:
@@ -5857,9 +5929,17 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     def get_permission_source(self, obj):
         return determine_permission_source(self.context['request'].user, obj)
 
-    class Meta:
-        model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                      'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                      'organizations', 'permissions', 'permission_source',)
+        elif user.role.is_superadmin or user.role.is_admin:
+            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
                   'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
                   'legal_status_string', 'legal_number', 'quality_check', 'public', 'read_collaborators',
                   'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
@@ -5867,6 +5947,27 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
                   'permissions', 'permission_source',)
+        else:
+            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
+                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
+                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
+                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
+                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
+                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
+                  'permissions', 'permission_source',)
+
+        super(EventDetailSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
+    class Meta:
+        model = Event
+        fields = '__all__'
 
 
 class FlatEventDetailSerializer(serializers.Serializer):

@@ -2818,12 +2818,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         frmt = self.request.query_params.get('format', None) if self.request else None
 
         if frmt is not None and frmt == 'csv':
-            user = get_request_user(self.request)
-            serializer_class_name = self.get_serializer_class().__name__.lower()
-            if not user or not user.is_authenticated or 'public' in serializer_class_name:
-                renderer_classes = (CSVEventSummaryPublicRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
-            else:
-                renderer_classes = (CSVEventSummaryRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
+            renderer_classes = (CSVEventSummaryRenderer,) + tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         else:
             renderer_classes = tuple(api_settings.DEFAULT_RENDERER_CLASSES)
         return [renderer_class() for renderer_class in renderer_classes]
@@ -2845,19 +2840,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         frmt = self.request.query_params.get('format', '') if self.request else ''
-        user = get_request_user(self.request)
-
-        if not user or not user.is_authenticated:
-            return FlatEventSummaryPublicSerializer if frmt == 'csv' else EventSummaryPublicSerializer
-        # admins have access to all fields
-        elif user.role.is_superadmin or user.role.is_admin:
-            return FlatEventSummarySerializer if frmt == 'csv' else EventSummaryAdminSerializer
-        # partner users have access to all the non-admin fields (public fields plus 'event_reference' and 'public'):
-        elif user.role.is_partneradmin or user.role.is_partnermanager or user.role.is_partner or user.role.is_affiliate:
-            return FlatEventSummarySerializer if frmt == 'csv' else EventSummarySerializer
-        # everything else must use the public serializer
-        else:
-            return FlatEventSummaryPublicSerializer if frmt == 'csv' else EventSummaryPublicSerializer
+        return FlatEventSummarySerializer if frmt == 'csv' else EventSummarySerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -3218,6 +3201,8 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     Returns a flattened response for an event detail by id.
     """
 
+    serializer_class = EventDetailSerializer
+
     @action(detail=True)
     def flat(self, request, pk):
         # pk = self.request.parser_context['kwargs'].get('pk', None)
@@ -3282,39 +3267,12 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                         else:
                             return queryset.filter(public=True)
             raise NotFound
-        # all list requests must only return public data
+        # for non-user-specific event requests, try to return the (old default) public data
+        #  AND any private data the user should be able to see
         else:
-            return queryset.filter(public=True)
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        if not user or not user.is_authenticated:
-            return EventDetailPublicSerializer
-        # admins have access to all fields
-        elif user.role.is_superadmin or user.role.is_admin:
-            return EventDetailAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
-        elif self.action == 'retrieve':
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = Event.objects.filter(id=pk).first()
-                if obj is not None:
-                    read_collaborators = []
-                    write_collaborators = []
-                    if obj.read_collaborators:
-                        read_collaborators = list(
-                            User.objects.filter(readevents=obj.id).values_list('id', flat=True))
-                    if obj.write_collaborators:
-                        write_collaborators = list(
-                            User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
-                    # owner and org members and collaborators have full access to non-admin fields
-                    if (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.organization.parent_organizations
-                            or user.id in read_collaborators or user.id in write_collaborators):
-                        return EventDetailSerializer
-            return EventDetailPublicSerializer
-        # everything else must use the public serializer
-        # (even the list action for partner roles, to avoid the performance hit of checking permissions on every object)
-        else:
-            return EventDetailPublicSerializer
+            # queryset = queryset.filter(public=True)
+            public_queryset = queryset.filter(public=True).distinct()
+            personal_queryset = queryset.filter(
+                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
+            queryset = public_queryset | personal_queryset
