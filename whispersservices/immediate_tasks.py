@@ -84,12 +84,16 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
     else:
         admin = User.objects.filter(id=1).first()
         event = Event.objects.filter(id=event_id).first()
+        # ensure no duplicate notification recipients
+        recipients = list(set(recipients))
         for recip in recipients:
             user = User.objects.filter(id=recip).first()
             Notification.objects.create(
                 recipient=user, source=source, event=event, read=False, client_page=client_page,
                 subject=subject, body=body, created_by=admin, modified_by=admin)
         if send_email and email_to is not None:
+            # ensure no duplicate email recipients
+            email_to = list(set(email_to))
             for recip in email_to:
                 notif_email = construct_notification_email(recip, subject, body, True)
                 print(notif_email.__dict__)

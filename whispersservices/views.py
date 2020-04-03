@@ -277,7 +277,7 @@ class EventViewSet(HistoryViewSet):
         generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
 
         # Collaborator alert is also logged as an event-level comment.
-        comment += "<br />Alert send to : " + recipient_names
+        comment += "\r\nAlert send to : " + recipient_names
         comment_type = CommentType.objects.filter(name='Collaborator Alert').first()
         if comment_type is not None:
             Comment.objects.create(content_object=event, comment=comment, comment_type=comment_type,
