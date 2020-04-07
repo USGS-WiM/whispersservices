@@ -2085,8 +2085,19 @@ class User(AbstractUser):
                 pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
                 NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
                                                        created_by=self, modified_by=self)
+        # if a user is changed to a non-public role, they should begin to get standard notifications
+        elif not is_new and (self.role.is_superadmin or self.role.is_admin or self.role.is_partneradmin or
+                             self.role.is_partnermanager or self.role.is_partner or self.role.is_affiliate):
+            std_notifs  = NotificationCueStandard.objects.filter(created_by=self.id)
+            if not std_notifs:
+                std_notif_types = NotificationCueStandardType.objects.all()
+                for std_notif_type in std_notif_types:
+                    pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
+                    NotificationCueStandard.objects.create(notification_cue_preference=pref,
+                                                           standard_type=std_notif_type,
+                                                           created_by=self, modified_by=self)
         # when a user is deactivated, turn off the user's notifications
-        elif not self.is_active:
+        if not self.is_active:
             # deactivate all notifications (all cue preferences set to False) when user.is_active is False
             NotificationCuePreference.objects.filter(created_by=self.id).update(
                 create_when_new=False, create_when_modified=False, send_email=False)
