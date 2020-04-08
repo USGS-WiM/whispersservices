@@ -2716,7 +2716,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     Returns a count of all event summaries.
     
     get_user_events_count:
-    Returns a count of events created by a user.
+    Returns a count of events created by (or otherwise visible to) a user.
     
     user_events:
     Returns events create by a user.
@@ -2756,60 +2756,19 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         else:
             queryset = queryset.order_by('-id')
 
-        user = get_request_user(self.request)
-        no_page = True if self.request and 'no_page' in self.request.query_params else False
-
-        # determine the appropriate serializer to ensure the requester sees only permitted data
-        # anonymous user must use the public serializer
-        if not user or not user.is_authenticated:
-            if no_page:
-                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-            else:
-                page = self.paginate_queryset(queryset)
-                if page is not None:
-                    serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
-                    return self.get_paginated_response(serializer.data)
-                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-        # admins have access to all fields
-        elif user.role.is_superadmin or user.role.is_admin:
-            if no_page:
-                serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
-            else:
-                page = self.paginate_queryset(queryset)
-                if page is not None:
-                    serializer = EventSummaryAdminSerializer(page, many=True, context={'request': request})
-                    return self.get_paginated_response(serializer.data)
-                serializer = EventSummaryAdminSerializer(queryset, many=True, context={'request': request})
-        else:
-            read_collaborators = []
-            write_collaborators = []
-            if queryset[0].read_collaborators:
-                read_collaborators = list(
-                    User.objects.filter(eventreadusers=queryset[0].id).values_list('id', flat=True))
-            if queryset[0].write_collaborators:
-                write_collaborators = list(
-                    User.objects.filter(eventwriteusers=queryset[0].id).values_list('id', flat=True))
-            # partner users can see all public fields and 'event_reference' and 'public' fields
-            if (user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager
-                  or user.role.is_partneradmin or user.id in read_collaborators or user.id in write_collaborators):
-                if no_page:
-                    serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
+        frmt = self.request.query_params.get('format', '') if self.request else ''
+        if self.request and 'no_page' in self.request.query_params:
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                if frmt == 'csv':
+                    serializer = FlatEventSummarySerializer(page, many=True, context={'request': request})
                 else:
-                    page = self.paginate_queryset(queryset)
-                    if page is not None:
-                        serializer = EventSummarySerializer(page, many=True, context={'request': request})
-                        return self.get_paginated_response(serializer.data)
-                    serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
-        # non-admins and non-owners (and non-owner orgs and non-collaborators) must use the public serializer
-        if not serializer:
-            if no_page:
-                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
-            else:
-                page = self.paginate_queryset(queryset)
-                if page is not None:
-                    serializer = EventSummaryPublicSerializer(page, many=True, context={'request': request})
-                    return self.get_paginated_response(serializer.data)
-                serializer = EventSummaryPublicSerializer(queryset, many=True, context={'request': request})
+                    serializer = EventSummarySerializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+        if frmt == 'csv':
+            serializer = FlatEventSummarySerializer(queryset, many=True, context={'request': request})
+        else:
+            serializer = EventSummarySerializer(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
 
@@ -2837,7 +2796,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
 
-    # override the default serializer_class to ensure the requester sees only permitted data
+    # override the default serializer_class to ensure csv requests get the proper serializer
     def get_serializer_class(self):
         frmt = self.request.query_params.get('format', '') if self.request else ''
         return FlatEventSummarySerializer if frmt == 'csv' else EventSummarySerializer
