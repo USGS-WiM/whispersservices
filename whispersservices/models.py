@@ -2092,8 +2092,19 @@ class User(AbstractUser):
                 pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
                 NotificationCueStandard.objects.create(notification_cue_preference=pref, standard_type=std_notif_type,
                                                        created_by=self, modified_by=self)
+        # if a user is changed to a non-public role, they should begin to get standard notifications
+        elif not is_new and (self.role.is_superadmin or self.role.is_admin or self.role.is_partneradmin or
+                             self.role.is_partnermanager or self.role.is_partner or self.role.is_affiliate):
+            std_notifs  = NotificationCueStandard.objects.filter(created_by=self.id)
+            if not std_notifs:
+                std_notif_types = NotificationCueStandardType.objects.all()
+                for std_notif_type in std_notif_types:
+                    pref = NotificationCuePreference.objects.create(created_by=self, modified_by=self)
+                    NotificationCueStandard.objects.create(notification_cue_preference=pref,
+                                                           standard_type=std_notif_type,
+                                                           created_by=self, modified_by=self)
         # when a user is deactivated, turn off the user's notifications
-        elif not self.is_active:
+        if not self.is_active:
             # deactivate all notifications (all cue preferences set to False) when user.is_active is False
             NotificationCuePreference.objects.filter(created_by=self.id).update(
                 create_when_new=False, create_when_modified=False, send_email=False)
@@ -2534,12 +2545,24 @@ class Search(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        # anyone with role of Partner or above can create
-        return partner_create_permission(request)
+        # anyone with an account can create
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def has_write_permission(request):
+        # anyone with an account can create
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or the creator's org admin can update
-        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
               or ((self.created_by.organization.id == request.user.organization.id
@@ -2548,6 +2571,17 @@ class Search(PermissionsHistoryModel):
             return True
         else:
             return False
+
+    def has_object_destroy_permission(self, request):
+        # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or ((self.created_by.organization.id == request.user.organization.id
+                         or self.created_by.organization.id in request.user.child_organizations)
+                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     def __str__(self):
         return self.name

@@ -38,8 +38,8 @@ def construct_notification_email(recipient_email, subject, html_body, include_bo
     body = body.replace('<h3>', '').replace('</h3>', '\r\n').replace('<h4>', '').replace('</h4>', '\r\n')
     body = body.replace('<h5>', '').replace('</h5>', '\r\n').replace('<p>', '').replace('</p>', '\r\n')
     body = body.replace('<span>', '').replace('</span>', ' ').replace('<strong>', '').replace('</strong>', '')
-    body = body.replace('<br>', '').replace('<br />', '\r\n').replace('<br/>', '\r\n')
-    body = body.replace('&nbsp;', ' ').replace('<table>', '').replace('</table>', '\r\n')
+    body = body.replace('<br>', '').replace('<br />', '\r\n').replace('<br/>', '\r\n').replace('&nbsp;', ' ')
+    body = body.replace('<div>', '').replace('</div>', '\r\n').replace('<table>', '').replace('</table>', '\r\n')
     body = body.replace('<thead>', '').replace('</thead>', '\r\n').replace('<tbody>', '').replace('</tbody>', '\r\n')
     body = body.replace('<tr>', '').replace('</tr>', '\r\n').replace('<td>', '').replace('</td>', ' ')
     body = re.sub('<a.*?>|</a>', '', body)
@@ -84,12 +84,16 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
     else:
         admin = User.objects.filter(id=1).first()
         event = Event.objects.filter(id=event_id).first()
+        # ensure no duplicate notification recipients
+        recipients = list(set(recipients))
         for recip in recipients:
             user = User.objects.filter(id=recip).first()
             Notification.objects.create(
                 recipient=user, source=source, event=event, read=False, client_page=client_page,
                 subject=subject, body=body, created_by=admin, modified_by=admin)
         if send_email and email_to is not None:
+            # ensure no duplicate email recipients
+            email_to = list(set(email_to))
             for recip in email_to:
                 notif_email = construct_notification_email(recip, subject, body, True)
                 print(notif_email.__dict__)

@@ -4499,7 +4499,7 @@ class UserSerializer(serializers.ModelSerializer):
             instance.email = validated_data.get('email', instance.email)
 
             if requesting_user.role.is_partneradmin:
-                if validated_data['role'].name in ['SuperAdmin', 'Admin']:
+                if 'role' in validated_data and validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
                     raise serializers.ValidationError(jsonify_errors(message))
                 instance.role = validated_data.get('role', instance.role)
@@ -4886,6 +4886,9 @@ class SearchSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
+
+        if 'data' not in validated_data:
+            validated_data['data'] = ''
 
         validated_data['created_by'] = user
         validated_data['modified_by'] = user
