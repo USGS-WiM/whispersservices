@@ -4887,6 +4887,9 @@ class SearchSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
 
+        if 'data' not in validated_data:
+            validated_data['data'] = ''
+
         validated_data['created_by'] = user
         validated_data['modified_by'] = user
         search = Search.objects.create(**validated_data)

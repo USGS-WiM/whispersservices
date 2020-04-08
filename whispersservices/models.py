@@ -2538,12 +2538,24 @@ class Search(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        # anyone with role of Partner or above can create
-        return partner_create_permission(request)
+        # anyone with an account can create
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def has_write_permission(request):
+        # anyone with an account can create
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
 
     def has_object_update_permission(self, request):
         # Only admins or the creator or the creator's org admin can update
-        if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
+        if not request or not request.user or not request.user.is_authenticated:
             return False
         elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
               or ((self.created_by.organization.id == request.user.organization.id
@@ -2552,6 +2564,17 @@ class Search(PermissionsHistoryModel):
             return True
         else:
             return False
+
+    def has_object_destroy_permission(self, request):
+        # Only superadmins or the creator or a manager/admin member of the creator's organization can delete
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return (request.user.role.is_superadmin or request.user.role.is_admin
+                    or request.user.id == self.created_by.id
+                    or ((self.created_by.organization.id == request.user.organization.id
+                         or self.created_by.organization.id in request.user.child_organizations)
+                        and (request.user.role.is_partneradmin or request.user.role.is_partnermanager)))
 
     def __str__(self):
         return self.name
