@@ -47,6 +47,14 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
             if cue.created_by.id == event.created_by.id:
                 for source in event_updaters:
                     updates = ""
+                    history = event.history.all().order_by('history_date')
+                    for i in range(0, len(history) - 1):
+                        delta = history[i + 1].diff_against(history[i])
+                        for change in delta.changes:
+                            # ignore automatically calculated fields (non-editable by user)
+                            if change.field not in ['start_date', 'end_date', 'affected_count']:
+                                field = change.field.replace('_', ' ')
+                                updates += "\r\nEvent {} changed from {} to {}".format(field, change.old, change.new)
                     notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
 
     return notifications
