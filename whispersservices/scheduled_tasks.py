@@ -5,6 +5,48 @@ from whispersservices.models import *
 from whispersservices.immediate_tasks import generate_notification
 
 
+def get_changes(obj, model_name, source_id):
+    changes = []
+
+    history = obj.history.filter(history_user=source_id).order_by('history_date')
+    for i in range(0, len(history) - 1):
+        delta = history[i + 1].diff_against(history[i])
+        for change in delta.changes:
+            # ignore automatically calculated fields (non-editable by user)
+            if change.field == 'priority':
+                continue
+            elif model_name == 'event' and change.field in ['start_date', 'end_date', 'affected_count']:
+                continue
+            else:
+                changes.append((model_name, str(obj.id), change))
+
+    return changes
+
+
+def get_updates(event, source_id):
+    updates = ""
+
+    # get changes from the event and its children (event_locations, location_species, species_diagnoses)
+    changes = []
+    changes += get_changes(event, 'event', source_id)
+    for evtloc in EventLocation.objects.filter(event=event.id):
+        changes += get_changes(evtloc, 'event_location', source_id)
+        for locspec in LocationSpecies.objects.filter(event_location=evtloc.id):
+            changes += get_changes(locspec, 'location_species', source_id)
+            for specdiag in SpeciesDiagnosis.objects.filter(location_species=locspec.id):
+                changes += get_changes(specdiag, 'species_diagnosis', source_id)
+
+    # format the changes into update string items
+    for change in changes:
+        model = change[0].replace('_', ' ').capitalize()
+        obj_id = change[1]
+        chg = change[2]
+        field = chg.field.replace('_', ' ')
+        updates += "\r\n{} {} {} changed from {} to {}".format(model, obj_id, field, chg.old, chg.new)
+
+    return updates
+
+
 def build_notification_tuple(cue, event, msg_tmp, updates, source):
     send_email = cue.notification_cue_preference.send_email
     recipients = [cue.created_by.id, ]
@@ -40,21 +82,16 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
-        event_updaters = list(set(Event.history.filter(id=event.id, modified_date=yesterday
-                                                       ).exclude(history_type='+', modified_by=event.created_by.id
-                                                                 ).values_list('modified_by__username', flat=True)))
+        event_updaters = list(set(
+            Event.history.filter(id=event.id, modified_date=yesterday
+                                 ).exclude(history_type='+', modified_by=event.created_by.id
+                                           ).values_list('modified_by__username', 'modified_by__id')))
         for cue in standard_notification_cues_updated:
             if cue.created_by.id == event.created_by.id:
-                for source in event_updaters:
-                    updates = ""
-                    history = event.history.all().order_by('history_date')
-                    for i in range(0, len(history) - 1):
-                        delta = history[i + 1].diff_against(history[i])
-                        for change in delta.changes:
-                            # ignore automatically calculated fields (non-editable by user)
-                            if change.field not in ['start_date', 'end_date', 'affected_count']:
-                                field = change.field.replace('_', ' ')
-                                updates += "\r\nEvent {} changed from {} to {}".format(field, change.old, change.new)
+                for event_updater in event_updaters:
+                    source = event_updater[0]
+                    source_id = event_updater[1]
+                    updates = get_updates(event, source_id)
                     notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
 
     return notifications
@@ -80,14 +117,17 @@ def organization_events(events_created_yesterday, events_updated_yesterday, yest
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
-        event_updaters = list(set(Event.history.filter(id=event.id, modified_date=yesterday
-                                                       ).exclude(history_type='+',modified_by=event.created_by.id
-                                                                 ).values_list('modified_by__username', flat=True)))
+        event_updaters = list(set(
+            Event.history.filter(id=event.id, modified_date=yesterday
+                                 ).exclude(history_type='+', modified_by=event.created_by.id
+                                           ).values_list('modified_by__username', 'modified_by__id')))
         for cue in standard_notification_cues_updated:
             if (cue.created_by.organization.id == event.created_by.organization.id
                     or cue.created_by.organization.id in event.created_by.organization.parent_organizations):
-                for source in event_updaters:
-                    updates = ""
+                for event_updater in event_updaters:
+                    source = event_updater[0]
+                    source_id = event_updater[1]
+                    updates = get_updates(event, source_id)
                     notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
 
     return notifications
@@ -116,17 +156,20 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday, yest
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
-        event_updaters = list(set(Event.history.filter(id=event.id, modified_date=yesterday
-                                                       ).exclude(history_type='+', modified_by=event.created_by.id
-                                                                 ).values_list('modified_by__username', flat=True)))
+        event_updaters = list(set(
+            Event.history.filter(id=event.id, modified_date=yesterday
+                                 ).exclude(history_type='+', modified_by=event.created_by.id
+                                           ).values_list('modified_by__username', 'modified_by__id')))
         event_collaborator_ids = list(set(User.objects.filter(
             Q(eventwriteusers__event_id=event.id) |
             Q(eventreadusers__event_id=event.id)
         ).values_list('id', flat=True)))
         for cue in standard_notification_cues_updated:
             if cue.created_by.id in event_collaborator_ids:
-                for source in event_updaters:
-                    updates = ""
+                for event_updater in event_updaters:
+                    source = event_updater[0]
+                    source_id = event_updater[1]
+                    updates = get_updates(event, source_id)
                     notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
 
     return notifications
@@ -168,9 +211,10 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
-        event_updaters = list(set(Event.history.filter(id=event.id, modified_date=yesterday
-                                                       ).exclude(history_type='+', modified_by=event.created_by.id
-                                                                 ).values_list('modified_by__username', flat=True)))
+        event_updaters = list(set(
+            Event.history.filter(id=event.id, modified_date=yesterday
+                                 ).exclude(history_type='+', modified_by=event.created_by.id
+                                           ).values_list('modified_by__username', 'modified_by__id')))
         for cue in standard_notification_cues_updated:
             send_email = cue.notification_cue_preference.send_email
             recipients = [cue.created_by.id, ]
@@ -186,8 +230,10 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
                 short_evt_loc += ", " + evtloc.country.abbreviation
                 short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
 
-            for source in event_updaters:
-                updates = ""
+            for event_updater in event_updaters:
+                source = event_updater[0]
+                source_id = event_updater[1]
+                updates = get_updates(event, source_id)
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
                     event_id=event.id, organization=event.modified_by.organization.name, event_location=short_evt_locs,
