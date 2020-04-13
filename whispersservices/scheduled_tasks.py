@@ -5,36 +5,39 @@ from whispersservices.models import *
 from whispersservices.immediate_tasks import generate_notification
 
 
-def get_changes(obj, model_name, source_id):
+def get_changes(obj, source_id, yesterday, model_name):
     changes = []
 
-    history = obj.history.filter(history_user=source_id).order_by('history_date')
+    # grab all history for this event from yesterday ...
+    history = obj.history.filter(history_date__date=yesterday).order_by('-history_id')
     for i in range(0, len(history) - 1):
-        delta = history[i + 1].diff_against(history[i])
-        for change in delta.changes:
-            # ignore automatically calculated fields (non-editable by user)
-            if change.field == 'priority':
-                continue
-            elif model_name == 'event' and change.field in ['start_date', 'end_date', 'affected_count']:
-                continue
-            else:
-                changes.append((model_name, str(obj.id), change))
+        # ... but only include changes made by this particular updater (source)
+        if history[i].history_user.id == source_id:
+            delta = history[i].diff_against(history[i + 1])
+            for change in delta.changes:
+                # ignore automatically calculated fields (non-editable by user)
+                if change.field in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
+                    continue
+                elif model_name == 'event' and change.field in ['start_date', 'end_date', 'affected_count']:
+                    continue
+                else:
+                    changes.append((model_name, str(obj.id), change))
 
     return changes
 
 
-def get_updates(event, source_id):
+def get_updates(event, source_id, yesterday):
     updates = ""
 
     # get changes from the event and its children (event_locations, location_species, species_diagnoses)
     changes = []
-    changes += get_changes(event, 'event', source_id)
+    changes += get_changes(event, source_id, yesterday, 'event')
     for evtloc in EventLocation.objects.filter(event=event.id):
-        changes += get_changes(evtloc, 'event_location', source_id)
+        changes += get_changes(evtloc, source_id, yesterday, 'event_location')
         for locspec in LocationSpecies.objects.filter(event_location=evtloc.id):
-            changes += get_changes(locspec, 'location_species', source_id)
+            changes += get_changes(locspec, source_id, yesterday, 'location_species')
             for specdiag in SpeciesDiagnosis.objects.filter(location_species=locspec.id):
-                changes += get_changes(specdiag, 'species_diagnosis', source_id)
+                changes += get_changes(specdiag, source_id, yesterday, 'species_diagnosis')
 
     # format the changes into update string items
     for change in changes:
@@ -47,7 +50,7 @@ def get_updates(event, source_id):
     return updates
 
 
-def build_notification_tuple(cue, event, msg_tmp, updates, source):
+def get_notification_details(cue, event, msg_tmp, updates, source, org=''):
     send_email = cue.notification_cue_preference.send_email
     recipients = [cue.created_by.id, ]
     email_to = [cue.created_by.email, ] if send_email else []
@@ -60,7 +63,9 @@ def build_notification_tuple(cue, event, msg_tmp, updates, source):
         first_name=event.created_by.first_name, last_name=event.created_by.last_name, created_updated=created_updated,
         event_id=event.id, event_date=event.created_date, updates=updates, new_updated=new_updated)
 
-    return recipients, source, event.id, 'event', subject, body, send_email, email_to
+    org = source if org == '' else org
+
+    return [recipients, source, event.id, 'event', subject, body, send_email, email_to, org]
 
 
 @shared_task()
@@ -74,8 +79,9 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
         for cue in standard_notification_cues_new:
             if cue.created_by.id == event.created_by.id:
                 source = event.created_by.username
+                org = event.created_by.organization.name
                 updates = "N/A"
-                notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                notifications.append(get_notification_details(cue, event, msg_tmp, updates, source, org))
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
         standard_type__name='Own', notification_cue_preference__create_when_modified=True)
@@ -91,8 +97,8 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
                 for event_updater in event_updaters:
                     source = event_updater[0]
                     source_id = event_updater[1]
-                    updates = get_updates(event, source_id)
-                    notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                    updates = get_updates(event, source_id, yesterday)
+                    notifications.append(get_notification_details(cue, event, msg_tmp, updates, source))
 
     return notifications
 
@@ -109,8 +115,9 @@ def organization_events(events_created_yesterday, events_updated_yesterday, yest
             if (cue.created_by.organization.id == event.created_by.organization.id
                     or cue.created_by.organization.id in event.created_by.organization.parent_organizations):
                 source = event.created_by.username
+                org = event.created_by.organization.name
                 updates = "N/A"
-                notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                notifications.append(get_notification_details(cue, event, msg_tmp, updates, source, org))
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
         standard_type__name='Organization', notification_cue_preference__create_when_modified=True)
@@ -127,8 +134,8 @@ def organization_events(events_created_yesterday, events_updated_yesterday, yest
                 for event_updater in event_updaters:
                     source = event_updater[0]
                     source_id = event_updater[1]
-                    updates = get_updates(event, source_id)
-                    notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                    updates = get_updates(event, source_id, yesterday)
+                    notifications.append(get_notification_details(cue, event, msg_tmp, updates, source))
 
     return notifications
 
@@ -148,8 +155,9 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday, yest
         for cue in standard_notification_cues_new:
             if cue.created_by.id in event_collaborator_ids:
                 source = event.created_by.username
+                org = event.created_by.organization.name
                 updates = "N/A"
-                notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                notifications.append(get_notification_details(cue, event, msg_tmp, updates, source, org))
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
         standard_type__name='Collaborator', notification_cue_preference__create_when_modified=True)
@@ -169,8 +177,8 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday, yest
                 for event_updater in event_updaters:
                     source = event_updater[0]
                     source_id = event_updater[1]
-                    updates = get_updates(event, source_id)
-                    notifications.append((build_notification_tuple(cue, event, msg_tmp, updates, source)))
+                    updates = get_updates(event, source_id, yesterday)
+                    notifications.append(get_notification_details(cue, event, msg_tmp, updates, source))
 
     return notifications
 
@@ -202,9 +210,10 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
             body = msg_tmp.body_template.format(
                 event_id=event.id, organization=event.created_by.organization.name, event_location=short_evt_locs,
                 event_date=event.created_date, new_updated="New", created_updated="created", updates="N/A")
-            source = event.created_by.organization.id
+            source = event.created_by.organization.name
+            org = source
 
-            notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
+            notifications.append([recipients, source, event.id, 'event', subject, body, send_email, email_to, org])
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
         standard_type__name='All', notification_cue_preference__create_when_modified=True)
@@ -214,7 +223,8 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
         event_updaters = list(set(
             Event.history.filter(id=event.id, modified_date=yesterday
                                  ).exclude(history_type='+', modified_by=event.created_by.id
-                                           ).values_list('modified_by__username', 'modified_by__id')))
+                                           ).values_list('modified_by__organization__name',
+                                                         'modified_by__organization__id')))
         for cue in standard_notification_cues_updated:
             send_email = cue.notification_cue_preference.send_email
             recipients = [cue.created_by.id, ]
@@ -233,12 +243,13 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
             for event_updater in event_updaters:
                 source = event_updater[0]
                 source_id = event_updater[1]
-                updates = get_updates(event, source_id)
+                org = source
+                updates = get_updates(event, source_id, yesterday)
                 subject = msg_tmp.subject_template.format(event_id=event.id)
                 body = msg_tmp.body_template.format(
                     event_id=event.id, organization=event.modified_by.organization.name, event_location=short_evt_locs,
                     event_date=event.modified_date, new_updated="Updated", created_updated="updated", updates=updates)
-                notifications.append((recipients, source, event.id, 'event', subject, body, send_email, email_to))
+                notifications.append([recipients, source, event.id, 'event', subject, body, send_email, email_to, org])
 
     return notifications
 
@@ -254,24 +265,33 @@ def standard_notifications():
     collab_evts = collaborator_events(new_events, updated_events, yesterday)
     all_evts = all_events(new_events, updated_events, yesterday)
 
-    unique_notifications_with_source = []
-    unique_notifications_no_source = []
+    unique_notifications_user_source = []
+    unique_notifications_org_source = []
 
     # send unique notifications (determined by combination of [recipient, source, event])
     # that include source user info (own, org, collab), preferring own over org over collab
     # also collect unique notifications using org (not user) source info to later find unique 'All Event' notifications
     user_detail_notifications = own_evts + org_evts + collab_evts
     for notification in user_detail_notifications:
-        if (notification[0], notification[1], notification[2]) not in unique_notifications_with_source:
-            unique_notifications_with_source.append((notification[0], notification[1], notification[2]))
+        # find unique by (recipients, org, event ID)
+        if (notification[0], notification[8], notification[2]) not in unique_notifications_org_source:
+            unique_notifications_org_source.append((notification[0], notification[8], notification[2]))
+        # find unique by (recipients, user (source), event ID)
+        if (notification[0], notification[1], notification[2]) not in unique_notifications_user_source:
+            unique_notifications_user_source.append((notification[0], notification[1], notification[2]))
+            # remove the unnecessary 'org' attribute before generating the notification
+            notification.pop(8)
+            # generate the notification
             generate_notification.delay(*notification)
-        if (notification[0], notification[1].organization.id, notification[2]) not in unique_notifications_no_source:
-            unique_notifications_no_source.append((notification[0], notification[1].organization.id, notification[2]))
 
-    # then send unique 'ALL Event' notifications (which do not include source user info)
+    # then send unique 'ALL Event' notifications (which user org as source info)
     for notification in all_evts:
-        if (notification[0], notification[1].organization.id, notification[2]) not in unique_notifications_no_source:
-            unique_notifications_no_source.append((notification[0], notification[1].organization.id, notification[2]))
+        if (notification[0], notification[8], notification[2]) not in unique_notifications_org_source:
+            # find unique by (recipients, org, event ID)
+            unique_notifications_org_source.append((notification[0], notification[8], notification[2]))
+            # remove the unnecessary 'org' (which here is a copy of source) attribute before generating the notification
+            notification.pop(8)
+            # generate the notification
             generate_notification.delay(*notification)
 
     return True
