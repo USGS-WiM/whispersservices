@@ -15,13 +15,63 @@ def get_changes(obj, source_id, yesterday, model_name):
         if history[i].history_user.id == source_id:
             delta = history[i].diff_against(history[i + 1])
             for change in delta.changes:
+                fld = change.field
                 # ignore automatically calculated fields (non-editable by user)
-                if change.field in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
+                if fld in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
                     continue
-                elif model_name == 'event' and change.field in ['start_date', 'end_date', 'affected_count']:
-                    continue
-                else:
-                    changes.append((model_name, str(obj.id), change))
+                # substitute related object names for foreign key IDs
+                elif model_name == 'event':
+                    # but also ignore automatically calculated fields (non-editable by user)
+                    if fld in ['start_date', 'end_date', 'affected_count']:
+                        continue
+                    elif fld == 'event_type':
+                        change.new = EventType.objects.get(id=change.new) if change.new else change.new
+                        change.old = EventType.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'staff':
+                        change.new = Staff.objects.get(id=change.new) if change.new else change.new
+                        change.old = Staff.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'event_status':
+                        change.new = EventStatus.objects.get(id=change.new) if change.new else change.new
+                        change.old = EventStatus.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'legal_status':
+                        change.new = LegalStatus.objects.get(id=change.new) if change.new else change.new
+                        change.old = LegalStatus.objects.get(id=change.old) if change.old else change.old
+                elif model_name == 'event_location':
+                    if fld == 'country':
+                        change.new = Country.objects.get(id=change.new) if change.new else change.new
+                        change.old = Country.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'administrative_level_one':
+                        change.new = AdministrativeLevelOne.objects.get(id=change.new) if change.new else change.new
+                        change.old = AdministrativeLevelOne.objects.get(id=change.old) if change.old else change.old
+                        # substitute locality name if applicable
+                        locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
+                        if locality and locality.admin_level_one_name:
+                            change.field = locality.admin_level_one_name
+                    elif fld == 'administrative_level_two':
+                        change.new = AdministrativeLevelTwo.objects.get(id=change.new) if change.new else change.new
+                        change.old = AdministrativeLevelTwo.objects.get(id=change.old) if change.old else change.old
+                        # substitute locality name if applicable
+                        locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
+                        if locality and locality.admin_level_two_name:
+                            change.field = locality.admin_level_two_name
+                    elif fld == 'land_ownership':
+                        change.new = LandOwnership.objects.get(id=change.new) if change.new else change.new
+                        change.old = LandOwnership.objects.get(id=change.old) if change.old else change.old
+                elif model_name == 'location_species':
+                    if fld == 'species':
+                        change.new = Species.objects.get(id=change.new) if change.new else change.new
+                        change.old = Species.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'age_bias':
+                        change.new = AgeBias.objects.get(id=change.new) if change.new else change.new
+                        change.old = AgeBias.objects.get(id=change.old) if change.old else change.old
+                    elif fld == 'sex_bias':
+                        change.new = SexBias.objects.get(id=change.new) if change.new else change.new
+                        change.old = SexBias.objects.get(id=change.old) if change.old else change.old
+                elif model_name == 'species_diagnosis':
+                    if fld == 'diagnosis':
+                        change.new = Diagnosis.objects.get(id=change.new) if change.new else change.new
+                        change.old = Diagnosis.objects.get(id=change.old) if change.old else change.old
+                changes.append((model_name, str(obj.id), change))
 
     return changes
 
@@ -32,12 +82,12 @@ def get_updates(event, source_id, yesterday):
     # get changes from the event and its children (event_locations, location_species, species_diagnoses)
     changes = []
     changes += get_changes(event, source_id, yesterday, 'event')
-    for evtloc in EventLocation.objects.filter(event=event.id):
-        changes += get_changes(evtloc, source_id, yesterday, 'event_location')
-        for locspec in LocationSpecies.objects.filter(event_location=evtloc.id):
-            changes += get_changes(locspec, source_id, yesterday, 'location_species')
-            for specdiag in SpeciesDiagnosis.objects.filter(location_species=locspec.id):
-                changes += get_changes(specdiag, source_id, yesterday, 'species_diagnosis')
+    for event_location in EventLocation.objects.filter(event=event.id):
+        changes += get_changes(event_location, source_id, yesterday, 'event_location')
+        for location_species in LocationSpecies.objects.filter(event_location=event_location.id):
+            changes += get_changes(location_species, source_id, yesterday, 'location_species')
+            for species_diagnosis in SpeciesDiagnosis.objects.filter(location_species=location_species.id):
+                changes += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis')
 
     # format the changes into update string items
     for change in changes:
@@ -403,9 +453,9 @@ def build_custom_notifications_query(cue, base_queryset):
                 administrativelevelones__in=values).values_list('id', flat=True))
             field_name = 'Administrative Level One'
             if ctry_ids:
-                lcl = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
-                if lcl and lcl.admin_level_one_name is not None:
-                    field_name = lcl.admin_level_one_name
+                locality = AdministrativeLevelLocality.objects.filter(country=ctry_ids[0]).first()
+                if locality and locality.admin_level_one_name:
+                    field_name = locality.admin_level_one_name
 
             names_list = list(AdministrativeLevelOne.objects.filter(id__in=values).values_list('name', flat=True))
             if len(values) == 1:
@@ -547,6 +597,14 @@ def custom_notifications():
 
         if queryset:
             for event in queryset:
+                # TODO: the following...
+                # # Create one notification per distinct updater (not including the creator)
+                #         # django_simple_history.history_type: + for create, ~ for update, and - for delete
+                #         event_updaters = list(set(
+                #             Event.history.filter(id=event.id, modified_date=yesterday
+                #                                  ).exclude(history_type='+', modified_by=event.created_by.id
+                #                                            ).values_list('modified_by__organization__name',
+                #                                                          'modified_by__organization__id')))
                 send_email = cue.notification_cue_preference.send_email
                 # recipients: users with this notification configured
                 recipients = [cue.created_by.id, ]
