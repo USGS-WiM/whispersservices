@@ -456,6 +456,8 @@ class EventEventGroupViewSet(HistoryViewSet):
     Deletes an event event group.
     """
 
+    serializer_class = EventEventGroupSerializer
+
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to eventgroups can be deleted
         if self.get_object().event.complete:
@@ -476,19 +478,6 @@ class EventEventGroupViewSet(HistoryViewSet):
             return EventEventGroup.objects.all()
         else:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventEventGroupPublicSerializer
-        # admins have access to all fields
-        if user.role.is_superadmin or user.role.is_admin:
-            return EventEventGroupSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return EventEventGroupPublicSerializer
 
 
 class EventGroupViewSet(HistoryViewSet):
@@ -512,6 +501,8 @@ class EventGroupViewSet(HistoryViewSet):
     Deletes an event group.
     """
 
+    serializer_class = EventGroupSerializer
+
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
         user = get_request_user(self.request)
@@ -523,16 +514,6 @@ class EventGroupViewSet(HistoryViewSet):
             return EventGroup.objects.all()
         else:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventGroupPublicSerializer
-        # authenticated non-public users have access to all fields
-        else:
-            return EventGroupSerializer
 
 
 class EventGroupCategoryViewSet(HistoryViewSet):
@@ -807,6 +788,7 @@ class EventOrganizationViewSet(HistoryViewSet):
     Deletes an event organization.
     """
     queryset = EventOrganization.objects.all()
+    serializer_class = EventOrganizationSerializer
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to organizations can be deleted
@@ -815,31 +797,6 @@ class EventOrganizationViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventOrganizationPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return EventOrganizationSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = EventOrganization.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
-                        ).values_list('id', flat=True))):
-                    return EventOrganizationSerializer
-            return EventOrganizationPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return EventOrganizationPublicSerializer
 
 
 class EventContactViewSet(HistoryViewSet):
@@ -2074,25 +2031,8 @@ class UserViewSet(HistoryViewSet):
     delete:
     Deletes an artifact.
     """
-    serializer_class = UserSerializer
 
-    # TODO: is this still needed, now that we have notifications?
-    # ANSWER: I think this can be deleted.
-    # # anyone can request a new user, but an email address is required if the request comes from a non-user
-    # @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
-    # def request_new(self, request):
-    #     if request is None or not request.user.is_authenticated:
-    #         words = request.data.split(" ")
-    #         email_addresses = [word for word in words if '@' in word]
-    #         if not email_addresses or not re.match(r"[^@]+@[^@]+\.[^@]+", email_addresses[0]):
-    #             msg = "You must submit at least a valid email address to create a new user account."
-    #             raise serializers.ValidationError(msg)
-    #         user_email = email_addresses[0]
-    #     else:
-    #         user_email = request.user.email
-    #
-    #     message = "Please add a new user:"
-    #     return construct_email(request.data or '', user_email, message)
+    serializer_class = UserSerializer
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):
@@ -2115,7 +2055,7 @@ class UserViewSet(HistoryViewSet):
                 else:
                     not_found.append(item)
             if found:
-                serializer = UserPublicSerializer(found, many=True, context={'request': request})
+                serializer = self.serializer_class(found, many=True, context={'request': request})
                 resp = {**{"matching_users": serializer.data}, **{"no_matching_users": not_found}}
                 return Response(resp, status=200)
             else:
@@ -2123,30 +2063,6 @@ class UserViewSet(HistoryViewSet):
                 return Response(resp, status=200)
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return UserSerializer if self.action == 'create' else UserPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return UserSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org admin or manager
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = User.objects.filter(id=pk).first()
-                if obj and (user.password == obj.password or
-                            ((obj.organization.id == user.organization.id
-                              or obj.organization.id in user.organization.parent_organizations) and
-                             (user.role.is_partneradmin or user.role.is_partnermanager))):
-                    return UserSerializer
-            return UserPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return UserPublicSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -2370,22 +2286,22 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
-        user = get_request_user(self.request)
         slim = True if self.request is not None and 'slim' in self.request.query_params else False
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
-        # admins have access to all fields
-        if user.role.is_superadmin or user.role.is_admin:
-            return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
-        # partner requests only have access to a more limited list of fields
-        if user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
-            return OrganizationSerializer if not slim else OrganizationSlimSerializer
-        # all other requests are rejected
-        else:
-            raise PermissionDenied
-            # message = "You do not have permission to perform this action"
-            # return JsonResponse({"Permission Denied": message}, status=403)
+        return OrganizationSerializer if not slim else OrganizationSlimSerializer
+        # # all requests from anonymous or public users must use the public serializer
+        # if not user or not user.is_authenticated or user.role.is_public:
+        #     return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
+        # # admins have access to all fields
+        # if user.role.is_superadmin or user.role.is_admin:
+        #     return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
+        # # partner requests only have access to a more limited list of fields
+        # if user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+        #     return OrganizationSerializer if not slim else OrganizationSlimSerializer
+        # # all other requests are rejected
+        # else:
+        #     raise PermissionDenied
+        #     # message = "You do not have permission to perform this action"
+        #     # return JsonResponse({"Permission Denied": message}, status=403)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -2598,6 +2514,7 @@ class SearchViewSet(HistoryViewSet):
     delete:
     Deletes a search.
     """
+
     serializer_class = SearchSerializer
 
     @action(detail=False)
@@ -2620,26 +2537,26 @@ class SearchViewSet(HistoryViewSet):
         if not self.request:
             page = self.paginate_queryset(queryset)
             if page is not None:
-                serializer = SearchSerializer(page, many=True, context={'request': request})
+                serializer = self.serializer_class(page, many=True, context={'request': request})
                 return self.get_paginated_response(serializer.data)
-            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            serializer = self.serializer_class(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
         elif 'no_page' in self.request.query_params:
-            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            serializer = self.serializer_class(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
         else:
             page = self.paginate_queryset(queryset)
             if page is not None:
-                serializer = SearchSerializer(page, many=True, context={'request': request})
+                serializer = self.serializer_class(page, many=True, context={'request': request})
                 return self.get_paginated_response(serializer.data)
-            serializer = SearchSerializer(queryset, many=True, context={'request': request})
+            serializer = self.serializer_class(queryset, many=True, context={'request': request})
             return Response(serializer.data, status=200)
 
     @action(detail=False)
     def top_ten(self, request):
         # return top ten most popular searches
         queryset = Search.objects.all().values('data').annotate(use_count=Sum('count')).order_by('-use_count')[:10]
-        serializer = SearchPublicSerializer(queryset, many=True, context={'request': request})
+        serializer = self.serializer_class(queryset, many=True, context={'request': request})
 
         return Response(serializer.data, status=200)
 

@@ -2093,7 +2093,9 @@ class EventAdminSerializer(serializers.ModelSerializer):
                   'service_request_email', 'permissions', 'permission_source',)
 
 
-class EventEventGroupPublicSerializer(serializers.ModelSerializer):
+class EventEventGroupSerializer(serializers.ModelSerializer):
+    created_by_string = serializers.StringRelatedField(source='created_by')
+    modified_by_string = serializers.StringRelatedField(source='modified_by')
 
     def validate(self, data):
 
@@ -2111,40 +2113,30 @@ class EventEventGroupPublicSerializer(serializers.ModelSerializer):
 
         return data
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'event', 'eventgroup',)
+
+        else:
+            fields = ('id', 'event', 'eventgroup', 'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string',)
+
+        super(EventEventGroupSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = EventEventGroup
-        fields = ('id', 'event', 'eventgroup',)
-
-
-class EventEventGroupSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
-
-    def validate(self, data):
-
-        # TODO: determine if this is true
-        if data['event'].complete:
-            message = "EventEventGroup for a complete event may not be changed"
-            message += " unless the event is first re-opened by the event owner or an administrator."
-            raise serializers.ValidationError(message)
-
-        return data
-
-    class Meta:
-        model = EventEventGroup
-        fields = ('id', 'event', 'eventgroup', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
-
-
-class EventGroupPublicSerializer(serializers.ModelSerializer):
-    events = serializers.SerializerMethodField()
-
-    def get_events(self, obj):
-        return list(Event.objects.filter(public=True, eventgroups=obj.id).values_list('id', flat=True))
-
-    class Meta:
-        model = EventGroup
-        fields = ('id', 'name', 'events',)
+        fields = '__all__'
 
 
 class EventGroupSerializer(serializers.ModelSerializer):
@@ -2153,6 +2145,14 @@ class EventGroupSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     new_comment = serializers.CharField(write_only=True, required=True, allow_blank=False)
     new_events = serializers.ListField(write_only=True, required=True)
+    events = serializers.SerializerMethodField()
+
+    def get_events(self, obj):
+        user = get_user(self.context, model_to_dict(obj))
+        if not user or not user.is_authenticated or user.role.is_public:
+            return list(Event.objects.filter(public=True, eventgroups=obj.id).values_list('id', flat=True))
+        else:
+            return list(Event.objects.filter(eventgroups=obj.id).values_list('id', flat=True))
 
     def create(self, validated_data):
         if 'new_events' in validated_data and len(validated_data['new_events']) < 2:
@@ -2231,11 +2231,31 @@ class EventGroupSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'name', 'events',)
+
+        else:
+            fields = ('id', 'name', 'category', 'comments', 'events', "new_events", 'new_comment',
+                      'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string',)
+
+        super(EventGroupSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = EventGroup
-        fields = ('id', 'name', 'category', 'comments', 'events', "new_events", 'new_comment',
-                  'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+        fields = '__all__'
 
 
 class EventGroupCategorySerializer(serializers.ModelSerializer):
@@ -2346,13 +2366,6 @@ class EventLabsiteSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class EventOrganizationPublicSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = EventOrganization
-        fields = ('event', 'organization',)
-
-
 class EventOrganizationSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2394,11 +2407,30 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('event', 'organization',)
+
+        else:
+            fields = ('id', 'event', 'organization', 'priority', 'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string',)
+
+        super(EventOrganizationSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = EventOrganization
-        fields = ('id', 'event', 'organization', 'priority',
-                  'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+        fields = '__all__'
 
 
 class EventContactSerializer(serializers.ModelSerializer):
@@ -4270,14 +4302,6 @@ class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
 ######
 
 
-class UserPublicSerializer(serializers.ModelSerializer):
-    organization_string = serializers.StringRelatedField(source='organization')
-
-    class Meta:
-        model = User
-        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
-
-
 # Password must be at least 12 characters long.
 # Password cannot contain your username.
 # Password cannot have been used in previous 20 passwords.
@@ -4546,12 +4570,32 @@ class UserSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
+
+        else:
+            fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
+                      'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
+                      'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
+                      'new_user_change_request', )  # 'rolechangerequests_requester')
+
+        super(UserSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = User
-        fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
-                  'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                  'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
-                  'new_user_change_request', )  # 'rolechangerequests_requester')
+        fields = '__all__'
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -4785,46 +4829,65 @@ class CircleSerlializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class OrganizationPublicSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Organization
-        fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
-                  'country', 'phone', 'parent_organization', 'laboratory',)
-
-
 class OrganizationSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
-
-
-class OrganizationAdminSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
+                      'country', 'phone', 'parent_organization', 'laboratory',)
+        elif user.role.is_superadmin or user.role.is_admin:
+            fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
+                      'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
+                      'laboratory', 'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string',)
+        else:
+            fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
+                               'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
+
+        super(OrganizationSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish', 'laboratory',
-                  'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
-
-
-class OrganizationPublicSlimSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Organization
-        fields = ('id', 'name', 'laboratory',)
+        fields = '__all__'
 
 
 class OrganizationSlimSerializer(serializers.ModelSerializer):
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('id', 'name', 'laboratory',)
+        else:
+            fields = ('id', 'name', 'private_name', 'laboratory',)
+
+        super(OrganizationSlimSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = Organization
-        fields = ('id', 'name', 'private_name', 'laboratory',)
+        fields = '__all__'
 
 
 class ContactSerializer(serializers.ModelSerializer):
@@ -4867,14 +4930,6 @@ class ContactTypeSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class SearchPublicSerializer(serializers.ModelSerializer):
-    use_count = serializers.IntegerField(read_only=True)
-
-    class Meta:
-        model = Search
-        fields = ('data', 'use_count',)
-
-
 class SearchSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -4903,10 +4958,29 @@ class SearchSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+
+        if not user or not user.is_authenticated or user.role.is_public:
+            fields = ('data', 'use_count',)
+        else:
+            fields = ('id', 'name', 'data', 'created_date', 'created_by', 'created_by_string',
+                      'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+
+        super(SearchSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = Search
-        fields = ('id', 'name', 'data', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
+        fields = '__all__'
         extra_kwargs = {'count': {'read_only': True}}
 
 
