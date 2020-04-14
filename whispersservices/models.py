@@ -881,7 +881,7 @@ class AdministrativeLevelTwo(AdminPermissionsHistoryModel):
 
 class AdministrativeLevelLocality(AdminPermissionsHistoryModel):
     """
-    Table for looking up local names for adminstrative levels based on country
+    Table for looking up local names for administrative levels based on country
     """
 
     country = models.ForeignKey('Country', models.CASCADE, related_name='adminstrativelevellocalities', help_text='A foreign key integer value identifying the country to which this administrative level locality belongs')
