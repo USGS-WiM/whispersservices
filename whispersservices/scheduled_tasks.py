@@ -6,13 +6,14 @@ from whispersservices.immediate_tasks import generate_notification
 
 
 def get_changes(obj, source_id, yesterday, model_name):
+    yesterday_date = datetime.strptime(yesterday, '%Y-%m-%d').date()
     changes = []
 
     # grab all history for this event from yesterday ...
     history = obj.history.order_by('-history_id')
-    for i in range(0, len(history)):
+    for i in range(0, len(history) - 1):
         # ... but only include changes made by this particular updater (source)
-        if history[i].history_date.date() == yesterday.date() and history[i].history_user.id == source_id:
+        if history[i].history_date.date() == yesterday_date and history[i].history_user.id == source_id:
             delta = history[i].diff_against(history[i + 1])
             for change in delta.changes:
                 fld = change.field
