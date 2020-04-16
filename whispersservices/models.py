@@ -739,9 +739,8 @@ class EventLocation(PermissionsHistoryModel):
         event.affected_count = self.update_event_affected_count(event, locations)
 
         # modified_date
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
 
@@ -753,9 +752,9 @@ class EventLocation(PermissionsHistoryModel):
         # affected_count
         event.affected_count = self.update_event_affected_count(event, locations)
 
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
         super(EventLocation, self).delete(*args, **kwargs)
@@ -793,18 +792,16 @@ class EventLocationContact(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(EventLocationContact, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
         super(EventLocationContact, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -928,18 +925,16 @@ class EventLocationFlyway(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(EventLocationFlyway, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
         super(EventLocationFlyway, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -1037,9 +1032,8 @@ class LocationSpecies(PermissionsHistoryModel):
         event.affected_count = self.update_event_affected_location(event)
 
         # modified_date
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
 
@@ -1050,9 +1044,9 @@ class LocationSpecies(PermissionsHistoryModel):
         # affected_count
         event.affected_count = self.update_event_affected_location(event)
 
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
         super(LocationSpecies, self).delete(*args, **kwargs)
@@ -1203,18 +1197,16 @@ class EventDiagnosis(PermissionsHistoryModel):
         super(EventDiagnosis, self).save(*args, **kwargs)
 
         event = Event.objects.filter(id=self.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
         super(EventDiagnosis, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -1380,9 +1372,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         event.affected_count = self.update_event_affected_count(event)
 
         # modified_date
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
 
@@ -1438,9 +1429,9 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # affected_count
         event.affected_count = self.update_event_affected_count(event)
 
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
+        # modified_date
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
 
         event.save()
 
@@ -1479,18 +1470,16 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     def save(self, *args, **kwargs):
         super(SpeciesDiagnosisOrganization, self).save(*args, **kwargs)
         event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
-        if not event.modified_date == date.today():
-            event.modified_by = self.modified_by
-            event.modified_date = self.modified_date
-            event.save()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
         super(SpeciesDiagnosisOrganization, self).delete(*args, **kwargs)
 
     def __str__(self):
@@ -1903,7 +1892,7 @@ class Comment(PermissionsHistoryModel):
             event = EventLocation.objects.get(pk=self.object_id).event
         elif model_name == 'eventeventgroup':
             event = EventEventGroup.objects.get(pk=self.object_id).event
-        if event and not event.modified_date == self.modified_date:
+        if event:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1918,7 +1907,7 @@ class Comment(PermissionsHistoryModel):
             event = EventLocation.objects.get(pk=self.object_id).event
         elif model_name == 'eventeventgroup':
             event = EventEventGroup.objects.get(pk=self.object_id).event
-        if event and not event.modified_date == self.modified_date:
+        if event:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
