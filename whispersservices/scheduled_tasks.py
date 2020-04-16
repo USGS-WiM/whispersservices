@@ -117,11 +117,12 @@ def get_notification_details(cue, event, msg_tmp, updates, source, org=''):
 
     new_updated = "New" if updates == "N/A" else "Updated"
     created_updated = 'created' if updates == "N/A" else 'updated'
+    event_date = event.created_date if updates == "N/A" else event.modified_date
 
     subject = msg_tmp.subject_template.format(event_id=event.id)
     body = msg_tmp.body_template.format(
         first_name=event.created_by.first_name, last_name=event.created_by.last_name, created_updated=created_updated,
-        event_id=event.id, event_date=event.created_date, updates=updates, new_updated=new_updated)
+        event_id=event.id, event_date=event_date, updates=updates, new_updated=new_updated)
 
     org = source if org == '' else org
 
