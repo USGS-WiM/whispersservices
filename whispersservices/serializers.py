@@ -4365,8 +4365,6 @@ class UserSerializer(serializers.ModelSerializer):
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
-            requested_org = validated_data.pop('organization')
-            requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
 

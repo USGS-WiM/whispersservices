@@ -81,7 +81,7 @@ def get_changes(obj, source_id, yesterday, model_name):
                 change.new = "\"\"" if change.new == '' else change.new
                 change.old = "\"\"" if change.old == '' else change.old
 
-                changes.append((model_name, str(obj.id), change))
+                changes.append((model_name, change))
 
     return changes
 
@@ -102,10 +102,9 @@ def get_updates(event, source_id, yesterday):
     # format the changes into update string items
     for change in changes:
         model = change[0].replace('_', ' ').capitalize()
-        obj_id = change[1]
-        chg = change[2]
+        chg = change[1]
         field = chg.field.replace('_', ' ')
-        updates += "\r\n{} {} {} changed from {} to {}".format(model, obj_id, field, chg.old, chg.new)
+        updates += "\r\n{} {} changed from {} to {}".format(model, field, chg.old, chg.new)
 
     return updates
 
