@@ -7,154 +7,194 @@ from whispersservices.immediate_tasks import generate_notification
 
 def get_changes(obj, source_id, yesterday, model_name):
     yesterday_date = datetime.strptime(yesterday, '%Y-%m-%d').date()
-    changes = []
+    changes = ""
 
     # grab all history for this event from yesterday ...
     history = obj.history.order_by('-history_id')
-    for i in range(0, len(history) - 1):
-        # ... but only include changes made by this particular updater (source)
-        if history[i].history_date.date() == yesterday_date and history[i].history_user.id == source_id:
-            delta = history[i].diff_against(history[i + 1])
-            for change in delta.changes:
-                fld = change.field
+    if len(history) == 0:
+        # no history records for the model, so ignore
+        pass
+    elif len(history) == 1:
+        # only one history record for the model
+        h = history[0]
+        # only include creates made yesterday by the source user
+        #  (a single history record can only ever be a create, but better to be safe by being explicit)
+        if h.history_date.date() == yesterday_date and h.history_user.id == source_id and h.history_type == '+':
+            model = " ".join([part.capitalize() for part in model_name.split('_')])
+            if model_name == 'event_comment':
+                changes = "\r\nAn {} was created: {}".format(model, h.comment)
+            elif model_name == 'event_diagnosis':
+                changes = "\r\nAn {} was created: {}".format(model, h.diagnosis.name)
+            elif model_name == 'event_group':
+                changes = "\r\nEvent was added to {} {}".format(model, h.eventgroup.name)
+            elif model_name == 'event_group_comment':
+                changes = "\r\nAn {} was created: {}".format(model, h.comment)
+            elif model_name == 'event_location':
+                changes = "\r\nAn {} was created: {}".format(model, h.name)
+            elif model_name == 'event_location_comment':
+                changes = "\r\nAn {} was created: {}".format(model, h.comment)
+            elif model_name == 'event_location_contact':
+                name = h.contact.first_name + " " + h.contact.last_name
+                changes = "\r\nAn Event Location Contact was assigned: {}".format(name)
+            elif model_name == 'event_location_flyway':
+                changes = "\r\nAn Event Location was put in flyway {}".format(h.flyway.name)
+            elif model_name == 'location_species':
+                changes = "\r\nA {} was created: {}".format(model, h.species.name)
+            elif model_name == 'species_diagnosis':
+                changes = "\r\nA {} was created: {}".format(model, h.diagnosis.name)
+            elif model_name == 'species_diagnosis_organization':
+                changes = "\r\nA Species Diagnosis Organization was was assigned: {}".format(h.organization.name)
+            else:
+                changes = "\r\nA new {} was created".format(model_name)
+    else:
+        # more than one history record for the model
+        for i in range(0, len(history) - 1):
+            # only include changes made yesterday
+            if history[i].history_date.date() == yesterday_date:
+                # only include changes made by this particular updater (source)
+                #  (but keep the loop going in case changes made by this updaters are interspersed among other changes)
+                if history[i].history_user.id == source_id:
+                    delta = history[i].diff_against(history[i + 1])
+                    for change in delta.changes:
+                        fld = change.field
 
-                # ignore automatically calculated fields (non-editable by user)
-                if fld in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
+                        # ignore automatically calculated fields (non-editable by user)
+                        if fld in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
+                            continue
+                        # substitute related object names for foreign key IDs
+                        elif model_name == 'event':
+                            # but also ignore automatically calculated fields (non-editable by user)
+                            if fld in ['start_date', 'end_date', 'affected_count']:
+                                continue
+                            elif fld == 'event_type':
+                                change.new = EventType.objects.get(id=change.new) if change.new else change.new
+                                change.old = EventType.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'staff':
+                                change.new = Staff.objects.get(id=change.new) if change.new else change.new
+                                change.old = Staff.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'event_status':
+                                change.new = EventStatus.objects.get(id=change.new) if change.new else change.new
+                                change.old = EventStatus.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'legal_status':
+                                change.new = LegalStatus.objects.get(id=change.new) if change.new else change.new
+                                change.old = LegalStatus.objects.get(id=change.old) if change.old else change.old
+                        elif model_name == 'event_location':
+                            if fld == 'country':
+                                change.new = Country.objects.get(id=change.new) if change.new else change.new
+                                change.old = Country.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'administrative_level_one':
+                                change.new = AdministrativeLevelOne.objects.get(id=change.new) if change.new else change.new
+                                change.old = AdministrativeLevelOne.objects.get(id=change.old) if change.old else change.old
+                                # substitute locality name if applicable
+                                locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
+                                if locality and locality.admin_level_one_name:
+                                    change.field = locality.admin_level_one_name
+                            elif fld == 'administrative_level_two':
+                                change.new = AdministrativeLevelTwo.objects.get(id=change.new) if change.new else change.new
+                                change.old = AdministrativeLevelTwo.objects.get(id=change.old) if change.old else change.old
+                                # substitute locality name if applicable
+                                locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
+                                if locality and locality.admin_level_two_name:
+                                    change.field = locality.admin_level_two_name
+                            elif fld == 'land_ownership':
+                                change.new = LandOwnership.objects.get(id=change.new) if change.new else change.new
+                                change.old = LandOwnership.objects.get(id=change.old) if change.old else change.old
+                        elif model_name == 'location_species':
+                            if fld == 'species':
+                                change.new = Species.objects.get(id=change.new) if change.new else change.new
+                                change.old = Species.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'age_bias':
+                                change.new = AgeBias.objects.get(id=change.new) if change.new else change.new
+                                change.old = AgeBias.objects.get(id=change.old) if change.old else change.old
+                            elif fld == 'sex_bias':
+                                change.new = SexBias.objects.get(id=change.new) if change.new else change.new
+                                change.old = SexBias.objects.get(id=change.old) if change.old else change.old
+                        elif model_name == 'species_diagnosis':
+                            if fld == 'diagnosis':
+                                change.new = Diagnosis.objects.get(id=change.new) if change.new else change.new
+                                change.old = Diagnosis.objects.get(id=change.old) if change.old else change.old
+
+                        # substitute a two double quotation marks for empty string to avoid confusing the recipient
+                        # (an empty string in the notification or email looks like the value is missing,
+                        # not like what the value actually is (a string without content),
+                        # and might make them think that there is a bug in the code)
+                        change.new = "\"\"" if change.new == '' else change.new
+                        change.old = "\"\"" if change.old == '' else change.old
+
+                        # format the change into an update string item
+                        model = " ".join([part.capitalize() for part in model_name.split('_')])
+                        field = change.field.replace('_', ' ')
+                        changes += "\r\n{} {} changed from {} to {}".format(model, field, change.old, change.new)
+                else:
+                    # keep the loop going in case changes made by this updaters are interspersed among other changes
                     continue
-                # substitute related object names for foreign key IDs
-                elif model_name == 'event':
-                    # but also ignore automatically calculated fields (non-editable by user)
-                    if fld in ['start_date', 'end_date', 'affected_count']:
-                        continue
-                    elif fld == 'event_type':
-                        change.new = EventType.objects.get(id=change.new) if change.new else change.new
-                        change.old = EventType.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'staff':
-                        change.new = Staff.objects.get(id=change.new) if change.new else change.new
-                        change.old = Staff.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'event_status':
-                        change.new = EventStatus.objects.get(id=change.new) if change.new else change.new
-                        change.old = EventStatus.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'legal_status':
-                        change.new = LegalStatus.objects.get(id=change.new) if change.new else change.new
-                        change.old = LegalStatus.objects.get(id=change.old) if change.old else change.old
-                elif model_name == 'event_location':
-                    if fld == 'country':
-                        change.new = Country.objects.get(id=change.new) if change.new else change.new
-                        change.old = Country.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'administrative_level_one':
-                        change.new = AdministrativeLevelOne.objects.get(id=change.new) if change.new else change.new
-                        change.old = AdministrativeLevelOne.objects.get(id=change.old) if change.old else change.old
-                        # substitute locality name if applicable
-                        locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
-                        if locality and locality.admin_level_one_name:
-                            change.field = locality.admin_level_one_name
-                    elif fld == 'administrative_level_two':
-                        change.new = AdministrativeLevelTwo.objects.get(id=change.new) if change.new else change.new
-                        change.old = AdministrativeLevelTwo.objects.get(id=change.old) if change.old else change.old
-                        # substitute locality name if applicable
-                        locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
-                        if locality and locality.admin_level_two_name:
-                            change.field = locality.admin_level_two_name
-                    elif fld == 'land_ownership':
-                        change.new = LandOwnership.objects.get(id=change.new) if change.new else change.new
-                        change.old = LandOwnership.objects.get(id=change.old) if change.old else change.old
-                elif model_name == 'location_species':
-                    if fld == 'species':
-                        change.new = Species.objects.get(id=change.new) if change.new else change.new
-                        change.old = Species.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'age_bias':
-                        change.new = AgeBias.objects.get(id=change.new) if change.new else change.new
-                        change.old = AgeBias.objects.get(id=change.old) if change.old else change.old
-                    elif fld == 'sex_bias':
-                        change.new = SexBias.objects.get(id=change.new) if change.new else change.new
-                        change.old = SexBias.objects.get(id=change.old) if change.old else change.old
-                elif model_name == 'species_diagnosis':
-                    if fld == 'diagnosis':
-                        change.new = Diagnosis.objects.get(id=change.new) if change.new else change.new
-                        change.old = Diagnosis.objects.get(id=change.old) if change.old else change.old
-
-                # substitute a two double quotation marks for empty string to avoid confusing the recipient
-                # (an empty string in the notification or email looks like the value is missing,
-                # not like what the value actually is (a string without content),
-                # and might make them think that there is a bug in the code)
-                change.new = "\"\"" if change.new == '' else change.new
-                change.old = "\"\"" if change.old == '' else change.old
-
-                changes.append((model_name, change))
+            else:
+                # no changes from yesterday found, so exit the loop
+                break
 
     return changes
 
 
 def get_updates(event, source_id, yesterday):
-    updates = ""
-
     # get changes from the event and its children (event comments, event diagnoses, event event groups,
     #  event event group comments, event locations, event location comments, event location contacts,
     #  event location flyways, location species, species diagnoses, species diagnosis organizations)
-    changes = []
+    updates = ""
 
     # event
-    changes += get_changes(event, source_id, yesterday, 'event')
+    updates += get_changes(event, source_id, yesterday, 'event')
 
     # event comments
     event_content_type = ContentType.objects.filter(model='event').first()
     for event_comment in Comment.objects.filter(
             object_id=event.id, content_type=event_content_type.id, modified_date=event.modified_date):
-        changes += get_changes(event_comment, source_id, yesterday, 'event_comment')
+        updates += get_changes(event_comment, source_id, yesterday, 'event_comment')
 
     # event diagnoses
     for event_diagnosis in EventDiagnosis.objects.filter(event=event.id):
-        changes += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis')
+        updates += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis')
 
     # event event groups
     for event_group in EventEventGroup.objects.filter(event=event.id):
-        changes += get_changes(event_group, source_id, yesterday, 'event_group')
+        updates += get_changes(event_group, source_id, yesterday, 'event_group')
 
         # event event group comments
         event_group_content_type = ContentType.objects.filter(model='eventeventgroup').first()
         for event_group_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_group_content_type.id, modified_date=event.modified_date):
-            changes += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment')
+            updates += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment')
 
     # event locations
     for event_location in EventLocation.objects.filter(event=event.id):
-        changes += get_changes(event_location, source_id, yesterday, 'event_location')
+        updates += get_changes(event_location, source_id, yesterday, 'event_location')
 
         # event location comments
         event_location_content_type = ContentType.objects.filter(model='eventlocation').first()
         for event_location_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_location_content_type.id, modified_date=event.modified_date):
-            changes += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment')
+            updates += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment')
 
         # event location contacts
         for event_location_contact in EventLocationContact.objects.filter(event_location=event_location.id):
-            changes += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact')
+            updates += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact')
 
         # event location flyways
         for event_location_flyway in EventLocationFlyway.objects.filter(event_location=event_location.id):
-            changes += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway')
+            updates += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway')
 
         # location species
         for location_species in LocationSpecies.objects.filter(event_location=event_location.id):
-            changes += get_changes(location_species, source_id, yesterday, 'location_species')
+            updates += get_changes(location_species, source_id, yesterday, 'location_species')
 
             # species diagnoses
             for species_diagnosis in SpeciesDiagnosis.objects.filter(location_species=location_species.id):
-                changes += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis')
+                updates += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis')
 
                 # species diagnosis organizations
                 for species_diagnosis_organization in SpeciesDiagnosisOrganization.objects.filter(
                         species_diagnosis=species_diagnosis.id):
-                    changes += get_changes(species_diagnosis_organization, source_id, yesterday,
+                    updates += get_changes(species_diagnosis_organization, source_id, yesterday,
                                            'species_diagnosis_organization')
-
-    # format the changes into update string items
-    for change in changes:
-        model = change[0].replace('_', ' ').capitalize()
-        chg = change[1]
-        field = chg.field.replace('_', ' ')
-        updates += "\r\n{} {} changed from {} to {}".format(model, field, chg.old, chg.new)
 
     return updates
 
