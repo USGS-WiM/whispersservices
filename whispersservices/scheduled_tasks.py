@@ -89,15 +89,65 @@ def get_changes(obj, source_id, yesterday, model_name):
 def get_updates(event, source_id, yesterday):
     updates = ""
 
-    # get changes from the event and its children (event_locations, location_species, species_diagnoses)
+    # get changes from the event and its children (event comments, event diagnoses, event event groups,
+    #  event event group comments, event locations, event location comments, event location contacts,
+    #  event location flyways, location species, species diagnoses, species diagnosis organizations)
     changes = []
+
+    # event
     changes += get_changes(event, source_id, yesterday, 'event')
+
+    # event comments
+    event_content_type = ContentType.objects.filter(model='event').first()
+    for event_comment in Comment.objects.filter(
+            object_id=event.id, content_type=event_content_type.id, modified_date=event.modified_date):
+        changes += get_changes(event_comment, source_id, yesterday, 'event_comment')
+
+    # event diagnoses
+    for event_diagnosis in EventDiagnosis.objects.filter(event=event.id):
+        changes += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis')
+
+    # event event groups
+    for event_group in EventEventGroup.objects.filter(event=event.id):
+        changes += get_changes(event_group, source_id, yesterday, 'event_group')
+
+        # event event group comments
+        event_group_content_type = ContentType.objects.filter(model='eventeventgroup').first()
+        for event_group_comment in Comment.objects.filter(
+                object_id=event.id, content_type=event_group_content_type.id, modified_date=event.modified_date):
+            changes += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment')
+
+    # event locations
     for event_location in EventLocation.objects.filter(event=event.id):
         changes += get_changes(event_location, source_id, yesterday, 'event_location')
+
+        # event location comments
+        event_location_content_type = ContentType.objects.filter(model='eventlocation').first()
+        for event_location_comment in Comment.objects.filter(
+                object_id=event.id, content_type=event_location_content_type.id, modified_date=event.modified_date):
+            changes += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment')
+
+        # event location contacts
+        for event_location_contact in EventLocationContact.objects.filter(event_location=event_location.id):
+            changes += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact')
+
+        # event location flyways
+        for event_location_flyway in EventLocationFlyway.objects.filter(event_location=event_location.id):
+            changes += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway')
+
+        # location species
         for location_species in LocationSpecies.objects.filter(event_location=event_location.id):
             changes += get_changes(location_species, source_id, yesterday, 'location_species')
+
+            # species diagnoses
             for species_diagnosis in SpeciesDiagnosis.objects.filter(location_species=location_species.id):
                 changes += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis')
+
+                # species diagnosis organizations
+                for species_diagnosis_organization in SpeciesDiagnosisOrganization.objects.filter(
+                        species_diagnosis=species_diagnosis.id):
+                    changes += get_changes(species_diagnosis_organization, source_id, yesterday,
+                                           'species_diagnosis_organization')
 
     # format the changes into update string items
     for change in changes:
