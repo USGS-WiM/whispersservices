@@ -3448,7 +3448,12 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         message_complete = "Diagnosis from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
-        eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
+        # if this is a new EventDiagnosis
+        if not self.instance:
+            eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
+        else:
+            # else this is an existing EventDiagnosis
+            eventdiags = EventDiagnosis.objects.filter(event=self.instance.id)
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete

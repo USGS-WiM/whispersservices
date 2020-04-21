@@ -5,7 +5,7 @@ from whispersservices.models import *
 from whispersservices.immediate_tasks import generate_notification
 
 
-def get_changes(obj, source_id, yesterday, model_name):
+def get_changes(obj, source_id, yesterday, model_name, source_type):
     yesterday_date = datetime.strptime(yesterday, '%Y-%m-%d').date()
     changes = ""
 
@@ -19,7 +19,8 @@ def get_changes(obj, source_id, yesterday, model_name):
         h = history[0]
         # only include creates made yesterday by the source user
         #  (a single history record can only ever be a create, but better to be safe by being explicit)
-        if h.history_date.date() == yesterday_date and h.history_user.id == source_id and h.history_type == '+':
+        h_id = h.history_user.id if source_type == 'user' else h.history_user.organization.id
+        if h.history_date.date() == yesterday_date and h_id == source_id and h.history_type == '+':
             model = " ".join([part.capitalize() for part in model_name.split('_')])
             if model_name == 'event_comment':
                 changes = "\r\nAn {} was created: {}".format(model, h.comment)
@@ -50,10 +51,16 @@ def get_changes(obj, source_id, yesterday, model_name):
         # more than one history record for the model
         for i in range(0, len(history) - 1):
             # only include changes made yesterday
-            if history[i].history_date.date() == yesterday_date:
+            if not history[i].history_date.date() == yesterday_date:
+                # no changes from yesterday found, so exit the loop
+                break
+            else:
                 # only include changes made by this particular updater (source)
-                #  (but keep the loop going in case changes made by this updaters are interspersed among other changes)
-                if history[i].history_user.id == source_id:
+                h_id = history[i].history_user.id if source_type == 'user' else history[i].history_user.organization.id
+                if not h_id == source_id:
+                    # keep the loop going in case changes made by this updater are interspersed among other changes
+                    continue
+                else:
                     delta = history[i].diff_against(history[i + 1])
                     for change in delta.changes:
                         fld = change.field
@@ -125,76 +132,70 @@ def get_changes(obj, source_id, yesterday, model_name):
                         model = " ".join([part.capitalize() for part in model_name.split('_')])
                         field = change.field.replace('_', ' ')
                         changes += "\r\n{} {} changed from {} to {}".format(model, field, change.old, change.new)
-                else:
-                    # keep the loop going in case changes made by this updaters are interspersed among other changes
-                    continue
-            else:
-                # no changes from yesterday found, so exit the loop
-                break
 
     return changes
 
 
-def get_updates(event, source_id, yesterday):
+def get_updates(event, source_id, yesterday, source_type):
     # get changes from the event and its children (event comments, event diagnoses, event event groups,
     #  event event group comments, event locations, event location comments, event location contacts,
     #  event location flyways, location species, species diagnoses, species diagnosis organizations)
     updates = ""
 
     # event
-    updates += get_changes(event, source_id, yesterday, 'event')
+    updates += get_changes(event, source_id, yesterday, 'event', source_type)
 
     # event comments
     event_content_type = ContentType.objects.filter(model='event').first()
     for event_comment in Comment.objects.filter(
             object_id=event.id, content_type=event_content_type.id, modified_date=event.modified_date):
-        updates += get_changes(event_comment, source_id, yesterday, 'event_comment')
+        updates += get_changes(event_comment, source_id, yesterday, 'event_comment', source_type)
 
     # event diagnoses
     for event_diagnosis in EventDiagnosis.objects.filter(event=event.id):
-        updates += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis')
+        updates += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis', source_type)
 
     # event event groups
     for event_group in EventEventGroup.objects.filter(event=event.id):
-        updates += get_changes(event_group, source_id, yesterday, 'event_group')
+        updates += get_changes(event_group, source_id, yesterday, 'event_group', source_type)
 
         # event event group comments
         event_group_content_type = ContentType.objects.filter(model='eventeventgroup').first()
         for event_group_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_group_content_type.id, modified_date=event.modified_date):
-            updates += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment')
+            updates += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment', source_type)
 
     # event locations
     for event_location in EventLocation.objects.filter(event=event.id):
-        updates += get_changes(event_location, source_id, yesterday, 'event_location')
+        updates += get_changes(event_location, source_id, yesterday, 'event_location', source_type)
 
         # event location comments
         event_location_content_type = ContentType.objects.filter(model='eventlocation').first()
         for event_location_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_location_content_type.id, modified_date=event.modified_date):
-            updates += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment')
+            updates += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment', source_type)
 
         # event location contacts
         for event_location_contact in EventLocationContact.objects.filter(event_location=event_location.id):
-            updates += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact')
+            updates += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact', source_type)
 
         # event location flyways
         for event_location_flyway in EventLocationFlyway.objects.filter(event_location=event_location.id):
-            updates += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway')
+            updates += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway', source_type)
 
         # location species
         for location_species in LocationSpecies.objects.filter(event_location=event_location.id):
-            updates += get_changes(location_species, source_id, yesterday, 'location_species')
+            updates += get_changes(location_species, source_id, yesterday, 'location_species', source_type)
 
             # species diagnoses
             for species_diagnosis in SpeciesDiagnosis.objects.filter(location_species=location_species.id):
-                updates += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis')
+                updates += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis', source_type)
 
                 # species diagnosis organizations
                 for species_diagnosis_organization in SpeciesDiagnosisOrganization.objects.filter(
                         species_diagnosis=species_diagnosis.id):
                     updates += get_changes(species_diagnosis_organization, source_id, yesterday,
-                                           'species_diagnosis_organization')
+                                           'species_diagnosis_organization', source_type)
 
     return updates
 
@@ -249,7 +250,7 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday)
+                        updates = get_updates(event, source_id, yesterday, 'user')
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -291,7 +292,7 @@ def organization_events(events_created_yesterday, events_updated_yesterday, yest
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday)
+                        updates = get_updates(event, source_id, yesterday, 'user')
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -339,7 +340,7 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday, yest
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday)
+                        updates = get_updates(event, source_id, yesterday, 'user')
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -411,15 +412,15 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
                     source = event_updater[0]
                     source_id = event_updater[1]
                     org = source
-                    updates = get_updates(event, source_id, yesterday)
+                    updates = get_updates(event, source_id, yesterday, 'org')
 
                     # only create notifications if there are update details (non-empty string)
                     if updates:
                         subject = msg_tmp.subject_template.format(event_id=event.id)
                         body = msg_tmp.body_template.format(
-                            event_id=event.id, organization=event.modified_by.organization.name,
-                            event_location=all_evt_locs, event_date=event.modified_date, new_updated="Updated",
-                            created_updated="updated", updates=updates)
+                            event_id=event.id, organization=source, event_location=all_evt_locs,
+                            event_date=event.modified_date, new_updated="Updated", created_updated="updated",
+                            updates=updates)
 
                         notifications.append([recipients, source, event.id, 'event', subject, body,
                                               send_email, email_to, org])
@@ -739,14 +740,13 @@ def custom_notifications():
                         # source: any organization who creates or updates an event that meets the trigger criteria
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday)
+                        updates = get_updates(event, source_id, yesterday, 'org')
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
                             subject = msg_tmp.subject_template.format(event_id=event.id)
                             body = msg_tmp.body_template.format(
-                                new_updated="Updated", criteria=criteria,
-                                organization=event.modified_by.organization.name,
+                                new_updated="Updated", criteria=criteria, organization=source,
                                 created_updated="updated", event_id=event.id, event_date=event.modified_date,
                                 updates=updates)
 
