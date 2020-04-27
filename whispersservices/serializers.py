@@ -17,6 +17,7 @@ from dry_rest_permissions.generics import DRYPermissionsField
 # TODO: consider implementing type checking for nested objects
 # TODO: turn every ListField into a set to prevent errors caused by duplicates
 
+PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 GEONAMES_USERNAME = Configuration.objects.filter(name='geonames_username').first().value
 GEONAMES_API = Configuration.objects.filter(name='geonames_api_url').first().value
@@ -2409,15 +2410,30 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         user = None
-        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
-            user = kwargs['context']['request'].user
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
 
-        if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('event', 'organization',)
+        fields = ('event', 'organization',)
+        private_fields = ('id', 'event', 'organization', 'priority', 'created_date', 'created_by', 'created_by_string',
+                          'modified_date', 'modified_by', 'modified_by_string',)
 
-        else:
-            fields = ('id', 'event', 'organization', 'priority', 'created_date', 'created_by', 'created_by_string',
-                      'modified_date', 'modified_by', 'modified_by_string',)
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = EventOrganization.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
 
         super(EventOrganizationSerializer, self).__init__(*args, **kwargs)
 
@@ -2457,18 +2473,6 @@ class EventContactSerializer(serializers.ModelSerializer):
 #  Locations
 #
 ######
-
-
-class EventLocationPublicSerializer(serializers.ModelSerializer):
-    administrative_level_two_string = serializers.StringRelatedField(source='administrative_level_two')
-    administrative_level_one_string = serializers.StringRelatedField(source='administrative_level_one')
-    country_string = serializers.StringRelatedField(source='country')
-
-    class Meta:
-        model = EventLocation
-        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
-                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'county_multiple', 'county_unknown', 'flyways',)
 
 
 class EventLocationSerializer(serializers.ModelSerializer):
@@ -3001,15 +3005,52 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
+
+        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
+                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
+                  'county_multiple', 'county_unknown', 'flyways',)
+        private_fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
+                          'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
+                          'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
+                          'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
+                          'site_description', 'history', 'environmental_factors', 'clinical_signs', 'comment',
+                          'new_location_contacts', 'new_location_species', 'created_date', 'created_by',
+                          'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',)
+
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = EventLocation.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
+
+        super(EventLocationSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = EventLocation
-        fields = ('id', 'name', 'event', 'start_date', 'end_date', 'country', 'country_string',
-                  'administrative_level_one', 'administrative_level_one_string', 'administrative_level_two',
-                  'administrative_level_two_string', 'county_multiple', 'county_unknown', 'latitude', 'longitude',
-                  'priority', 'land_ownership', 'flyways', 'contacts', 'gnis_name', 'gnis_id', 'comments',
-                  'site_description', 'history', 'environmental_factors', 'clinical_signs', 'comment',
-                  'new_location_contacts', 'new_location_species', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+        fields = '__all__'
         extra_kwargs = {
             'country': {'required': False},
             'administrative_level_one': {'required': False}
@@ -3156,14 +3197,6 @@ class FlywaySerializer(serializers.ModelSerializer):
 #  Species
 #
 ######
-
-
-class LocationSpeciesPublicSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = LocationSpecies
-        fields = ('species', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
-                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias',)
 
 
 class LocationSpeciesSerializer(serializers.ModelSerializer):
@@ -3385,12 +3418,48 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
+
+        fields = ('species', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
+                  'dead_count_estimated', 'captive', 'age_bias', 'sex_bias',)
+        private_fields = ('id', 'event_location', 'species', 'population_count', 'sick_count', 'dead_count',
+                          'new_species_diagnoses', 'created_date', 'created_by', 'created_by_string',
+                          'modified_date', 'modified_by', 'modified_by_string',)
+
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = LocationSpecies.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event_location.event.id]) | Q(
+                                    readevents__in=[obj.event_location.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
+
+        super(LocationSpeciesSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = LocationSpecies
-        fields = ('id', 'event_location', 'species', 'population_count', 'sick_count', 'dead_count',
-                  'sick_count_estimated', 'dead_count_estimated', 'priority', 'captive', 'age_bias', 'sex_bias',
-                  'new_species_diagnoses', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+        fields = '__all__'
 
 
 class SpeciesSerializer(serializers.ModelSerializer):
@@ -3459,15 +3528,6 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
         model = DiagnosisType
         fields = ('id', 'name', 'color', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
-
-
-class EventDiagnosisPublicSerializer(serializers.ModelSerializer):
-    diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
-    diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
-
-    class Meta:
-        model = EventDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'suspect', 'major',)
 
 
 class EventDiagnosisSerializer(serializers.ModelSerializer):
@@ -3596,19 +3656,43 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
+
+        fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'suspect', 'major',)
+        private_fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
+                          'suspect', 'major', 'priority', 'created_date', 'created_by', 'created_by_string',
+                          'modified_date', 'modified_by', 'modified_by_string',)
+
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = EventDiagnosis.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations):
+                        fields = private_fields
+
+        super(EventDiagnosisSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = EventDiagnosis
-        fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
-                  'suspect', 'major', 'priority', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
-
-
-class SpeciesDiagnosisPublicSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = SpeciesDiagnosis
-        fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
-                  'suspect_count', 'pooled',)
+        fields = '__all__'
 
 
 class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
@@ -3786,13 +3870,51 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
+
+        fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
+                  'suspect_count', 'pooled',)
+        private_fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
+                          'basis_string', 'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count',
+                          'suspect_count', 'pooled', 'organizations', 'new_species_diagnosis_organizations',
+                          'created_date', 'created_by', 'created_by_string',
+                          'modified_date', 'modified_by', 'modified_by_string',)
+
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = SpeciesDiagnosis.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
+                                    readevents__in=[obj.location_species.event_location.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
+
+        super(SpeciesDiagnosisSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
+
     class Meta:
         model = SpeciesDiagnosis
-        fields = ('id', 'location_species', 'diagnosis', 'diagnosis_string', 'cause', 'cause_string', 'basis',
-                  'basis_string', 'suspect', 'priority', 'tested_count', 'diagnosis_count', 'positive_count',
-                  'suspect_count', 'pooled', 'organizations', 'new_species_diagnosis_organizations',
-                  'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
+        fields = '__all__'
         validators = [
             validators.UniqueTogetherValidator(
                 queryset=SpeciesDiagnosis.objects.all(),
@@ -4575,17 +4697,31 @@ class UserSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         user = None
-        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
-            user = kwargs['context']['request'].user
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
 
-        if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
+        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
+        private_fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
+                          'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login',
+                          'active_key', 'user_status', 'notification_cue_standards',
+                          'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        else:
-            fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
-                      'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login', 'active_key',
-                      'user_status', 'notification_cue_standards', 'new_notification_cue_standard_preferences',
-                      'new_user_change_request', )  # 'rolechangerequests_requester')
+        if user and user.is_authenticated:
+            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = User.objects.filter(id=pk).first()
+                    if obj and (user.password == obj.password or
+                                ((obj.organization.id == user.organization.id
+                                  or obj.organization.id in user.organization.parent_organizations) and
+                                 (user.role.is_partneradmin or user.role.is_partnermanager))):
+                        fields = private_fields
 
         super(UserSerializer, self).__init__(*args, **kwargs)
 
@@ -5894,8 +6030,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
     organizations = serializers.SerializerMethodField()
     # eventgroups = EventGroupSerializer(many=True)
     eventgroups = serializers.SerializerMethodField()
-    read_collaborators = UserPublicSerializer(many=True)
-    write_collaborators = UserPublicSerializer(many=True)
+    read_collaborators = UserSerializer(many=True)
+    write_collaborators = UserSerializer(many=True)
 
     def get_combined_comments(self, obj):
         event_content_type = ContentType.objects.filter(model='event').first()

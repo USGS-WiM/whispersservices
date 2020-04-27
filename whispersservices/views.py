@@ -874,6 +874,7 @@ class EventLocationViewSet(HistoryViewSet):
     Deletes an event location.
     """
     queryset = EventLocation.objects.all()
+    serializer_class = EventLocationSerializer
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to locations can be deleted
@@ -882,31 +883,6 @@ class EventLocationViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
         return super(EventLocationViewSet, self).destroy(request, *args, **kwargs)
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventLocationPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return EventLocationSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = EventLocation.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
-                        ).values_list('id', flat=True))):
-                    return EventLocationSerializer
-            return EventLocationPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return EventLocationPublicSerializer
 
 
 class EventLocationContactViewSet(HistoryViewSet):
@@ -1215,6 +1191,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
     Deletes a location species.
     """
     queryset = LocationSpecies.objects.all()
+    serializer_class = LocationSpeciesSerializer
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to location species can be deleted
@@ -1223,32 +1200,6 @@ class LocationSpeciesViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
         return super(LocationSpeciesViewSet, self).destroy(request, *args, **kwargs)
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return LocationSpeciesPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return LocationSpeciesSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = LocationSpecies.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.event_location.event.id]) | Q(
-                                readevents__in=[obj.event_location.event.id])
-                        ).values_list('id', flat=True))):
-                    return LocationSpeciesSerializer
-            return LocationSpeciesPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return LocationSpeciesPublicSerializer
 
 
 class SpeciesViewSet(HistoryViewSet):
@@ -1441,6 +1392,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
     Deletes an event diagnosis.
     """
     queryset = EventDiagnosis.objects.all()
+    serializer_class = EventDiagnosisSerializer
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -1468,28 +1420,6 @@ class EventDiagnosisViewSet(HistoryViewSet):
 
         return destroyed_event_diagnosis
 
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventDiagnosisPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return EventDiagnosisSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = EventDiagnosis.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations):
-                    return EventDiagnosisSerializer
-            return EventDiagnosisPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return EventDiagnosisPublicSerializer
-
 
 class SpeciesDiagnosisViewSet(HistoryViewSet):
     """
@@ -1512,6 +1442,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
     Deletes a species diagnosis.
     """
     queryset = SpeciesDiagnosis.objects.all()
+    serializer_class = SpeciesDiagnosisSerializer
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to location species diagnoses can be deleted
@@ -1520,32 +1451,6 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
         return super(SpeciesDiagnosisViewSet, self).destroy(request, *args, **kwargs)
-
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return SpeciesDiagnosisPublicSerializer
-        # creators and admins have access to all fields
-        elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
-            return SpeciesDiagnosisSerializer
-        # for all non-admins, requests requiring a primary key can only be performed by the owner or their org
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = SpeciesDiagnosis.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
-                                readevents__in=[obj.location_species.event_location.event.id])
-                        ).values_list('id', flat=True))):
-                    return SpeciesDiagnosisSerializer
-            return SpeciesDiagnosisPublicSerializer
-        # non-admins and non-owners (and non-owner orgs) must use the public serializer
-        else:
-            return SpeciesDiagnosisPublicSerializer
 
 
 class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
@@ -2288,20 +2193,6 @@ class OrganizationViewSet(HistoryViewSet):
     def get_serializer_class(self):
         slim = True if self.request is not None and 'slim' in self.request.query_params else False
         return OrganizationSerializer if not slim else OrganizationSlimSerializer
-        # # all requests from anonymous or public users must use the public serializer
-        # if not user or not user.is_authenticated or user.role.is_public:
-        #     return OrganizationPublicSerializer if not slim else OrganizationPublicSlimSerializer
-        # # admins have access to all fields
-        # if user.role.is_superadmin or user.role.is_admin:
-        #     return OrganizationAdminSerializer if not slim else OrganizationSlimSerializer
-        # # partner requests only have access to a more limited list of fields
-        # if user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
-        #     return OrganizationSerializer if not slim else OrganizationSlimSerializer
-        # # all other requests are rejected
-        # else:
-        #     raise PermissionDenied
-        #     # message = "You do not have permission to perform this action"
-        #     # return JsonResponse({"Permission Denied": message}, status=403)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
