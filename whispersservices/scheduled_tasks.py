@@ -131,6 +131,12 @@ def get_changes(obj, source_id, yesterday, model_name, source_type):
                                 if fld == 'diagnosis':
                                     change.new = Diagnosis.objects.get(id=change.new) if change.new else change.new
                                     change.old = Diagnosis.objects.get(id=change.old) if change.old else change.old
+                                if fld == 'cause':
+                                    change.new = DiagnosisCause.objects.get(id=change.new) if change.new else change.new
+                                    change.old = DiagnosisCause.objects.get(id=change.old) if change.old else change.old
+                                if fld == 'basis':
+                                    change.new = DiagnosisBasis.objects.get(id=change.new) if change.new else change.new
+                                    change.old = DiagnosisBasis.objects.get(id=change.old) if change.old else change.old
 
                             # substitute a two double quotation marks for empty string to avoid confusing the recipient
                             # (an empty string in the notification or email looks like the value is missing,
