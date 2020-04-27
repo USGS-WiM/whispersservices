@@ -15,6 +15,11 @@ def get_create_info(history_record, model_name):
         details = "<br />Event was added to {} {}".format(model, history_record.eventgroup.name)
     elif model_name == 'event_group_comment':
         details = "<br />An {} was created: {}".format(model, history_record.comment)
+    elif model_name == 'event_organization':
+        details = "<br />An Event Organization was was assigned: {}".format(history_record.organization.name)
+    elif model_name == 'event_contact':
+        name = history_record.contact.first_name + " " + history_record.contact.last_name
+        details = "<br />An Event Location Contact was assigned: {}".format(name)
     elif model_name == 'event_location':
         details = "<br />An {} was created: {}".format(model, history_record.name)
     elif model_name == 'event_location_comment':
@@ -183,6 +188,14 @@ def get_updates(event, source_id, yesterday, source_type):
                 object_id=event.id, content_type=event_group_content_type.id,
                 modified_date=event.modified_date).order_by('-id'):
             updates += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment', source_type)
+
+    # event organizations
+    for event_organization in EventOrganization.objects.filter(event=event.id).order_by('-id'):
+        updates += get_changes(event_organization, source_id, yesterday, 'event_organization', source_type)
+
+    # event contacts
+    for event_contact in EventContact.objects.filter(event=event.id).order_by('-id'):
+        updates += get_changes(event_contact, source_id, yesterday, 'event_contact', source_type)
 
     # event locations
     for event_location in EventLocation.objects.filter(event=event.id).order_by('-id'):
