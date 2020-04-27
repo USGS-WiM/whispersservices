@@ -3480,7 +3480,12 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         message_complete = "Diagnosis from a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
-        eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
+        # if this is a new EventDiagnosis
+        if not self.instance:
+            eventdiags = EventDiagnosis.objects.filter(event=data['event'].id)
+        else:
+            # else this is an existing EventDiagnosis
+            eventdiags = EventDiagnosis.objects.filter(event=self.instance.id)
         event_specdiags = []
 
         # if this is a new EventDiagnosis check if the Event is complete
@@ -4389,8 +4394,6 @@ class UserSerializer(serializers.ModelSerializer):
         # non-admins (not SuperAdmin, Admin, or even PartnerAdmin) cannot create any kind of user other than public
         if (not requesting_user.is_authenticated or requesting_user.role.is_public or requesting_user.role.is_affiliate
                 or requesting_user.role.is_partner or requesting_user.role.is_partnermanager):
-            requested_org = validated_data.pop('organization')
-            requested_role = validated_data.pop('role')
             validated_data['role'] = Role.objects.filter(name='Public').first()
             validated_data['organization'] = Organization.objects.filter(name='Public').first()
 
