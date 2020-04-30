@@ -16,7 +16,7 @@ def get_create_info(history_record, model_name):
     elif model_name == 'event_group_comment':
         details = "<br />An {} was created: {}".format(model, history_record.comment)
     elif model_name == 'event_organization':
-        details = "<br />An Event Organization was was assigned: {}".format(history_record.organization.name)
+        details = "<br />An Event Organization was assigned: {}".format(history_record.organization.name)
     elif model_name == 'event_contact':
         name = history_record.contact.first_name + " " + history_record.contact.last_name
         details = "<br />An Event Location Contact was assigned: {}".format(name)
@@ -34,13 +34,13 @@ def get_create_info(history_record, model_name):
     elif model_name == 'species_diagnosis':
         details = "<br />A {} was created: {}".format(model, history_record.diagnosis.name)
     elif model_name == 'species_diagnosis_organization':
-        details = "<br />A Species Diagnosis Organization was was assigned: {}".format(history_record.organization.name)
+        details = "<br />A Species Diagnosis Organization was assigned: {}".format(history_record.organization.name)
     else:
         details = "<br />A new {} was created".format(model_name)
     return details
 
 
-def get_changes(obj, source_id, yesterday, model_name, source_type):
+def get_changes(obj, source_id, yesterday, model_name, source_type, cue_user):
     yesterday_date = datetime.strptime(yesterday, '%Y-%m-%d').date()
     changes = ""
 
@@ -80,7 +80,8 @@ def get_changes(obj, source_id, yesterday, model_name, source_type):
                             fld = change.field
 
                             # ignore automatically calculated fields (non-editable by user)
-                            if fld in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date']:
+                            if fld in ['priority', 'created_by', 'modified_by', 'created_date', 'modified_date',
+                                       'id', 'event', 'event_location', 'location_species', 'species_diagnosis']:
                                 continue
                             # substitute related object names for foreign key IDs
                             elif model_name == 'event':
@@ -90,16 +91,73 @@ def get_changes(obj, source_id, yesterday, model_name, source_type):
                                 elif fld == 'event_type':
                                     change.new = EventType.objects.get(id=change.new) if change.new else change.new
                                     change.old = EventType.objects.get(id=change.old) if change.old else change.old
+                                elif fld == 'event_reference':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                                 elif fld == 'staff':
-                                    change.new = Staff.objects.get(id=change.new) if change.new else change.new
-                                    change.old = Staff.objects.get(id=change.old) if change.old else change.old
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = Staff.objects.get(id=change.new) if change.new else change.new
+                                        change.old = Staff.objects.get(id=change.old) if change.old else change.old
+                                    else:
+                                        continue
                                 elif fld == 'event_status':
-                                    change.new = EventStatus.objects.get(id=change.new) if change.new else change.new
-                                    change.old = EventStatus.objects.get(id=change.old) if change.old else change.old
+                                    # check permissions (visible to NWHC only!)
+                                    if cue_user.role.is_superadmin or cue_user.role.is_admin:
+                                        chg = change
+                                        change.new = EventStatus.objects.get(id=chg.new) if chg.new else chg.new
+                                        change.old = EventStatus.objects.get(id=chg.old) if chg.old else chg.old
+                                    else:
+                                        continue
+                                elif fld == 'quality_check':
+                                    # check permissions (visible to NWHC only!)
+                                    if cue_user.role.is_superadmin or cue_user.role.is_admin:
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                                 elif fld == 'legal_status':
-                                    change.new = LegalStatus.objects.get(id=change.new) if change.new else change.new
-                                    change.old = LegalStatus.objects.get(id=change.old) if change.old else change.old
+                                    # check permissions (visible to NWHC only!)
+                                    if cue_user.role.is_superadmin or cue_user.role.is_admin:
+                                        chg = change
+                                        change.new = LegalStatus.objects.get(id=chg.new) if chg.new else chg.new
+                                        change.old = LegalStatus.objects.get(id=chg.old) if chg.old else chg.old
+                                    else:
+                                        continue
+                                elif fld == 'legal_number':
+                                    # check permissions (visible to NWHC only!)
+                                    if cue_user.role.is_superadmin or cue_user.role.is_admin:
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                             elif model_name == 'event_location':
+                                if fld == 'name':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                                 if fld == 'country':
                                     change.new = Country.objects.get(id=change.new) if change.new else change.new
                                     change.old = Country.objects.get(id=change.old) if change.old else change.old
@@ -119,9 +177,67 @@ def get_changes(obj, source_id, yesterday, model_name, source_type):
                                     locality = AdministrativeLevelLocality.objects.filter(country=obj.country).first()
                                     if locality and locality.admin_level_two_name:
                                         change.field = locality.admin_level_two_name
+                                if fld == 'latitude':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
+                                if fld == 'longitude':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                                 elif fld == 'land_ownership':
-                                    change.new = LandOwnership.objects.get(id=change.new) if change.new else change.new
-                                    change.old = LandOwnership.objects.get(id=change.old) if change.old else change.old
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        chg = change
+                                        change.new = LandOwnership.objects.get(id=chg.new) if chg.new else chg.new
+                                        change.old = LandOwnership.objects.get(id=chg.old) if chg.old else chg.old
+                                    else:
+                                        continue
+                                if fld == 'gnis_name':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
+                                if fld == 'gnis_id':
+                                    # check permissions (visible to privileged users only!)
+                                    if (cue_user.id == obj.created_by.id
+                                            or cue_user.organization.id == obj.created_by.organization.id
+                                            or cue_user.organization.id in obj.created_by.parent_organizations
+                                            or cue_user.id in list(User.objects.filter(
+                                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                            ).values_list('id', flat=True))):
+                                        change.new = "\"\"" if change.new == '' else change.new
+                                        change.old = "\"\"" if change.old == '' else change.old
+                                    else:
+                                        continue
                             elif model_name == 'location_species':
                                 if fld == 'species':
                                     change.new = Species.objects.get(id=change.new) if change.new else change.new
@@ -158,80 +274,85 @@ def get_changes(obj, source_id, yesterday, model_name, source_type):
     return changes
 
 
-def get_updates(event, source_id, yesterday, source_type):
+def get_updates(event, source_id, yesterday, source_type, cue_user):
     # get changes from the event and its children (event comments, event diagnoses, event event groups,
     #  event event group comments, event locations, event location comments, event location contacts,
     #  event location flyways, location species, species diagnoses, species diagnosis organizations)
     updates = ""
 
     # event
-    updates += get_changes(event, source_id, yesterday, 'event', source_type)
+    updates += get_changes(event, source_id, yesterday, 'event', source_type, cue_user)
 
     # event comments
     event_content_type = ContentType.objects.filter(model='event').first()
     for event_comment in Comment.objects.filter(
             object_id=event.id, content_type=event_content_type.id,
             modified_date=event.modified_date).order_by('-id'):
-        updates += get_changes(event_comment, source_id, yesterday, 'event_comment', source_type)
+        updates += get_changes(event_comment, source_id, yesterday, 'event_comment', source_type, cue_user)
 
     # event diagnoses
     for event_diagnosis in EventDiagnosis.objects.filter(event=event.id).order_by('-id'):
-        updates += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis', source_type)
+        updates += get_changes(event_diagnosis, source_id, yesterday, 'event_diagnosis', source_type, cue_user)
 
     # event event groups
     for event_group in EventEventGroup.objects.filter(event=event.id).order_by('-id'):
-        updates += get_changes(event_group, source_id, yesterday, 'event_group', source_type)
+        updates += get_changes(event_group, source_id, yesterday, 'event_group', source_type, cue_user)
 
         # event event group comments
         event_group_content_type = ContentType.objects.filter(model='eventeventgroup').first()
         for event_group_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_group_content_type.id,
                 modified_date=event.modified_date).order_by('-id'):
-            updates += get_changes(event_group_comment, source_id, yesterday, 'event_group_comment', source_type)
+            updates += get_changes(
+                event_group_comment, source_id, yesterday, 'event_group_comment', source_type, cue_user)
 
     # event organizations
     for event_organization in EventOrganization.objects.filter(event=event.id).order_by('-id'):
-        updates += get_changes(event_organization, source_id, yesterday, 'event_organization', source_type)
+        updates += get_changes(event_organization, source_id, yesterday, 'event_organization', source_type, cue_user)
 
     # event contacts
     for event_contact in EventContact.objects.filter(event=event.id).order_by('-id'):
-        updates += get_changes(event_contact, source_id, yesterday, 'event_contact', source_type)
+        updates += get_changes(event_contact, source_id, yesterday, 'event_contact', source_type, cue_user)
 
     # event locations
     for event_location in EventLocation.objects.filter(event=event.id).order_by('-id'):
-        updates += get_changes(event_location, source_id, yesterday, 'event_location', source_type)
+        updates += get_changes(event_location, source_id, yesterday, 'event_location', source_type, cue_user)
 
         # event location comments
         event_location_content_type = ContentType.objects.filter(model='eventlocation').first()
         for event_location_comment in Comment.objects.filter(
                 object_id=event.id, content_type=event_location_content_type.id,
                 modified_date=event.modified_date).order_by('-id'):
-            updates += get_changes(event_location_comment, source_id, yesterday, 'event_location_comment', source_type)
+            updates += get_changes(
+                event_location_comment, source_id, yesterday, 'event_location_comment', source_type, cue_user)
 
         # event location contacts
         for event_location_contact in EventLocationContact.objects.filter(
                 event_location=event_location.id).order_by('-id'):
-            updates += get_changes(event_location_contact, source_id, yesterday, 'event_location_contact', source_type)
+            updates += get_changes(
+                event_location_contact, source_id, yesterday, 'event_location_contact', source_type, cue_user)
 
         # event location flyways
         for event_location_flyway in EventLocationFlyway.objects.filter(
                 event_location=event_location.id).order_by('-id'):
-            updates += get_changes(event_location_flyway, source_id, yesterday, 'event_location_flyway', source_type)
+            updates += get_changes(
+                event_location_flyway, source_id, yesterday, 'event_location_flyway', source_type, cue_user)
 
         # location species
         for location_species in LocationSpecies.objects.filter(event_location=event_location.id).order_by('-id'):
-            updates += get_changes(location_species, source_id, yesterday, 'location_species', source_type)
+            updates += get_changes(location_species, source_id, yesterday, 'location_species', source_type, cue_user)
 
             # species diagnoses
             for species_diagnosis in SpeciesDiagnosis.objects.filter(
                     location_species=location_species.id).order_by('-id'):
-                updates += get_changes(species_diagnosis, source_id, yesterday, 'species_diagnosis', source_type)
+                updates += get_changes(
+                    species_diagnosis, source_id, yesterday, 'species_diagnosis', source_type, cue_user)
 
                 # species diagnosis organizations
                 for species_diagnosis_organization in SpeciesDiagnosisOrganization.objects.filter(
                         species_diagnosis=species_diagnosis.id).order_by('-id'):
                     updates += get_changes(species_diagnosis_organization, source_id, yesterday,
-                                           'species_diagnosis_organization', source_type)
+                                           'species_diagnosis_organization', source_type, cue_user)
 
     return updates
 
@@ -294,7 +415,7 @@ def own_events(events_created_yesterday, events_updated_yesterday, yesterday):
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday, 'user')
+                        updates = get_updates(event, source_id, yesterday, 'user', cue.created_by)
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -335,7 +456,7 @@ def organization_events(events_created_yesterday, events_updated_yesterday, yest
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday, 'user')
+                        updates = get_updates(event, source_id, yesterday, 'user', cue.created_by)
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -382,7 +503,7 @@ def collaborator_events(events_created_yesterday, events_updated_yesterday, yest
                     for event_updater in event_updaters:
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday, 'user')
+                        updates = get_updates(event, source_id, yesterday, 'user', cue.created_by)
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
@@ -454,7 +575,7 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
                     source = event_updater[0]
                     source_id = event_updater[1]
                     org = source
-                    updates = get_updates(event, source_id, yesterday, 'org')
+                    updates = get_updates(event, source_id, yesterday, 'org', cue.created_by)
 
                     # only create notifications if there are update details (non-empty string)
                     if updates:
@@ -784,7 +905,7 @@ def custom_notifications():
                         # source: any organization who creates or updates an event that meets the trigger criteria
                         source = event_updater[0]
                         source_id = event_updater[1]
-                        updates = get_updates(event, source_id, yesterday, 'org')
+                        updates = get_updates(event, source_id, yesterday, 'org', cue.created_by)
 
                         # only create notifications if there are update details (non-empty string)
                         if updates:
