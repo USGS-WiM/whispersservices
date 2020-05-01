@@ -1790,6 +1790,12 @@ class NotificationCueCustom(PermissionsHistoryModel):
         else:
             return False
 
+    # override the delete method to delete the related notification cue preference
+    def delete(self, *args, **kwargs):
+        pref = NotificationCuePreference.objects.filter(id=self.notification_cue_preference.id).first()
+        super(NotificationCueCustom, self).delete(*args, **kwargs)
+        pref.delete()
+
     def __str__(self):
         return str(self.id)
 
