@@ -615,7 +615,7 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
 
 @shared_task()
 def standard_notifications():
-    yesterday = datetime.strftime(datetime.now() - timedelta(0), '%Y-%m-%d')
+    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
     new_events = Event.objects.filter(created_date=yesterday)
     updated_events = Event.objects.filter(modified_date=yesterday)
 
@@ -876,7 +876,7 @@ def custom_notifications():
     # An event with a number affected greater than or equal to the provided integer is created,
     # OR an event location is added/updated that meets that criteria
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
-    yesterday = datetime.strftime(datetime.now() - timedelta(0), '%Y-%m-%d')
+    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
 
     custom_notification_cues_new = NotificationCueCustom.objects.filter(
         notification_cue_preference__create_when_new=True)
