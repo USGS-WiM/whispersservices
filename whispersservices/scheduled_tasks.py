@@ -309,7 +309,7 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
     updates += get_changes(event_group_history, source_id, yesterday, 'event_group', source_type, cue_user)
 
     # get distinct event group IDs to ensure each event group's children are each only processed once
-    event_group_ids = set([history_record.id for history_record in event_group_history])
+    event_group_ids = list(set(EventEventGroup.objects.filter(event=event.id).values_list('eventgroup_id', flat=True)))
     for event_group_id in event_group_ids:
 
         # event event group comments
@@ -333,7 +333,7 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
     updates += get_changes(event_location_history, source_id, yesterday, 'event_location', source_type, cue_user)
 
     # get distinct event location IDs to ensure each event location's children are each only processed once
-    event_location_ids = set([history_record.id for history_record in event_location_history])
+    event_location_ids = list(set(EventLocation.objects.filter(event=event.id).values_list('id', flat=True)))
     for event_location_id in event_location_ids:
 
         # event location comments
@@ -363,7 +363,8 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
             location_species_history, source_id, yesterday, 'location_species', source_type, cue_user)
 
         # get distinct location species IDs to ensure each location species' children are each only processed once
-        location_species_ids = set([history_record.id for history_record in location_species_history])
+        location_species_ids = list(set(LocationSpecies.objects.filter(
+            event_location=event_location_id).values_list('id', flat=True)))
         for location_species_id in location_species_ids:
 
             # species diagnoses
@@ -373,7 +374,8 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
                 species_diagnosis_history, source_id, yesterday, 'species_diagnosis', source_type, cue_user)
 
             # get distinct species diagnosis IDs to ensure each species diagnosis' children are each only processed once
-            species_diagnosis_ids = set([history_record.id for history_record in species_diagnosis_history])
+            species_diagnosis_ids = list(set(SpeciesDiagnosis.objects.filter(
+                location_species=location_species_id).values_list('id', flat=True)))
             for species_diagnosis_id in species_diagnosis_ids:
 
                 # species diagnosis organizations
