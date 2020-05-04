@@ -72,8 +72,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
         for h in history:
             # only include changes made yesterday
             if not h.history_date.date() == yesterday_date:
-                # no changes from yesterday found, so exit the loop
-                break
+                # no changes from yesterday found, so move on
+                continue
             else:
                 # only include changes made by this particular updater (source)
                 h_id = h.history_user.id if source_type == 'user' else h.history_user.organization.id
@@ -357,7 +357,8 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
             event_location_flyway_history, source_id, yesterday, 'event_location_flyway', source_type, cue_user)
 
         # location species
-        location_species_history = LocationSpecies.history.filter(event_location=event_location_id).order_by('-id')
+        location_species_history = LocationSpecies.history.filter(
+            event_location=event_location_id).order_by('-id', '-history_id')
         updates += get_changes(
             location_species_history, source_id, yesterday, 'location_species', source_type, cue_user)
 
