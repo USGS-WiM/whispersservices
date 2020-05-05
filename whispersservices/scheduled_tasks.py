@@ -65,7 +65,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
         # only include creates made yesterday by the source user (or org)
         #  (a single history record can only ever be a create, but better to be safe by being explicit)
         h_id = h.history_user.id if source_type == 'user' else h.history_user.organization.id
-        if h.history_date.date() == yesterday_date and h_id == source_id and h.history_type == '+':
+        if h.history_date.date() == yesterday_date and h_id == source_id and h.history_type in ['+', '-']:
             changes += get_change_info(h, model_name)
     else:
         # more than one history record for the model
