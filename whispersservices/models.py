@@ -613,6 +613,22 @@ class EventOrganization(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventOrganization, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        super(EventOrganization, self).delete(*args, **kwargs)
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+
     def __str__(self):
         return str(self.id)
 
@@ -641,6 +657,22 @@ class EventContact(PermissionsHistoryModel):
     def has_object_update_permission(self, request):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
+
+    # override the save method to update the parent event's modified_date
+    def save(self, *args, **kwargs):
+        super(EventContact, self).save(*args, **kwargs)
+        event = Event.objects.filter(id=self.event.id).first()
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
+
+    # override the delete method to update the parent event's modified_date
+    def delete(self, *args, **kwargs):
+        event = Event.objects.filter(id=self.event.id).first()
+        super(EventContact, self).delete(*args, **kwargs)
+        event.modified_by = self.modified_by
+        event.modified_date = self.modified_date
+        event.save()
 
     def __str__(self):
         return str(self.id)
@@ -1762,6 +1794,12 @@ class NotificationCueCustom(PermissionsHistoryModel):
             return True
         else:
             return False
+
+    # override the delete method to delete the related notification cue preference
+    def delete(self, *args, **kwargs):
+        pref = NotificationCuePreference.objects.filter(id=self.notification_cue_preference.id).first()
+        super(NotificationCueCustom, self).delete(*args, **kwargs)
+        pref.delete()
 
     def __str__(self):
         return str(self.id)
