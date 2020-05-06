@@ -4498,12 +4498,9 @@ class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
 # Contain uppercase letters (A, B, C, ..., Z)
 # Contain numbers (0, 1, 2, ..., 9)
 # Contain symbols (~, !, @, #, etc.)
-# TODO: better protect this endpoint: anon and partner users can create a user but should only be able to submit 'username', 'password', 'first_name', 'last_name', 'email', others auto-assigned, admins can submit all except is_superuser
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, allow_blank=True, required=False)
     organization_string = serializers.StringRelatedField(source='organization')
-    # message = serializers.CharField(write_only=True, allow_blank=True, required=False)  # what is this?
-    # user_email = serializers.JSONField(read_only=True)  # what is this?
     notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
     new_user_change_request = serializers.JSONField(write_only=True, required=False)
     new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
@@ -4704,10 +4701,11 @@ class UserSerializer(serializers.ModelSerializer):
 
         elif (requesting_user.role.is_superadmin or requesting_user.role.is_admin
               or requesting_user.role.is_partneradmin):
-            instance.username = validated_data.get('username', instance.username)
-            instance.email = validated_data.get('email', instance.email)
 
             if requesting_user.role.is_partneradmin:
+                if instance.role.is_superadmin or instance.role.is_admin:
+                    message = "You can not alter admin user settings."
+                    raise serializers.ValidationError(jsonify_errors(message))
                 if 'role' in validated_data and validated_data['role'].name in ['SuperAdmin', 'Admin']:
                     message = "You can only assign roles with equal or lower permissions to your own."
                     raise serializers.ValidationError(jsonify_errors(message))
@@ -4721,6 +4719,11 @@ class UserSerializer(serializers.ModelSerializer):
                 instance.organization = validated_data.get('organization', instance.organization)
                 instance.active_key = validated_data.get('active_key', instance.active_key)
                 instance.user_status = validated_data.get('user_status', instance.user_status)
+
+            instance.username = validated_data.get('username', instance.username)
+            instance.email = validated_data.get('email', instance.email)
+            instance.first_name = validated_data.get('first_name', instance.first_name)
+            instance.last_name = validated_data.get('last_name', instance.last_name)
 
         instance.modified_by = requesting_user
 
@@ -4770,8 +4773,10 @@ class UserSerializer(serializers.ModelSerializer):
                           'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        if user and user.is_authenticated:
-            if action == 'create' or user.role.is_superadmin or user.role.is_admin:
+        if action == 'create':
+            fields = private_fields
+        elif user and user.is_authenticated:
+            if user.role.is_superadmin or user.role.is_admin:
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
@@ -4959,7 +4964,7 @@ class UserChangeRequestResponseSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-class CircleSerlializer(serializers.ModelSerializer):
+class CircleSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_users = serializers.ListField(write_only=True)

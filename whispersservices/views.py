@@ -2121,7 +2121,7 @@ class CircleViewSet(HistoryViewSet):
     Deletes a circle.
     """
 
-    serializer_class = CircleSerlializer
+    serializer_class = CircleSerializer
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
