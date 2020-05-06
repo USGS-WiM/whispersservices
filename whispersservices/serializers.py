@@ -4702,6 +4702,10 @@ class UserSerializer(serializers.ModelSerializer):
         elif (requesting_user.role.is_superadmin or requesting_user.role.is_admin
               or requesting_user.role.is_partneradmin):
 
+            if requesting_user.role.is_admin:
+                if instance.role.is_superadmin:
+                    message = "You can not alter superadmin user settings."
+                    raise serializers.ValidationError(jsonify_errors(message))
             if requesting_user.role.is_partneradmin:
                 if instance.role.is_superadmin or instance.role.is_admin:
                     message = "You can not alter admin user settings."
