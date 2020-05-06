@@ -473,21 +473,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
 ######
 
 
-class EventPublicSerializer(serializers.ModelSerializer):
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    class Meta:
-        model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                  'event_status', 'event_status_string', 'permissions', 'permission_source',)
-
-
 # TODO: allow read-only staff field for event owner org
 # TODO: validate expected fields and field data types for all submitted nested objects
 class EventSerializer(serializers.ModelSerializer):
@@ -496,7 +481,9 @@ class EventSerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
     event_type_string = serializers.StringRelatedField(source='event_type')
+    staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
+    legal_status_string = serializers.StringRelatedField(source='legal_status')
     comments = CommentSerializer(many=True, read_only=True)
     new_event_diagnoses = serializers.ListField(write_only=True, required=False)
     new_organizations = serializers.ListField(write_only=True, required=False)
@@ -1028,7 +1015,7 @@ class EventSerializer(serializers.ModelSerializer):
             # if valid_diagnosis_ids is not None:
             #     new_event_diagnoses_created = []
             #     for event_diagnosis in new_event_diagnoses:
-            #         diagnosis_id = event_diagnosis.pop('diagnosis', None)
+            #         diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
             #         if diagnosis_id in valid_diagnosis_ids:
             #             # ensure this new event diagnosis has the correct suspect value
             #             # (false if any matching species diagnoses are false, otherwise true)
@@ -1082,23 +1069,41 @@ class EventSerializer(serializers.ModelSerializer):
         user = get_user(self.context, self.initial_data)
 
         new_complete = validated_data.get('complete', None)
+        quality_check = validated_data.get('quality_check', None)
 
-        # check if Event is complete
+        # if event is complete only a few things are permitted (admin can set quality_check or reopen event)
         if instance.complete:
-            # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
-            # but if the complete field is not included or set to True, the event cannot be changed
-            if new_complete is None or (new_complete and (user.id == instance.created_by.id or (
-                    user.organization.id == instance.created_by.organization.id and (
-                    user.role.is_partneradmin or user.role.is_partnermanager)))):
-                message = "Complete events may only be changed by the event owner or an administrator"
-                message += " if the 'complete' field is set to False."
-                raise serializers.ValidationError(jsonify_errors(message))
-            elif (user != instance.created_by
-                  or (user.organization.id != instance.created_by.organization.id
-                      and not (user.role.is_partneradmin or user.role.is_partnermanager))):
-                message = "Complete events may not be changed"
-                message += " unless first re-opened by the event owner or an administrator."
-                raise serializers.ValidationError(jsonify_errors(message))
+            if user.role.is_superadmin or user.role.is_admin:
+                # if the event is complete and the quality_check field is included and set to a date,
+                # update the quality_check field and return the event
+                # (ignoring any other submitted changes since the event is 'locked' by virtue of being complete)
+                if quality_check:
+                    instance.quality_check = quality_check
+                    instance.modified_by = validated_data.get('modified_by', instance.modified_by)
+                    instance.save()
+                    return instance
+                # if the event is complete and the complete field is not included or True, the event cannot be changed
+                if new_complete is None or new_complete:
+                    message = "Complete events may only be changed by the event owner or an administrator"
+                    message += " if the 'complete' field is set to False in the request."
+                    raise serializers.ValidationError(jsonify_errors(message))
+            else:
+                # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
+                # but if the complete field is not included or set to True, the event cannot be changed
+                if new_complete is None or (new_complete and (
+                        user.role.is_superadmin or user.role.is_admin
+                        or user.id == instance.created_by.id or (
+                        user.organization.id == instance.created_by.organization.id and (
+                        user.role.is_partneradmin or user.role.is_partnermanager)))):
+                    message = "Complete events may only be changed by the event owner or an administrator"
+                    message += " if the 'complete' field is set to False."
+                    raise serializers.ValidationError(jsonify_errors(message))
+                elif (user != instance.created_by
+                      or (user.organization.id != instance.created_by.organization.id
+                          and not (user.role.is_partneradmin or user.role.is_partnermanager))):
+                    message = "Complete events may not be changed"
+                    message += " unless first re-opened by the event owner or an administrator."
+                    raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
         if not instance.complete and new_complete and (user.id == instance.created_by.id or (
@@ -1135,7 +1140,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 species_count_is_valid.append(True)
                             elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
                                 species_count_is_valid.append(True)
-                                if spec.sick_count > 0 and not spec.sick_count_estimated > spec.sick_count:
+                                if (spec.sick_count or 0) > 0 and spec.sick_count_estimated <= (spec.sick_count or 0):
                                     est_count_gt_known_count = False
                             elif spec.sick_count is not None and spec.sick_count > 0:
                                 species_count_is_valid.append(True)
@@ -1196,12 +1201,12 @@ class EventSerializer(serializers.ModelSerializer):
             new_read_collaborators = validated_data.pop('new_read_collaborators', None)
             new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
         else:
-            new_read_user_ids_prelim = []
+            new_read_user_ids_prelim = set([])
         if 'new_write_collaborators' in validated_data:
             new_write_collaborators = validated_data.pop('new_write_collaborators', None)
             new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
         else:
-            new_write_user_ids = []
+            new_write_user_ids = set([])
 
         request_method = self.context['request'].method
 
@@ -1250,6 +1255,13 @@ class EventSerializer(serializers.ModelSerializer):
         instance.public = validated_data.get('public', instance.public)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
 
+        if user.role.is_superadmin or user.role.is_admin:
+            instance.staff = validated_data.get('staff', instance.staff)
+            instance.event_status = validated_data.get('event_status', instance.event_status)
+            instance.quality_check = validated_data.get('quality_check', instance.quality_check)
+            instance.legal_status = validated_data.get('legal_status', instance.legal_status)
+            instance.legal_number = validated_data.get('legal_number', instance.legal_number)
+
         # affected_count
         # If EventType = Morbidity/Mortality
         # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
@@ -1279,15 +1291,63 @@ class EventSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def __init__(self, *args, **kwargs):
+        user = None
+        action = 'list'
+        if 'context' in kwargs:
+            if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+                user = kwargs['context']['request'].user
+            if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
+                action = kwargs['context']['view'].action
+
+        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
+                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
+                  'county_multiple', 'county_unknown', 'flyways',)
+        private_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
+                          'end_date', 'affected_count', 'event_status', 'event_status_string', 'public',
+                          'read_collaborators', 'write_collaborators', 'organizations', 'contacts', 'comments',
+                          'new_event_diagnoses', 'new_organizations', 'new_comments', 'new_event_locations',
+                          'new_eventgroups', 'new_service_request', 'new_read_collaborators', 'new_write_collaborators',
+                          'created_date', 'created_by', 'created_by_string', 'modified_date', 'modified_by',
+                          'modified_by_string', 'service_request_email', 'permissions', 'permission_source',)
+        admin_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
+                        'end_date', 'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
+                        'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                        'read_collaborators', 'write_collaborators', 'eventgroups', 'organizations', 'contacts',
+                        'comments', 'new_read_collaborators', 'new_write_collaborators','new_event_diagnoses',
+                        'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
+                        'new_service_request', 'created_date', 'created_by', 'created_by_string', 'modified_date',
+                        'modified_by', 'modified_by_string', 'service_request_email', 'permissions',
+                        'permission_source',)
+
+        if user and user.is_authenticated:
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = admin_fields
+            elif action == 'create':
+                fields = private_fields
+            elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = EventLocation.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
+
+        super(EventSerializer, self).__init__(*args, **kwargs)
+
+        if fields is not None:
+            # Drop any fields that are not specified in the `fields` argument.
+            allowed = set(fields)
+            existing = set(self.fields)
+            for field_name in existing - allowed:
+                self.fields.pop(field_name)
+
     class Meta:
         model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-                  'write_collaborators', 'organizations', 'contacts', 'comments', 'new_event_diagnoses',
-                  'new_organizations', 'new_comments', 'new_event_locations', 'new_eventgroups',
-                  'new_service_request', 'new_read_collaborators', 'new_write_collaborators', 'created_date',
-                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'service_request_email', 'permissions', 'permission_source',)
+        fields = '__all__'
 
 
 class EventAdminSerializer(serializers.ModelSerializer):

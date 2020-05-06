@@ -205,6 +205,8 @@ class EventViewSet(HistoryViewSet):
     Deletes an event.
     """
 
+    serializer_class = EventSerializer
+
     @action(detail=True, methods=['post'])
     def alert_collaborator(self, request, pk=None):
         # expected JSON fields: "recipients" (list of integers, required), "comment" (string, optional)
@@ -382,58 +384,6 @@ class EventViewSet(HistoryViewSet):
         else:
             return queryset.filter(public=True)
 
-    # override the default serializer_class to ensure the requester sees only permitted data
-    def get_serializer_class(self):
-        user = get_request_user(self.request)
-        # all requests from anonymous or public users must use the public serializer
-        if not user or not user.is_authenticated or user.role.is_public:
-            return EventPublicSerializer
-        # admins have access to all fields
-        elif user.role.is_superadmin or user.role.is_admin:
-            return EventAdminSerializer
-        # for all non-admins, primary key requests can only be performed by the owner or their org or collaborators
-        elif self.action in PK_REQUESTS:
-            pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
-                obj = Event.objects.filter(id=pk).first()
-                if obj:
-                    read_collaborators = []
-                    write_collaborators = []
-                    if obj.read_collaborators:
-                        read_collaborators = list(
-                            User.objects.filter(readevents=obj.id).values_list('id', flat=True))
-                    if obj.write_collaborators:
-                        write_collaborators = list(
-                            User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
-                    if user.id in read_collaborators:
-                        # read_collaborators members can only retrieve
-                        if self.action == 'retrieve':
-                            return EventSerializer
-                        else:
-                            raise PermissionDenied
-                    # write_collaborators members and org partners can retrieve and update but not delete
-                    elif user.id in write_collaborators or (
-                            (user.organization.id == obj.created_by.organization.id
-                             or user.organization.id in obj.created_by.parent_organizations)
-                            and (user.role.is_affiliate or user.role.is_partner)):
-                        if self.action == 'delete':
-                            raise PermissionDenied
-                        else:
-                            return EventSerializer
-                    # owner and org partner managers and org partner admins have full access to non-admin fields
-                    elif user.id == obj.created_by.id or (
-                            (user.organization.id == obj.created_by.organization.id
-                             or user.organization.id in obj.created_by.parent_organizations)
-                            and (user.role.is_partnermanager or user.role.is_partneradmin)):
-                        return EventSerializer
-            return EventPublicSerializer
-        # all create requests imply that the requester is the owner, so use the owner serializer
-        elif self.action == 'create':
-            return EventSerializer
-        # non-admins and non-owners (and non-owner orgs and collaborators) must use the public serializer
-        else:
-            return EventPublicSerializer
-
 
 class EventEventGroupViewSet(HistoryViewSet):
     """
@@ -536,6 +486,7 @@ class EventGroupCategoryViewSet(HistoryViewSet):
     delete:
     Deletes an event group category.
     """
+
     serializer_class = EventGroupCategorySerializer
 
     # override the default queryset to allow filtering by user type
@@ -572,6 +523,7 @@ class EventTypeViewSet(HistoryViewSet):
     delete:
     Deletes an event type.
     """
+
     queryset = EventType.objects.all()
     serializer_class = EventTypeSerializer
 
@@ -596,6 +548,7 @@ class StaffViewSet(HistoryViewSet):
     delete:
     Deletes a staff member.
     """
+
     serializer_class = StaffSerializer
 
     # override the default queryset to allow filtering by URL arguments
@@ -635,6 +588,7 @@ class LegalStatusViewSet(HistoryViewSet):
     delete:
     Deletes a legal status.
     """
+
     queryset = LegalStatus.objects.all()
     serializer_class = LegalStatusSerializer
 
@@ -659,6 +613,7 @@ class EventStatusViewSet(HistoryViewSet):
     delete:
     Deletes an event status.
     """
+
     queryset = EventStatus.objects.all()
     serializer_class = EventStatusSerializer
 
@@ -723,6 +678,7 @@ class EventCaseViewSet(HistoryViewSet):
     delete:
     Deletes an event case.
     """
+
     queryset = EventCase.objects.all()
     serializer_class = EventCaseSerializer
 
@@ -755,6 +711,7 @@ class EventLabsiteViewSet(HistoryViewSet):
     delete:
     Deletes an event lab site.
     """
+
     queryset = EventLabsite.objects.all()
     serializer_class = EventLabsiteSerializer
 
@@ -787,6 +744,7 @@ class EventOrganizationViewSet(HistoryViewSet):
     delete:
     Deletes an event organization.
     """
+
     queryset = EventOrganization.objects.all()
     serializer_class = EventOrganizationSerializer
 
@@ -819,6 +777,7 @@ class EventContactViewSet(HistoryViewSet):
     delete:
     Deletes an event contact.
     """
+
     serializer_class = EventContactSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -873,6 +832,7 @@ class EventLocationViewSet(HistoryViewSet):
     delete:
     Deletes an event location.
     """
+
     queryset = EventLocation.objects.all()
     serializer_class = EventLocationSerializer
 
@@ -905,6 +865,7 @@ class EventLocationContactViewSet(HistoryViewSet):
     delete:
     Deletes an event location contact.
     """
+
     serializer_class = EventLocationContactSerializer
 
     def destroy(self, request, *args, **kwargs):
@@ -964,6 +925,7 @@ class CountryViewSet(HistoryViewSet):
     delete:
     Deletes a country.
     """
+
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
 
@@ -1079,6 +1041,7 @@ class AdministrativeLevelLocalityViewSet(HistoryViewSet):
     delete:
     Deletes an administrative level locality.
     """
+
     queryset = AdministrativeLevelLocality.objects.all()
     serializer_class = AdministrativeLevelLocalitySerializer
 
@@ -1103,6 +1066,7 @@ class LandOwnershipViewSet(HistoryViewSet):
     delete:
     Deletes a landownership.
     """
+
     queryset = LandOwnership.objects.all()
     serializer_class = LandOwnershipSerializer
 
@@ -1127,6 +1091,7 @@ class EventLocationFlywayViewSet(HistoryViewSet):
     delete:
     Deletes an event location flyway.
     """
+
     queryset = EventLocationFlyway.objects.all()
     serializer_class = EventLocationFlywaySerializer
 
@@ -1159,6 +1124,7 @@ class FlywayViewSet(HistoryViewSet):
     delete:
     Deletes a flyway.
     """
+
     queryset = Flyway.objects.all()
     serializer_class = FlywaySerializer
 
@@ -1190,6 +1156,7 @@ class LocationSpeciesViewSet(HistoryViewSet):
     delete:
     Deletes a location species.
     """
+
     queryset = LocationSpecies.objects.all()
     serializer_class = LocationSpeciesSerializer
 
@@ -1225,6 +1192,7 @@ class SpeciesViewSet(HistoryViewSet):
     delete:
     Deletes a species.
     """
+
     queryset = Species.objects.all()
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -1264,6 +1232,7 @@ class AgeBiasViewSet(HistoryViewSet):
     delete:
     Deletes an age bias.
     """
+
     queryset = AgeBias.objects.all()
     serializer_class = AgeBiasSerializer
 
@@ -1288,6 +1257,7 @@ class SexBiasViewSet(HistoryViewSet):
     delete:
     Deletes a sex bias.
     """
+
     queryset = SexBias.objects.all()
     serializer_class = SexBiasSerializer
 
@@ -1322,6 +1292,7 @@ class DiagnosisViewSet(HistoryViewSet):
     delete:
     Deletes a diagnosis.
     """
+
     serializer_class = DiagnosisSerializer
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -1367,6 +1338,7 @@ class DiagnosisTypeViewSet(HistoryViewSet):
     delete:
     Deletes a diagnosis type.
     """
+
     queryset = DiagnosisType.objects.all()
     serializer_class = DiagnosisTypeSerializer
 
@@ -1391,6 +1363,7 @@ class EventDiagnosisViewSet(HistoryViewSet):
     delete:
     Deletes an event diagnosis.
     """
+
     queryset = EventDiagnosis.objects.all()
     serializer_class = EventDiagnosisSerializer
 
@@ -1441,6 +1414,7 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
     delete:
     Deletes a species diagnosis.
     """
+
     queryset = SpeciesDiagnosis.objects.all()
     serializer_class = SpeciesDiagnosisSerializer
 
@@ -1473,6 +1447,7 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
     delete:
     Deletes a species diagnosis organization.
     """
+
     queryset = SpeciesDiagnosisOrganization.objects.all()
     serializer_class = SpeciesDiagnosisOrganizationSerializer
 
@@ -1506,6 +1481,7 @@ class DiagnosisBasisViewSet(HistoryViewSet):
     delete:
     Deletes a diagnosis basis.
     """
+
     queryset = DiagnosisBasis.objects.all()
     serializer_class = DiagnosisBasisSerializer
 
@@ -1530,6 +1506,7 @@ class DiagnosisCauseViewSet(HistoryViewSet):
     delete:
     Deletes a diagnosis cause.
     """
+
     queryset = DiagnosisCause.objects.all()
     serializer_class = DiagnosisCauseSerializer
 
@@ -1561,6 +1538,7 @@ class ServiceRequestViewSet(HistoryViewSet):
     delete:
     Deletes a service request.
     """
+
     serializer_class = ServiceRequestSerializer
 
     # override the default queryset to allow filtering by URL arguments
@@ -1612,6 +1590,7 @@ class ServiceRequestTypeViewSet(HistoryViewSet):
     delete:
     Deletes a service request type.
     """
+
     queryset = ServiceRequestType.objects.all()
     serializer_class = ServiceRequestTypeSerializer
 
@@ -1636,6 +1615,7 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
     delete:
     Deletes a service request response.
     """
+
     queryset = ServiceRequestResponse.objects.all().exclude(name="Pending")
     serializer_class = ServiceRequestResponseSerializer
 
@@ -1815,6 +1795,7 @@ class CommentViewSet(HistoryViewSet):
     delete:
     Deletes a comment.
     """
+
     serializer_class = CommentSerializer
 
     # override the default queryset to allow filtering by URL arguments
@@ -1878,6 +1859,7 @@ class CommentTypeViewSet(HistoryViewSet):
     delete:
     Deletes a comment type.
     """
+
     queryset = CommentType.objects.all()
     serializer_class = CommentTypeSerializer
 
@@ -1902,6 +1884,7 @@ class ArtifactViewSet(HistoryViewSet):
     delete:
     Deletes an artifact.
     """
+
     queryset = Artifact.objects.all()
     serializer_class = ArtifactSerializer
 
@@ -2043,6 +2026,7 @@ class RoleViewSet(HistoryViewSet):
     delete:
     Deletes a role.
     """
+
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
 
@@ -2067,6 +2051,7 @@ class UserChangeRequestViewSet(HistoryViewSet):
     delete:
     Deletes a role change request.
     """
+
     serializer_class = UserChangeRequestSerializer
 
     # override the default queryset to allow filtering by URL arguments
@@ -2110,6 +2095,7 @@ class UserChangeRequestResponseViewSet(HistoryViewSet):
     delete:
     Deletes a role change request response.
     """
+
     queryset = UserChangeRequestResponse.objects.all().exclude(name="Pending")
     serializer_class = UserChangeRequestResponseSerializer
 
@@ -2134,6 +2120,7 @@ class CircleViewSet(HistoryViewSet):
     delete:
     Deletes a circle.
     """
+
     serializer_class = CircleSerlializer
 
     # override the default queryset to allow filtering by URL arguments
@@ -2375,6 +2362,7 @@ class ContactTypeViewSet(HistoryViewSet):
     delete:
     Deletes a contact type.
     """
+
     queryset = ContactType.objects.all()
     serializer_class = ContactTypeSerializer
 
