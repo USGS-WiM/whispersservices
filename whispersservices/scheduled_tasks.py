@@ -29,9 +29,11 @@ def get_change_info(history_record, model_name):
         details = "<br />An Event Organization was {}: {}".format(alt_action, history_record.organization.name)
     elif model_name == 'event_contact':
         name = history_record.contact.first_name + " " + history_record.contact.last_name
-        details = "<br />An Event Location Contact was {}: {}".format(alt_action, name)
+        details = "<br />An Event Contact was {}: {}".format(alt_action, name)
     elif model_name == 'event_location':
-        details = "<br />An {} was {}: {}".format(model, action, history_record.name)
+        name = history_record.administrative_level_two.name
+        name += ", " + history_record.administrative_level_one.abbreviation + ", " + history_record.country.abbreviation
+        details = "<br />An {} was {}: {}".format(model, action, name)
     elif model_name == 'event_location_comment':
         details = "<br />An {} was {}: {}".format(model, action, history_record.comment)
     elif model_name == 'event_location_contact':
@@ -66,7 +68,36 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
         #  (a single history record can only ever be a create, but better to be safe by being explicit)
         h_id = h.history_user.id if source_type == 'user' else h.history_user.organization.id
         if h.history_date.date() == yesterday_date and h_id == source_id and h.history_type in ['+', '-']:
-            changes += get_change_info(h, model_name)
+            # check permissions for comments and contacts (visible to privileged users only!)
+            check_permissions = False
+            event = None
+            if model_name == 'event_comment': #, 'event_group_comment', 'event_location_comment']:
+                check_permissions = True
+                event = Event.objects.filter(id=h.object_id).first()
+            elif model_name == 'event_group_comment': #, 'event_location_comment']:
+                check_permissions = True
+                event_event_group = EventEventGroup.objects.filter(id=h.object_id).first()
+                event = Event.objects.filter(id=event_event_group.event_id).first()
+            elif model_name == 'event_location_comment':
+                check_permissions = True
+                event_location = EventLocation.objects.filter(id=h.object_id).first()
+                event = Event.objects.filter(id=event_location.event_id).first()
+            elif model_name == 'event_contact':
+                check_permissions = True
+                event = Event.objects.filter(id=h.event_id).first()
+            elif model_name == 'event_location_contact':
+                check_permissions = True
+                event_location = EventLocationContact.objects.filter(id=h.event_location_id).first()
+                event = Event.objects.filter(id=event_location.event_id).first()
+            if check_permissions and not (cue_user.id == event.created_by.id
+                                          or cue_user.organization.id == event.created_by.organization.id
+                                          or cue_user.organization.id in event.created_by.parent_organizations
+                                          or cue_user.id in list(User.objects.filter(
+                        Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
+                    ).values_list('id', flat=True))):
+                pass
+            else:
+                changes += get_change_info(h, model_name)
     else:
         # more than one history record for the model
         for h in history:
@@ -81,6 +112,35 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                     # keep the loop going in case changes made by this updater are interspersed among other changes
                     continue
                 else:
+                    # check permissions for comments and event contacts (visible to privileged users only!)
+                    check_permissions = False
+                    event = None
+                    if model_name == 'event_comment':  # , 'event_group_comment', 'event_location_comment']:
+                        check_permissions = True
+                        event = Event.objects.filter(id=h.object_id).first()
+                    elif model_name == 'event_group_comment':  # , 'event_location_comment']:
+                        check_permissions = True
+                        event_event_group = EventEventGroup.objects.filter(id=h.object_id).first()
+                        event = Event.objects.filter(id=event_event_group.event_id).first()
+                    elif model_name == 'event_location_comment':
+                        check_permissions = True
+                        event_location = EventLocation.objects.filter(id=h.object_id).first()
+                        event = Event.objects.filter(id=event_location.event_id).first()
+                    elif model_name == 'event_contact':
+                        check_permissions = True
+                        event = Event.objects.filter(id=h.event_id).first()
+                    elif model_name == 'event_location_contact':
+                        check_permissions = True
+                        event_location = EventLocationContact.objects.filter(id=h.event_location_id).first()
+                        event = Event.objects.filter(id=event_location.event_id).first()
+                    if check_permissions and not (cue_user.id == event.created_by.id
+                                                  or cue_user.organization.id == event.created_by.organization.id
+                                                  or cue_user.organization.id in event.created_by.parent_organizations
+                                                  or cue_user.id in list(User.objects.filter(
+                                Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
+                            ).values_list('id', flat=True))):
+                        # keep the loop going in case changes made by this updater are interspersed among other changes
+                        continue
                     # process object creates differently, since there is no earlier record to diff against for changes
                     if h.history_type in ['+', '-']:
                         changes += get_change_info(h, model_name)
