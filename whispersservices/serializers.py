@@ -5609,10 +5609,13 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     def get_eventgroups(self, obj):
         pub_groups = []
         if obj.eventgroups is not None:
-            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+            evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
+                event=obj.id).values_list('eventgroup_id', flat=True))))
+            evtgrps = EventGroup.objects.filter(
+                id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
             for evtgrp in evtgrps:
-                evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
+                evt_ids = list(set(list(EventEventGroup.objects.filter(
+                    eventgroup=evtgrp.id).values_list('event_id', flat=True))))
                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
                 pub_groups.append(group)
         return pub_groups
@@ -5701,10 +5704,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
     def get_eventgroups(self, obj):
         pub_groups = []
         if obj.eventgroups is not None:
-            evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-            evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
+            evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
+                event=obj.id).values_list('eventgroup_id', flat=True))))
+            evtgrps = EventGroup.objects.filter(
+                id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
             for evtgrp in evtgrps:
-                evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
+                evt_ids = list(set(list(EventEventGroup.objects.filter(
+                    eventgroup=evtgrp.id).values_list('event_id', flat=True))))
                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
                 pub_groups.append(group)
         return pub_groups
