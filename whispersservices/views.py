@@ -419,7 +419,7 @@ class EventEventGroupViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
         user = get_request_user(self.request)
-        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        # "Biologically Equivalent (Public)" category only type visible to users not on WHISPers staff
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
@@ -456,7 +456,7 @@ class EventGroupViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
         user = get_request_user(self.request)
-        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        # "Biologically Equivalent (Public)" category only type visible to users not on WHISPers staff
         if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
@@ -492,7 +492,7 @@ class EventGroupCategoryViewSet(HistoryViewSet):
     # override the default queryset to allow filtering by user type
     def get_queryset(self):
         user = get_request_user(self.request)
-        # "Biologically Equivalent (Public)" category events only type visible to users not on WHISPers staff
+        # "Biologically Equivalent (Public)" category only type visible to users not on WHISPers staff
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
@@ -1816,8 +1816,8 @@ class CommentViewSet(HistoryViewSet):
             ).values_list('id', flat=True))
             collab_evtloc_ids = list(EventLocation.objects.filter(
                 event__in=collab_evt_ids).values_list('id', flat=True))
-            collab_evtgrp_ids = list(EventEventGroup.objects.filter(
-                event__in=collab_evt_ids).values_list('id', flat=True))
+            collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
+                event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
             collab_srvreq_ids = list(ServiceRequest.objects.filter(
                 event__in=collab_evt_ids).values_list('id', flat=True))
             queryset = Comment.objects.filter(
@@ -1826,7 +1826,7 @@ class CommentViewSet(HistoryViewSet):
                 Q(created_by__organization__in=user.child_organizations) |
                 Q(content_type__model='event', object_id__in=collab_evt_ids) |
                 Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-                Q(content_type__model='eventeventgroup', object_id__in=collab_evtgrp_ids) |
+                Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
                 Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
             )
         # otherwise return nothing

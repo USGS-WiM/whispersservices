@@ -1854,7 +1854,6 @@ class NotificationCueStandardType(AdminPermissionsHistoryNameModel):
 ######
 
 
-# TODO: revisit read permissions on comment
 class Comment(PermissionsHistoryModel):
     """
     Comment
@@ -1884,18 +1883,18 @@ class Comment(PermissionsHistoryModel):
             elif 'new_content_type' in request.data:
                 model_name = request.data['new_content_type']
             if model_name:
-                if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventeventgroup']:
+                if model_name not in ['servicerequest', 'event', 'eventlocation', 'eventgroup']:
                     return False
                 if model_name == 'servicerequest':
                     return True
-                if model_name in ['event', 'eventlocation', 'eventeventgroup']:
+                if model_name in ['event', 'eventlocation', 'eventgroup']:
                     event = None
                     if model_name == 'event':
                         event = Event.objects.get(pk=int(request.data['object_id']))
                     elif model_name == 'eventlocation':
                         event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
-                    elif model_name == 'eventeventgroup':
-                        event = EventEventGroup.objects.get(pk=int(request.data['object_id'])).event
+                    elif model_name == 'eventgroup':
+                        event = EventEventGroup.objects.get(eventgroup=int(request.data['object_id'])).event
                     if event:
                         if (request.user.id == event.created_by.id
                                 or ((event.created_by.organization.id == request.user.organization.id
@@ -1940,8 +1939,8 @@ class Comment(PermissionsHistoryModel):
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
             event = EventLocation.objects.get(pk=self.object_id).event
-        elif model_name == 'eventeventgroup':
-            event = EventEventGroup.objects.get(pk=self.object_id).event
+        elif model_name == 'eventgroup':
+            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
         if event:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
@@ -1955,8 +1954,8 @@ class Comment(PermissionsHistoryModel):
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
             event = EventLocation.objects.get(pk=self.object_id).event
-        elif model_name == 'eventeventgroup':
-            event = EventEventGroup.objects.get(pk=self.object_id).event
+        elif model_name == 'eventgroup':
+            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
         super(Comment, self).delete(*args, **kwargs)
 
         if event:

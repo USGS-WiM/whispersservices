@@ -22,7 +22,7 @@ def get_change_info(history_record, model_name):
         suspect = "suspect" if history_record.suspect else ""
         details = "<br />An {} was {}: {} {}".format(model, action, history_record.diagnosis.name, suspect)
     elif model_name == 'event_group':
-        details = "<br />Event was added to {} {}".format(model, history_record.eventgroup.name)
+        details = "<br />Event was added to {} {}".format(model, history_record.name)
     elif model_name == 'event_group_comment':
         details = "<br />An {} was {}: {}".format(model, action, history_record.comment)
     elif model_name == 'event_organization':
@@ -71,13 +71,9 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
             # check permissions for comments and contacts (visible to privileged users only!)
             check_permissions = False
             event = None
-            if model_name == 'event_comment': #, 'event_group_comment', 'event_location_comment']:
+            if model_name == 'event_comment':
                 check_permissions = True
                 event = Event.objects.filter(id=h.object_id).first()
-            elif model_name == 'event_group_comment': #, 'event_location_comment']:
-                check_permissions = True
-                event_event_group = EventEventGroup.objects.filter(id=h.object_id).first()
-                event = Event.objects.filter(id=event_event_group.event_id).first()
             elif model_name == 'event_location_comment':
                 check_permissions = True
                 event_location = EventLocation.objects.filter(id=h.object_id).first()
@@ -87,7 +83,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                 event = Event.objects.filter(id=h.event_id).first()
             elif model_name == 'event_location_contact':
                 check_permissions = True
-                event_location = EventLocationContact.objects.filter(id=h.event_location_id).first()
+                event_location = EventLocation.objects.filter(id=h.event_location_id).first()
                 event = Event.objects.filter(id=event_location.event_id).first()
             if check_permissions and not (cue_user.id == event.created_by.id
                                           or cue_user.organization.id == event.created_by.organization.id
@@ -95,6 +91,11 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                           or cue_user.id in list(User.objects.filter(
                         Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                     ).values_list('id', flat=True))):
+                pass
+            elif model_name == 'event_group_comment' and not (cue_user.role.is_superadmin or cue_user.role.is_admin
+                                                              or cue_user.organization.id == int(
+                        Configuration.objects.filter(name='nwhc_organization').first().value)):
+                # Event Group comments visible only to NWHC staff
                 pass
             else:
                 changes += get_change_info(h, model_name)
@@ -115,13 +116,9 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                     # check permissions for comments and event contacts (visible to privileged users only!)
                     check_permissions = False
                     event = None
-                    if model_name == 'event_comment':  # , 'event_group_comment', 'event_location_comment']:
+                    if model_name == 'event_comment':
                         check_permissions = True
                         event = Event.objects.filter(id=h.object_id).first()
-                    elif model_name == 'event_group_comment':  # , 'event_location_comment']:
-                        check_permissions = True
-                        event_event_group = EventEventGroup.objects.filter(id=h.object_id).first()
-                        event = Event.objects.filter(id=event_event_group.event_id).first()
                     elif model_name == 'event_location_comment':
                         check_permissions = True
                         event_location = EventLocation.objects.filter(id=h.object_id).first()
@@ -131,7 +128,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                         event = Event.objects.filter(id=h.event_id).first()
                     elif model_name == 'event_location_contact':
                         check_permissions = True
-                        event_location = EventLocationContact.objects.filter(id=h.event_location_id).first()
+                        event_location = EventLocation.objects.filter(id=h.event_location_id).first()
                         event = Event.objects.filter(id=event_location.event_id).first()
                     if check_permissions and not (cue_user.id == event.created_by.id
                                                   or cue_user.organization.id == event.created_by.organization.id
@@ -139,6 +136,13 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                                   or cue_user.id in list(User.objects.filter(
                                 Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                             ).values_list('id', flat=True))):
+                        # keep the loop going in case changes made by this updater are interspersed among other changes
+                        continue
+                    elif model_name == 'event_group_comment' and not (
+                            cue_user.role.is_superadmin or cue_user.role.is_admin
+                            or cue_user.organization.id == int(
+                        Configuration.objects.filter(name='nwhc_organization').first().value)):
+                        # Event Group comments visible only to NWHC staff
                         # keep the loop going in case changes made by this updater are interspersed among other changes
                         continue
                     # process object creates differently, since there is no earlier record to diff against for changes
@@ -345,8 +349,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
 
 
 def get_updates(event, source_id, yesterday, source_type, cue_user):
-    # get changes from the event and its children (event comments, event diagnoses, event event groups,
-    #  event event group comments, event locations, event location comments, event location contacts,
+    # get changes from the event and its children (event comments, event diagnoses, event groups,
+    #  event group comments, event locations, event location comments, event location contacts,
     #  event location flyways, location species, species diagnoses, species diagnosis organizations)
     updates = ""
 
@@ -364,16 +368,16 @@ def get_updates(event, source_id, yesterday, source_type, cue_user):
     event_diagnosis_history = EventDiagnosis.history.filter(event=event.id).order_by('-id', '-history_id')
     updates += get_changes(event_diagnosis_history, source_id, yesterday, 'event_diagnosis', source_type, cue_user)
 
-    # event event groups
-    event_group_history = EventEventGroup.history.filter(event=event.id).order_by('-id', '-history_id')
-    updates += get_changes(event_group_history, source_id, yesterday, 'event_group', source_type, cue_user)
-
     # get distinct event group IDs to ensure each event group's children are each only processed once
-    event_group_ids = list(set(EventEventGroup.objects.filter(event=event.id).values_list('eventgroup_id', flat=True)))
+    event_group_ids = list(set(EventEventGroup.objects.filter(event_id=event.id).values_list('id', flat=True)))
     for event_group_id in event_group_ids:
 
-        # event event group comments
-        event_group_content_type = ContentType.objects.filter(model='eventeventgroup').first()
+        # event groups
+        event_group_history = EventGroup.history.filter(id=event_group_id).order_by('-id', '-history_id')
+        updates += get_changes(event_group_history, source_id, yesterday, 'event_group', source_type, cue_user)
+
+        # event group comments
+        event_group_content_type = ContentType.objects.filter(model='eventgroup').first()
         event_group_comment_history = Comment.history.filter(
             object_id=event_group_id, content_type=event_group_content_type.id, modified_date=event.modified_date
         ).order_by('-id', '-history_id')
