@@ -392,16 +392,16 @@ class EventEventGroupViewSet(HistoryViewSet):
 
     create:
     Creates a new event event group.
-    
+
     read:
     Returns an event event group by id.
-    
+
     update:
     Updates an event event group.
-    
+
     partial_update:
     Updates parts of an event event group.
-    
+
     delete:
     Deletes an event event group.
     """
@@ -424,7 +424,8 @@ class EventEventGroupViewSet(HistoryViewSet):
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if (user.role.is_superadmin or user.role.is_admin
-                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
+                or user.organization.id == int(
+                    Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventEventGroup.objects.all()
         else:
             return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
@@ -437,16 +438,16 @@ class EventGroupViewSet(HistoryViewSet):
 
     create:
     Creates a new event group.
-    
+
     read:
     Returns an event group by id.
-    
+
     update:
     Updates an event group.
-    
+
     partial_update:
     Updates parts of an event group.
-    
+
     delete:
     Deletes an event group.
     """
@@ -473,16 +474,16 @@ class EventGroupCategoryViewSet(HistoryViewSet):
 
     create:
     Creates a new event group category.
-    
+
     read:
     Returns an event group category by id.
-    
+
     update:
     Updates an event group category.
-    
+
     partial_update:
     Updates parts of an event group category.
-    
+
     delete:
     Deletes an event group category.
     """
