@@ -145,8 +145,9 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                         # Event Group comments visible only to NWHC staff
                         # keep the loop going in case changes made by this updater are interspersed among other changes
                         continue
-                    # process object creates differently, since there is no earlier record to diff against for changes
-                    if h.history_type in ['+', '-']:
+                    # process object creates and deletes (and legacy data) differently,
+                    #  since there is no earlier record to diff against for changes
+                    if h.history_type in ['+', '-'] or h.prev_record is None:
                         changes += get_change_info(h, model_name)
                     else:
                         delta = h.diff_against(h.prev_record)
