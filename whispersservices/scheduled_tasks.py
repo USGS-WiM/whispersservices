@@ -329,11 +329,12 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                     change.old = Diagnosis.objects.get(id=change.old) if change.old else change.old
                                 if fld == 'cause':
                                     # check permissions (visible to privileged users only!)
+                                    event_id = h.location_species.event_location.event.id
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
                                             or cue_user.organization.id in h.created_by.parent_organizations
                                             or cue_user.id in list(User.objects.filter(
-                                                Q(writeevents__in=[h.event.id]) | Q(readevents__in=[h.event.id])
+                                                Q(writeevents__in=[event_id]) | Q(readevents__in=[event_id])
                                             ).values_list('id', flat=True))):
                                         chg = change
                                         change.new = DiagnosisCause.objects.get(id=chg.new) if chg.new else chg.new
@@ -342,11 +343,12 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         continue
                                 if fld == 'basis':
                                     # check permissions (visible to privileged users only!)
+                                    event_id = h.location_species.event_location.event.id
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
                                             or cue_user.organization.id in h.created_by.parent_organizations
                                             or cue_user.id in list(User.objects.filter(
-                                                Q(writeevents__in=[h.event.id]) | Q(readevents__in=[h.event.id])
+                                                Q(writeevents__in=[event_id]) | Q(readevents__in=[event_id])
                                             ).values_list('id', flat=True))):
                                         chg = change
                                         change.new = DiagnosisBasis.objects.get(id=chg.new) if chg.new else chg.new
