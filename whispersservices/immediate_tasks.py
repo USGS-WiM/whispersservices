@@ -77,6 +77,8 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
             new_body += " a null recipient list."
         elif not subject:
             new_body += " a null subject."
+        elif len(subject) > Notification._meta.get_field('subject').max_length:
+            new_body += " the subject length was greater than the maximum allowed length of the subject field."
         new_body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         new_body += " during task " + str(current_task.request.id)
         notif_email = construct_notification_email(new_recip, new_subject, new_body, False)
