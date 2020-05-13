@@ -16,15 +16,15 @@
         {% elif user.role.is_partneradmin or user.role.is_partnermanager or user.role.is_partner %}
             Partner Users
         {% else %}
-            Public Users
+            Unauthenticated Users
         {% endif %}
         </span>
         <span><a href="/api-auth/logout/?next=/docs/">Log out</a></span>
         {% else %}
           <span>Welcome!</span>
-          <span>You are viewing the API for Public Users</span>
+          <span>You are viewing the API for Unauthenticated Users</span>
           <span><a href="/api-auth/login/?next=/docs/">Log in</a></span>
-        {% endif %}
+      {% endif %}
     </div>
     <div id="swagger-ui"></div>
     <script src="//unpkg.com/swagger-ui-dist@3/swagger-ui-bundle.js"></script>

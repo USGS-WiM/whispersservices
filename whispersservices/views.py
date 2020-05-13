@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import BaseParser
 from rest_framework.exceptions import PermissionDenied, NotFound
 from rest_framework.settings import api_settings
+from rest_framework.schemas.openapi import AutoSchema
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_csv import renderers as csv_renderers
 from whispersservices.serializers import *
@@ -421,14 +422,14 @@ class EventEventGroupViewSet(HistoryViewSet):
         user = get_request_user(self.request)
         # "Biologically Equivalent (Public)" category only type visible to users not on WHISPers staff
         if not user or not user.is_authenticated:
-            return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
+            return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
         if (user.role.is_superadmin or user.role.is_admin
                 or user.organization.id == int(
                     Configuration.objects.filter(name='nwhc_organization').first().value)):
             return EventEventGroup.objects.all()
         else:
-            return EventEventGroup.objects.filter(event_group__category__name='Biologically Equivalent (Public)')
+            return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
 
 
 class EventGroupViewSet(HistoryViewSet):
@@ -2523,7 +2524,8 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     """
 
     queryset = Event.objects.all()
-    filterset_class = EventSummaryFilter
+    schema = AutoSchema(operation_id_base="EventSummary")
+    # filterset_class = EventSummaryFilter
     # filterset_fields = ['complete', 'event_type']
 
     @action(detail=False)
@@ -2957,6 +2959,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     Returns a flattened response for an event detail by id.
     """
 
+    schema = AutoSchema(operation_id_base="EventDetail")
     serializer_class = EventDetailSerializer
 
     @action(detail=True)
