@@ -473,7 +473,6 @@ class ArtifactSerializer(serializers.ModelSerializer):
 ######
 
 
-# TODO: allow read-only staff field for event owner org
 # TODO: validate expected fields and field data types for all submitted nested objects
 class EventSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
@@ -1328,7 +1327,7 @@ class EventSerializer(serializers.ModelSerializer):
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdigit():
-                    obj = EventLocation.objects.filter(id=pk).first()
+                    obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
@@ -1350,810 +1349,6 @@ class EventSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class EventAdminSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
-    permissions = DRYPermissionsField()
-    permission_source = serializers.SerializerMethodField()
-    event_type_string = serializers.StringRelatedField(source='event_type')
-    staff_string = serializers.StringRelatedField(source='staff')
-    event_status_string = serializers.StringRelatedField(source='event_status')
-    legal_status_string = serializers.StringRelatedField(source='legal_status')
-    comments = CommentSerializer(many=True, read_only=True)
-    new_event_diagnoses = serializers.ListField(write_only=True, required=False)
-    new_organizations = serializers.ListField(write_only=True, required=False)
-    new_comments = serializers.ListField(write_only=True, required=False)
-    new_event_locations = serializers.ListField(write_only=True, required=False)
-    new_eventgroups = serializers.ListField(write_only=True, required=False)
-    new_service_request = serializers.JSONField(write_only=True, required=False)
-    new_read_collaborators = serializers.ListField(write_only=True, required=False)
-    new_write_collaborators = serializers.ListField(write_only=True, required=False)
-    service_request_email = serializers.JSONField(read_only=True)
-
-    def get_permission_source(self, obj):
-        return determine_permission_source(self.context['request'].user, obj)
-
-    def validate(self, data):
-
-        # if this is a new Event
-        if not self.instance:
-            if 'new_event_locations' not in data:
-                raise serializers.ValidationError("new_event_locations is a required field")
-            # 1. Not every location needs a start date at initiation, but at least one location must.
-            # 2. Not every location needs a species at initiation, but at least one location must.
-            # 3. location_species Population >= max(estsick, knownsick) + max(estdead, knowndead)
-            # 4. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #    and estimated_dead for at least one species in the event at the time of event initiation.
-            #    (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 5. If present, estimated_sick must be higher than known sick (estimated_sick > sick).
-            # 6. If present, estimated dead must be higher than known dead (estimated_dead > dead).
-            # 7. Every location needs at least one comment, which must be one of the following types:
-            #    Site description, History, Environmental factors, Clinical signs
-            # 8. Standardized lat/long format (e.g., decimal degrees WGS84). Update county, state, and country
-            #    if county is null.  Update state and country if state is null. If don't enter country, state, and
-            #    county at initiation, then have to enter lat/long, which would autopopulate country, state, and county.
-            # 9. Ensure admin level 2 actually belongs to admin level 1 which actually belongs to country.
-            # 10. Location start date cannot be after today if event type is Mortality/Morbidity
-            # 11. Location end date must be equal to or greater than start date.
-            # 12: Non-suspect diagnosis cannot have basis_of_dx = 1,2, or 4.  If 3 is selected user must provide a lab.
-            # 13: A diagnosis can only be used once for a location-species-labID combination
-            if 'new_event_locations' in data:
-                country_admin_is_valid = True
-                latlng_is_valid = True
-                latlng_matches_county = True
-                latlng_matches_admin_l1 = True
-                latlng_matches_admin_21 = True
-                comments_is_valid = []
-                required_comment_types = ['site_description', 'history', 'environmental_factors', 'clinical_signs']
-                min_start_date = False
-                start_date_is_valid = True
-                end_date_is_valid = True
-                min_location_species = False
-                min_species_count = False
-                pop_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                specdiag_nonsuspect_basis_is_valid = True
-                specdiag_lab_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if [i for i in required_comment_types if i in item and item[i]]:
-                        comments_is_valid.append(True)
-                    else:
-                        comments_is_valid.append(False)
-                    if 'start_date' in item and item['start_date'] is not None:
-                        try:
-                            datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            details.append("All start_date values must be valid dates in ISO format ('YYYY-MM-DD').")
-                        min_start_date = True
-                        if (data['event_type'].id == mortality_morbidity.id
-                                and datetime.strptime(item['start_date'], '%Y-%m-%d').date() > date.today()):
-                            start_date_is_valid = False
-                        if ('end_date' in item and item['end_date'] is not None
-                                and item['end_date'] < item['start_date']):
-                            end_date_is_valid = False
-                    elif 'end_date' in item and item['end_date'] is not None:
-                        end_date_is_valid = False
-                    if ('country' in item and item['country'] is not None and 'administrative_level_one' in item
-                            and item['administrative_level_one'] is not None):
-                        country = Country.objects.filter(id=item['country']).first()
-                        admin_l1 = AdministrativeLevelOne.objects.filter(id=item['administrative_level_one']).first()
-                        if country.id != admin_l1.country.id:
-                            country_admin_is_valid = False
-                        if 'administrative_level_two' in item and item['administrative_level_two'] is not None:
-                            admin_l2 = AdministrativeLevelTwo.objects.filter(
-                                id=item['administrative_level_two']).first()
-                            if admin_l1.id != admin_l2.administrative_level_one.id:
-                                country_admin_is_valid = False
-                    if (('country' not in item or item['country'] is None or 'administrative_level_one' not in item
-                         or item['administrative_level_one'] is None)
-                            and ('latitude' not in item or item['latitude'] is None
-                                 or 'longitude' not in item and item['longitude'] is None)):
-                        message = "country and administrative_level_one are required if latitude or longitude is null."
-                        details.append(message)
-                    if ('latitude' in item and item['latitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,2})(\.)(\d+)", str(item['latitude']))):
-                        latlng_is_valid = False
-                    if ('longitude' in item and item['longitude'] is not None
-                            and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
-                        latlng_is_valid = False
-                    geonames_endpoint = 'extendedFindNearbyJSON'
-                    if confirm_geonames_api_responsive(geonames_endpoint):
-                        if ('latitude' in item and item['latitude'] is not None
-                                and 'longitude' in item and item['longitude'] is not None):
-                            payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                                       'username': GEONAMES_USERNAME}
-                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
-                            content = decode_json(r)
-                            if 'address' not in content and 'geonames' not in content:
-                                latlng_is_valid = False
-                        if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
-                                and 'longitude' in item and item['longitude'] is not None
-                                and 'country' in item and item['country'] is not None):
-                            payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
-                            r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
-                            geonames_object_list = decode_json(r)
-                            if 'address' in geonames_object_list:
-                                address = geonames_object_list['address']
-                                if 'name' in address:
-                                    address['adminName2'] = address['name']
-                            elif 'geonames' in geonames_object_list:
-                                geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
-                                                         item['fcode'] == 'ADM2']
-                                address = geonames_objects_adm2[0]
-                            else:
-                                # the response from the Geonames web service is in an unexpected format
-                                address = None
-                            geonames_endpoint = 'countryInfoJSON'
-                            if address and confirm_geonames_api_responsive(geonames_endpoint):
-                                country_code = address['countryCode']
-                                if len(country_code) == 2:
-                                    payload = {'country': country_code, 'username': GEONAMES_USERNAME}
-                                    r = requests.get(GEONAMES_API + geonames_endpoint, params=payload,
-                                                     verify=settings.SSL_CERT)
-                                    content = decode_json(r)
-                                    if ('geonames' in content and content['geonames'] is not None
-                                            and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
-                                        alpha3 = content['geonames'][0]['isoAlpha3']
-                                        country = Country.objects.filter(abbreviation=alpha3).first()
-                                else:
-                                    country = Country.objects.filter(abbreviation=country_code).first()
-                                if int(item['country']) != country.id:
-                                    latlng_matches_county = False
-                                elif ('administrative_level_one' in item
-                                      and item['administrative_level_one'] is not None):
-                                    admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
-                                    if int(item['administrative_level_one']) != admin_l1.id:
-                                        latlng_matches_admin_l1 = False
-                                    elif 'administrative_level_two' in item and item[
-                                        'administrative_level_two'] is not None:
-                                        a2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                        admin_l2 = AdministrativeLevelTwo.objects.filter(name=a2).first()
-                                        if int(item['administrative_level_two']) != admin_l2.id:
-                                            latlng_matches_admin_21 = False
-                    if 'new_location_species' in item:
-                        for spec in item['new_location_species']:
-                            if 'species' in spec and spec['species'] is not None:
-                                if Species.objects.filter(id=spec['species']).first() is None:
-                                    message = "A submitted species ID (" + str(spec['species'])
-                                    message += ") in new_location_species was not found in the database."
-                                    details.append(message)
-                                else:
-                                    min_location_species = True
-                            if 'population_count' in spec and spec['population_count'] is not None:
-                                dead_count = 0
-                                sick_count = 0
-                                if 'dead_count_estimated' in spec or 'dead_count' in spec:
-                                    dead_count = max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                if 'sick_count_estimated' in spec or 'sick_count' in spec:
-                                    sick_count = max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                if spec['population_count'] >= dead_count + sick_count:
-                                    pop_is_valid.append(True)
-                                else:
-                                    pop_is_valid.append(False)
-                            if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                    and 'sick_count' in spec and spec['sick_count'] is not None
-                                    and not spec['sick_count_estimated'] > spec['sick_count']):
-                                est_sick_is_valid = False
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and 'dead_count' in spec and spec['dead_count'] is not None
-                                    and not spec['dead_count_estimated'] > spec['dead_count']):
-                                est_dead_is_valid = False
-                            if data['event_type'].id == mortality_morbidity.id:
-                                if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                        and spec['dead_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('dead_count' in spec and spec['dead_count'] is not None
-                                      and spec['dead_count'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                      and spec['sick_count_estimated'] > 0):
-                                    min_species_count = True
-                                elif ('sick_count' in spec and spec['sick_count'] is not None
-                                      and spec['sick_count'] > 0):
-                                    min_species_count = True
-                            if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
-                                specdiag_labs = []
-                                for specdiag in spec['new_species_diagnoses']:
-                                    [specdiag_labs.append((specdiag['diagnosis'], specdiag_lab)) for specdiag_lab in
-                                     specdiag['new_species_diagnosis_organizations']]
-                                    if not specdiag['suspect']:
-                                        if specdiag['basis'] in [1, 2, 4]:
-                                            specdiag_nonsuspect_basis_is_valid = False
-                                        elif specdiag['basis'] == 3:
-                                            if ('new_species_diagnosis_organizations' in specdiag
-                                                    and specdiag['new_species_diagnosis_organizations'] is not None):
-                                                for org_id in specdiag['new_species_diagnosis_organizations']:
-                                                    org = Organization.objects.filter(id=org_id).first()
-                                                    if not org or not org.laboratory:
-                                                        specdiag_nonsuspect_basis_is_valid = False
-                                if len(specdiag_labs) != len(set(specdiag_labs)):
-                                    specdiag_lab_is_valid = False
-                    if 'new_location_contacts' in item and item['new_location_contacts'] is not None:
-                        for loc_contact in item['new_location_contacts']:
-                            if 'contact' not in loc_contact or loc_contact['contact'] is None:
-                                message = "A required contact ID was not included in new_location_contacts."
-                                details.append(message)
-                            elif Contact.objects.filter(id=loc_contact['contact']).first() is None:
-                                message = "A submitted contact ID (" + str(loc_contact['contact'])
-                                message += ") in new_location_contacts was not found in the database."
-                                details.append(message)
-                if not country_admin_is_valid:
-                    message = "administrative_level_one must belong to the submitted country,"
-                    message += " and administrative_level_two must belong to the submitted administrative_level_one."
-                    details.append(message)
-                if not start_date_is_valid:
-                    message = "If event_type is 'Mortality/Morbidity'"
-                    message += " start_date for a new event_location must be current date or earlier."
-                    details.append(message)
-                if not end_date_is_valid:
-                    details.append("end_date may not be before start_date.")
-                if not latlng_is_valid:
-                    message = "latitude and longitude must be in decimal degrees and represent a point in a country."
-                    details.append(message)
-                if not latlng_matches_county:
-                    message = "latitude and longitude are not in the user-specified country."
-                    details.append(message)
-                if not latlng_matches_admin_l1:
-                    message = "latitude and longitude are not in the user-specified administrative level one."
-                    details.append(message)
-                if not latlng_matches_admin_21:
-                    message = "latitude and longitude are not in the user-specified administrative level two."
-                    details.append(message)
-                if False in comments_is_valid:
-                    message = "Each new_event_location requires at least one new_comment, which must be one of"
-                    message += " the following types: Site description, History, Environmental factors, Clinical signs"
-                    details.append(message)
-                if not min_start_date:
-                    details.append("start_date is required for at least one new event_location.")
-                if not min_location_species:
-                    details.append("Each new_event_location requires at least one new_location_species.")
-                if False in pop_is_valid:
-                    message = "new_location_species population_count cannot be less than the sum of dead_count"
-                    message += " and sick_count (where those counts are the maximum of the estimated or known count)."
-                    details.append(message)
-                if data['event_type'].id == mortality_morbidity.id and not min_species_count:
-                    message = "For Mortality/Morbidity events, at least one new_location_species requires"
-                    message += " at least one species count in any of the following fields:"
-                    message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if not specdiag_nonsuspect_basis_is_valid:
-                    message = "A non-suspect diagnosis can only have a basis of"
-                    message += " 'Necropsy and/or ancillary tests performed at a diagnostic laboratory'"
-                    message += " and only if that diagnosis has a related laboratory"
-                    details.append(message)
-                if not specdiag_lab_is_valid:
-                    message = "A diagnosis can only be used once for any combination of a location, species, and lab."
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(details)
-
-            # 1. End Date is Mandatory for event to be marked as 'Complete'. Should always be same or after Start Date.
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            if 'complete' in data and data['complete'] is True:
-                location_message = "The event may not be marked complete until all of its locations have an end date"
-                location_message += " and each location's end date is after that location's start date."
-                end_date_is_valid = True
-                species_count_is_valid = []
-                est_sick_is_valid = True
-                est_dead_is_valid = True
-                specdiag_basis_is_valid = True
-                specdiag_cause_is_valid = True
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for item in data['new_event_locations']:
-                    if ('start_date' in item and item['start_date'] is not None
-                            and 'end_date' in item and item['end_date'] is not None):
-                        try:
-                            start_date = datetime.strptime(item['start_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            start_date = datetime.now().date
-                            details.append("All start_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        try:
-                            end_date = datetime.strptime(item['end_date'], '%Y-%m-%d').date()
-                        except ValueError:
-                            # use a fake date to prevent type comparison error in "if not start_date < end_date"
-                            end_date = datetime.now().date() + timedelta(days=1)
-                            details.append("All end_date values must be valid ISO format dates (YYYY-MM-DD).")
-                        if not start_date <= end_date:
-                            end_date_is_valid = False
-                    else:
-                        end_date_is_valid = False
-                    for spec in item['new_location_species']:
-                        if ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                and 'sick_count' in spec and spec['sick_count'] is not None
-                                and not spec['sick_count_estimated'] > spec['sick_count']):
-                            est_sick_is_valid = False
-                        if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                and 'dead_count' in spec and spec['dead_count'] is not None
-                                and not spec['dead_count_estimated'] > spec['dead_count']):
-                            est_dead_is_valid = False
-                        if data['event_type'] == mortality_morbidity.id:
-                            if ('dead_count_estimated' in spec and spec['dead_count_estimated'] is not None
-                                    and spec['dead_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('dead_count' in spec and spec['dead_count'] is not None
-                                  and spec['dead_count'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count_estimated' in spec and spec['sick_count_estimated'] is not None
-                                  and spec['sick_count_estimated'] > 0):
-                                species_count_is_valid.append(True)
-                            elif ('sick_count' in spec and spec['sick_count'] is not None
-                                  and spec['sick_count'] > 0):
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                        if 'new_species_diagnoses' in spec and spec['new_species_diagnoses'] is not None:
-                            for specdiag in spec['new_species_diagnoses']:
-                                if 'basis' not in specdiag or specdiag['basis'] is None:
-                                    specdiag_basis_is_valid = False
-                                if 'cause' not in specdiag or specdiag['cause'] is None:
-                                    specdiag_cause_is_valid = False
-                        else:
-                            specdiag_basis_is_valid = False
-                            specdiag_cause_is_valid = False
-                if not end_date_is_valid:
-                    details.append(location_message)
-                if False in species_count_is_valid:
-                    message = "Each new_location_species requires at least one species count in any of these"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_sick_is_valid:
-                    details.append("Estimated sick count must always be more than known sick count.")
-                if not est_dead_is_valid:
-                    details.append("Estimated dead count must always be more than known dead count.")
-                if not specdiag_basis_is_valid:
-                    details.append("Each new_location_species requires a basis of diagnosis")
-                if not specdiag_cause_is_valid:
-                    details.append("Each new_location_species requires a significance of diagnosis for species (cause)")
-                if details:
-                    raise serializers.ValidationError(details)
-
-        return data
-
-    def create(self, validated_data):
-        # set the FULL_EVENT_CHAIN_CREATE variable to True in case there is an error somewhere in the chain
-        # and all objects created by this request before the error need to be deleted
-        FULL_EVENT_CHAIN_CREATE = True
-
-        # pull out child event diagnoses list from the request
-        new_event_diagnoses = validated_data.pop('new_event_diagnoses', None)
-
-        # pull out child organizations list from the request
-        new_organizations = validated_data.pop('new_organizations', None)
-
-        # pull out child comments list from the request
-        new_comments = validated_data.pop('new_comments', None)
-
-        # pull out child event_locations list from the request
-        new_event_locations = validated_data.pop('new_event_locations', None)
-
-        # pull out child eventgroups list from the request
-        new_eventgroups = validated_data.pop('new_eventgroups', None)
-
-        # pull out child service request from the request
-        new_service_request = validated_data.pop('new_service_request', None)
-
-        # pull out user ID list from the request
-        if 'new_read_collaborators' in validated_data:
-            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
-        else:
-            new_read_user_ids_prelim = set([])
-        if 'new_write_collaborators' in validated_data:
-            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
-        else:
-            new_write_user_ids = set([])
-
-        # remove users from the read list if they are also in the write list (these lists are already unique sets)
-        new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
-
-        event = Event.objects.create(**validated_data)
-
-        # create the child event_locations for this event
-        if new_event_locations is not None:
-            is_valid = True
-            valid_data = []
-            errors = []
-            for event_location in new_event_locations:
-                if event_location is not None:
-                    # use event to populate event field on event_location
-                    event_location['event'] = event.id
-                    event_location['created_by'] = event.created_by.id
-                    event_location['modified_by'] = event.modified_by.id
-                    event_location['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
-                    evt_loc_serializer = EventLocationSerializer(data=event_location)
-                    if evt_loc_serializer.is_valid():
-                        valid_data.append(evt_loc_serializer)
-                    else:
-                        is_valid = False
-                        errors.append(evt_loc_serializer.errors)
-            if is_valid:
-                # now that all items are proven valid, save and return them to the user
-                for item in valid_data:
-                    item.save()
-            else:
-                # delete this event (related collaborators, organizations, eventgroups, service requests,
-                # contacts, and comments will be cascade deleted automatically if any exist)
-                event.delete()
-                raise serializers.ValidationError(jsonify_errors(errors))
-
-        user = get_user(self.context, self.initial_data)
-
-        # create the child collaborators for this event
-        if new_read_user_ids is not None:
-            for read_user_id in new_read_user_ids:
-                read_user = User.objects.filter(id=read_user_id).first()
-                if read_user is not None:
-                    EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
-
-        if new_write_user_ids is not None:
-            for write_user_id in new_write_user_ids:
-                write_user = User.objects.filter(id=write_user_id).first()
-                if write_user is not None:
-                    EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
-
-        # create the child organizations for this event
-        if new_organizations is not None:
-            # only create unique records (silently ignore duplicates submitted by user)
-            new_unique_organizations = list(set(new_organizations))
-            for org_id in new_unique_organizations:
-                if org_id is not None:
-                    org = Organization.objects.filter(id=org_id).first()
-                    if org is not None:
-                        event_org = EventOrganization.objects.create(event=event, organization=org,
-                                                                     created_by=user, modified_by=user)
-                        event_org.priority = calculate_priority_event_organization(event_org)
-                        event_org.save()
-        else:
-            event_org = EventOrganization.objects.create(event=event, organization=user.organization,
-                                                         created_by=user, modified_by=user)
-            event_org.priority = calculate_priority_event_organization(event_org)
-            event_org.save()
-
-        # create the child comments for this event
-        if new_comments is not None:
-            for comment in new_comments:
-                if comment is not None:
-                    if 'comment_type' in comment and comment['comment_type'] is not None:
-                        comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                        if comment_type is not None:
-                            Comment.objects.create(content_object=event, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-
-        # create the child eventgroups for this event
-        if new_eventgroups is not None:
-            for eventgroup_id in new_eventgroups:
-                if eventgroup_id is not None:
-                    eventgroup = EventGroup.objects.filter(id=eventgroup_id).first()
-                    if eventgroup is not None:
-                        EventEventGroup.objects.create(event=event, eventgroup=eventgroup,
-                                                       created_by=user, modified_by=user)
-
-        # create the child event diagnoses for this event
-        pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
-        undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
-        existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
-        if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
-            remove_diagnoses = [pending, undetermined]
-        else:
-            remove_diagnoses = [pending, ]
-
-        # remove Pending if in the list because it should never be submitted by the user
-        # and remove Undetermined if in the list and the event already has an Undetermined
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
-
-        if new_event_diagnoses:
-            is_valid = True
-            valid_data = []
-            errors = []
-            for event_diagnosis in new_event_diagnoses:
-                if event_diagnosis is not None:
-                    # use event to populate event field on event_diagnosis
-                    event_diagnosis['event'] = event.id
-                    event_diagnosis['created_by'] = event.created_by.id
-                    event_diagnosis['modified_by'] = event.modified_by.id
-                    event_diagnosis['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
-                    evt_diag_serializer = EventDiagnosisSerializer(data=event_diagnosis)
-                    if evt_diag_serializer.is_valid():
-                        valid_data.append(evt_diag_serializer)
-                    else:
-                        is_valid = False
-                        errors.append(evt_diag_serializer.errors)
-            if is_valid:
-                # now that all items are proven valid, save and return them to the user
-                for item in valid_data:
-                    item.save()
-            else:
-                # delete this event (related collaborators, organizations, eventgroups, service requests,
-                # contacts, and comments will be cascade deleted automatically if any exist)
-                event.delete()
-                raise serializers.ValidationError(jsonify_errors(errors))
-
-            # # Can only use diagnoses that are already used by this event's species diagnoses
-            # valid_diagnosis_ids = list(SpeciesDiagnosis.objects.filter(
-            #     location_species__event_location__event=event.id
-            # ).exclude(id__in=[pending, undetermined]).values_list('diagnosis', flat=True).distinct())
-            # # If any new event diagnoses have a matching species diagnosis, then continue, else ignore
-            # if valid_diagnosis_ids is not None:
-            #     new_event_diagnoses_created = []
-            #     for event_diagnosis in new_event_diagnoses:
-            #         diagnosis_id = int(event_diagnosis.pop('diagnosis', None))
-            #         if diagnosis_id in valid_diagnosis_ids:
-            #             # ensure this new event diagnosis has the correct suspect value
-            #             # (false if any matching species diagnoses are false, otherwise true)
-            #             diagnosis = Diagnosis.objects.filter(pk=diagnosis_id).first()
-            #             matching_specdiags_suspect = SpeciesDiagnosis.objects.filter(
-            #                 location_species__event_location__event=event.id, diagnosis=diagnosis_id
-            #             ).values_list('suspect', flat=True)
-            #             suspect = False if False in matching_specdiags_suspect else True
-            #             event_diagnosis = EventDiagnosis.objects.create(**event_diagnosis, event=event,
-            #                                                             diagnosis=diagnosis, suspect=suspect,
-            #                                                             created_by=user, modified_by=user)
-            #             event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
-            #             event_diagnosis.save()
-            #             new_event_diagnoses_created.append(event_diagnosis)
-            #     # If any new event diagnoses were created, check for existing Pending record and delete it
-            #     if len(new_event_diagnoses_created) > 0:
-            #         event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-            #         [diag.delete() for diag in event_diagnoses if diag.diagnosis.id == pending]
-
-        # Create the child service requests for this event
-        if new_service_request is not None:
-            if ('request_type' in new_service_request and new_service_request['request_type'] is not None
-                    and new_service_request['request_type'] in [1, 2]):
-                new_comments = new_service_request.pop('new_comments', None)
-                request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
-                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
-                admin = User.objects.filter(id=1).first()
-                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                request_response=request_response, response_by=admin,
-                                                                created_by=user, modified_by=user)
-                # service_request_comments = []
-
-                # create the child comments for this service request
-                if new_comments is not None:
-                    for comment in new_comments:
-                        if comment is not None:
-                            if 'comment_type' in comment and comment['comment_type'] is not None:
-                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                if not comment_type:
-                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            else:
-                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-                            # service_request_comments.append(comment['comment'])
-
-        return event
-
-    # on update, any submitted nested objects (new_organizations, new_comments, new_event_locations) will be ignored
-    def update(self, instance, validated_data):
-        new_complete = validated_data.get('complete', None)
-        quality_check = validated_data.get('quality_check', None)
-
-        # if event is complete only a few things are permitted (admin can set quality_check or reopen event)
-        if instance.complete:
-            # if the event is complete and the quality_check field is included and set to a date,
-            # update the quality_check field and return the event
-            # (ignoring any other submitted changes since the event is 'locked' by virtue of being complete)
-            if quality_check:
-                instance.quality_check = quality_check
-                instance.modified_by = validated_data.get('modified_by', instance.modified_by)
-                instance.save()
-                return instance
-            # if the event is complete and the complete field is not included or True, the event cannot be changed
-            if new_complete is None or new_complete:
-                message = "Complete events may only be changed by the event owner or an administrator"
-                message += " if the 'complete' field is set to False in the request."
-                raise serializers.ValidationError(jsonify_errors(message))
-
-        # otherwise event is not yet complete
-        if not instance.complete and new_complete:
-            # only let the status be changed to 'complete=True' if
-            # 1. All child locations have an end date and each location's end date is later than its start date
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 3. All child species diagnoses must have a basis and a cause
-            locations = EventLocation.objects.filter(event=instance.id)
-            location_message = "The event may not be marked complete until all of its locations have an end date"
-            location_message += " and each location's end date is after that location's start date."
-            if locations is not None:
-                species_count_is_valid = []
-                est_count_gt_known_count = True
-                species_diagnosis_basis_is_valid = []
-                species_diagnosis_cause_is_valid = []
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for location in locations:
-                    if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(jsonify_errors(location_message))
-                    if instance.event_type.id == mortality_morbidity.id:
-                        location_species = LocationSpecies.objects.filter(event_location=location.id)
-                        for spec in location_species:
-                            if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.dead_count is not None and spec.dead_count > 0
-                                        and not spec.dead_count_estimated > spec.dead_count):
-                                    est_count_gt_known_count = False
-                            elif spec.dead_count is not None and spec.dead_count > 0:
-                                species_count_is_valid.append(True)
-                            elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.sick_count or 0) > 0 and spec.sick_count_estimated <= (
-                                        spec.sick_count or 0):
-                                    est_count_gt_known_count = False
-                            elif spec.sick_count is not None and spec.sick_count > 0:
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                            species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
-                            for specdiag in species_diagnoses:
-                                if specdiag.basis:
-                                    species_diagnosis_basis_is_valid.append(True)
-                                else:
-                                    species_diagnosis_basis_is_valid.append(False)
-                                if specdiag.cause:
-                                    species_diagnosis_cause_is_valid.append(True)
-                                else:
-                                    species_diagnosis_cause_is_valid.append(False)
-                if False in species_count_is_valid:
-                    message = "Each location_species requires at least one species count in any of the following"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_count_gt_known_count:
-                    message = "Estimated sick or dead counts must always be more than known sick or dead counts."
-                    details.append(message)
-                if False in species_diagnosis_basis_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a basis of diagnosis."
-                    details.append(message)
-                if False in species_diagnosis_cause_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a cause."
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(jsonify_errors(details))
-            else:
-                raise serializers.ValidationError(jsonify_errors(location_message))
-
-        # remove child event diagnoses list from the request
-        if 'new_event_diagnoses' in validated_data:
-            validated_data.pop('new_event_diagnoses')
-
-        # remove child organizations list from the request
-        if 'new_organizations' in validated_data:
-            validated_data.pop('new_organizations')
-
-        # remove child comments list from the request
-        if 'new_comments' in validated_data:
-            validated_data.pop('new_comments')
-
-        # remove child event_locations list from the request
-        if 'new_event_locations' in validated_data:
-            validated_data.pop('new_event_locations')
-
-        # remove child service_requests list from the request
-        if 'new_service_requests' in validated_data:
-            validated_data.pop('new_service_requests')
-
-        # pull out read and write collaborators ID lists from the request
-        if 'new_read_collaborators' in validated_data:
-            new_read_collaborators = validated_data.pop('new_read_collaborators', None)
-            new_read_user_ids_prelim = set(new_read_collaborators) if new_read_collaborators else set([])
-        else:
-            new_read_user_ids_prelim = set([])
-        if 'new_write_collaborators' in validated_data:
-            new_write_collaborators = validated_data.pop('new_write_collaborators', None)
-            new_write_user_ids = set(new_write_collaborators) if new_write_collaborators else set([])
-        else:
-            new_write_user_ids = set([])
-
-        user = get_user(self.context, self.initial_data)
-        request_method = self.context['request'].method
-
-        # update the read_collaborators list if new_read_collaborators submitted
-        if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
-            # get the old (current) read collaborator ID list for this event
-            old_read_users = User.objects.filter(readevents=instance.id)
-            # remove users from the read list if they are also in the write list (these lists are already unique sets)
-            new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
-            # get the new (submitted) read collaborator ID list for this event
-            new_read_users = User.objects.filter(id__in=new_read_user_ids)
-
-            # identify and delete relates where user IDs are present in old read list but not new read list
-            delete_read_users = list(set(old_read_users) - set(new_read_users))
-            for user_id in delete_read_users:
-                delete_user = EventReadUser.objects.filter(user=user_id, event=instance)
-                delete_user.delete()
-
-            # identify and create relates where user IDs are present in new read list but not old read list
-            add_read_users = list(set(new_read_users) - set(old_read_users))
-            for user_id in add_read_users:
-                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
-
-        # update the write_collaborators list if new_write_user_ids submitted
-        if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
-            # get the old (current) write collaborator ID list for this event
-            old_write_users = User.objects.filter(writeevents=instance.id)
-            # get the new (submitted) write collaborator ID list for this event
-            new_write_users = User.objects.filter(id__in=new_write_user_ids)
-
-            # identify and delete relates where user IDs are present in old write list but not new write list
-            delete_write_users = list(set(old_write_users) - set(new_write_users))
-            for user_id in delete_write_users:
-                delete_user = EventWriteUser.objects.filter(user=user_id, event=instance)
-                delete_user.delete()
-
-            # identify and create relates where user IDs are present in new write list but not old write list
-            add_write_users = list(set(new_write_users) - set(old_write_users))
-            for user_id in add_write_users:
-                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
-
-        # update the Event object
-        instance.event_type = validated_data.get('event_type', instance.event_type)
-        instance.event_reference = validated_data.get('event_reference', instance.event_reference)
-        instance.complete = validated_data.get('complete', instance.complete)
-        instance.staff = validated_data.get('staff', instance.staff)
-        instance.event_status = validated_data.get('event_status', instance.event_status)
-        instance.quality_check = validated_data.get('quality_check', instance.quality_check)
-        instance.legal_status = validated_data.get('legal_status', instance.legal_status)
-        instance.legal_number = validated_data.get('legal_number', instance.legal_number)
-        instance.public = validated_data.get('public', instance.public)
-        instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
-
-        # affected_count
-        # If EventType = Morbidity/Mortality
-        # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
-        # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
-        event_type_id = instance.event_type.id
-        if event_type_id not in [1, 2]:
-            instance.affected_count = None
-        else:
-            locations = EventLocation.objects.filter(event=instance.id).values('id', 'start_date', 'end_date')
-            loc_ids = [loc['id'] for loc in locations]
-            loc_species = LocationSpecies.objects.filter(
-                event_location_id__in=loc_ids).values(
-                'id', 'dead_count_estimated', 'dead_count', 'sick_count_estimated', 'sick_count')
-            if event_type_id == 1:
-                affected_counts = [max(spec.get('dead_count_estimated') or 0, spec.get('dead_count') or 0)
-                                   + max(spec.get('sick_count_estimated') or 0, spec.get('sick_count') or 0)
-                                   for spec in loc_species]
-                instance.affected_count = sum(affected_counts)
-            elif event_type_id == 2:
-                loc_species_ids = [spec['id'] for spec in loc_species]
-                species_dx_positive_counts = SpeciesDiagnosis.objects.filter(
-                    location_species_id__in=loc_species_ids).values_list('positive_count', flat=True)
-                positive_counts = [dx or 0 for dx in species_dx_positive_counts]
-                instance.affected_count = sum(positive_counts)
-
-        instance.save()
-
-        return instance
-
-    class Meta:
-        model = Event
-        fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
-                  'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
-                  'read_collaborators', 'write_collaborators', 'eventgroups', 'organizations', 'contacts', 'comments',
-                  'new_read_collaborators', 'new_write_collaborators','new_event_diagnoses', 'new_organizations',
-                  'new_comments', 'new_event_locations', 'new_eventgroups', 'new_service_request', 'created_date',
-                  'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'service_request_email', 'permissions', 'permission_source',)
-
-
 class EventEventGroupSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2163,7 +1358,6 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
         message_complete = "EventEventGroup for a complete event may not be changed"
         message_complete += " unless the event is first re-opened by the event owner or an administrator."
 
-        # TODO: determine if this is true
         # if this is a new EventEventGroup check if the Event is complete
         if not self.instance and 'FULL_EVENT_CHAIN_CREATE' not in self.initial_data and data['event'].complete:
             raise serializers.ValidationError(message_complete)
@@ -4365,12 +3559,6 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
             if ('send_email' in new_pref and new_pref['send_email'] is not None
                     and isinstance(new_pref['send_email'], bool)):
                 send_email = new_pref['send_email']
-        # if any of create_when_new, create_when_modified, and send_email are not present
-        # in new_notification_cue_preference or are not boolean, default values will be assigned
-        # pref = NotificationCuePreference.objects.create(create_when_new=create_when_new,
-        #                                                 create_when_modified=create_when_modified,
-        #                                                 send_email=send_email, created_by=user,
-        #                                                 modified_by=user)
         pref = {'create_when_new': create_when_new, 'create_when_modified': create_when_modified,
                 'send_email': send_email, 'created_by': user.id, 'modified_by': user.id}
         pref_serializer = NotificationCuePreferenceSerializer(data=pref)
@@ -4429,8 +3617,7 @@ class NotificationCueCustomSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-# TODO: should this be read-only, or even hidden?
-# NOTE: these are only be created when a user is created, and only deleted when a user is deleted
+# NOTE: these are only to be created when a user is created, and only deleted when a user is deleted
 class NotificationCueStandardSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -5056,7 +4243,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
                       'modified_date', 'modified_by', 'modified_by_string',)
         else:
             fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                               'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
+                      'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
 
         super(OrganizationSerializer, self).__init__(*args, **kwargs)
 
@@ -5379,238 +4566,9 @@ class FlatEventSummarySerializer(serializers.ModelSerializer):
                   'species', 'eventdiagnoses',)
 
 
-# class EventSummaryPublicSerializer(serializers.ModelSerializer):
-#
-#     # diagnosis = Diagnosis.objects.get(pk=obj.diagnosis.id).name if obj.diagnosis else None
-#     # if diagnosis:
-#     #     diagnosis = diagnosis + " suspect" if obj.suspect else diagnosis
-#     # return diagnosis
-#
-#     def get_eventdiagnoses(self, obj):
-#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-#         eventdiagnoses = []
-#         for event_diagnosis in event_diagnoses:
-#             if event_diagnosis.diagnosis:
-#                 diag_id = event_diagnosis.diagnosis.id
-#                 diag_name = event_diagnosis.diagnosis.name
-#                 if event_diagnosis.suspect:
-#                     diag_name = diag_name + " suspect"
-#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
-#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
-#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-#                                            "priority": event_diagnosis.priority}
-#                 eventdiagnoses.append(altered_event_diagnosis)
-#         return eventdiagnoses
-#
-#     def get_administrativelevelones(self, obj):
-#         unique_l1_ids = []
-#         unique_l1s = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 al1_id = eventlocation.get('administrative_level_one_id')
-#                 if al1_id is not None and al1_id not in unique_l1_ids:
-#                     unique_l1_ids.append(al1_id)
-#                     al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
-#                     unique_l1s.append(model_to_dict(al1))
-#         return unique_l1s
-#
-#     def get_administrativeleveltwos(self, obj):
-#         unique_l2_ids = []
-#         unique_l2s = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 al2_id = eventlocation.get('administrative_level_two_id')
-#                 if al2_id is not None and al2_id not in unique_l2_ids:
-#                     unique_l2_ids.append(al2_id)
-#                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-#                     al2_dict = model_to_dict(al2_model)
-#                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-#                     al2_dict.update({'country': al2_model.administrative_level_one.country.id})
-#                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
-#                     unique_l2s.append(al2_dict)
-#         return unique_l2s
-#
-#     def get_species(self, obj):
-#         unique_species_ids = []
-#         unique_species = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-#                 if locationspecies is not None:
-#                     for alocationspecies in locationspecies:
-#                         species = Species.objects.filter(id=alocationspecies.species_id).first()
-#                         if species is not None:
-#                             if species.id not in unique_species_ids:
-#                                 unique_species_ids.append(species.id)
-#                                 unique_species.append(model_to_dict(species))
-#         return unique_species
-#
-#     def get_flyways(self, obj):
-#         unique_flyway_ids = []
-#         unique_flyways = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 flyway_ids = list(EventLocationFlyway.objects.filter(
-#                     event_location=eventlocation['id']).values_list('flyway_id', flat=True))
-#                 if flyway_ids is not None:
-#                     for flyway_id in flyway_ids:
-#                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-#                             unique_flyway_ids.append(flyway_id)
-#                             flyway = Flyway.objects.filter(id=flyway_id).first()
-#                             unique_flyways.append(model_to_dict(flyway))
-#         return unique_flyways
-#
-#     def get_permission_source(self, obj):
-#         return determine_permission_source(self.context['request'].user, obj)
-#
-#     # TODO: improve help_text so that all are assigned to variables, not string literals
-#     # eventdiagnoses = EventDiagnosisSerializer(many=True)
-#     eventdiagnoses = serializers.SerializerMethodField()
-#     administrativelevelones = serializers.SerializerMethodField()
-#     administrativeleveltwos = serializers.SerializerMethodField()
-#     flyways = serializers.SerializerMethodField()
-#     species = serializers.SerializerMethodField()
-#     event_type_string = serializers.StringRelatedField(source='event_type')
-#     event_status_string = serializers.StringRelatedField(source='event_status')
-#     permissions = DRYPermissionsField()
-#     permission_source = serializers.SerializerMethodField()
-#
-#     class Meta:
-#         model = Event
-#         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
-#                   'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
-#                   'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions', 'permission_source',)
-#
-#
-# class EventSummarySerializer(serializers.ModelSerializer):
-#
-#     def get_eventdiagnoses(self, obj):
-#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-#         eventdiagnoses = []
-#         for event_diagnosis in event_diagnoses:
-#             if event_diagnosis.diagnosis:
-#                 diag_id = event_diagnosis.diagnosis.id
-#                 diag_name = event_diagnosis.diagnosis.name
-#                 if event_diagnosis.suspect:
-#                     diag_name = diag_name + " suspect"
-#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
-#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-#                 created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
-#                 created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
-#                 modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
-#                 modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
-#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
-#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-#                                            "priority": event_diagnosis.priority,
-#                                            "created_by": created_by, "created_by_string": created_by_string,
-#                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
-#                                            "modified_by_string": modified_by_string}
-#                 eventdiagnoses.append(altered_event_diagnosis)
-#         return eventdiagnoses
-#
-#     def get_administrativelevelones(self, obj):
-#         unique_l1_ids = []
-#         unique_l1s = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 al1_id = eventlocation.get('administrative_level_one_id')
-#                 if al1_id is not None and al1_id not in unique_l1_ids:
-#                     unique_l1_ids.append(al1_id)
-#                     al1 = AdministrativeLevelOne.objects.filter(id=al1_id).first()
-#                     unique_l1s.append(model_to_dict(al1))
-#         return unique_l1s
-#
-#     def get_administrativeleveltwos(self, obj):
-#         unique_l2_ids = []
-#         unique_l2s = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 al2_id = eventlocation.get('administrative_level_two_id')
-#                 if al2_id is not None and al2_id not in unique_l2_ids:
-#                     unique_l2_ids.append(al2_id)
-#                     al2_model = AdministrativeLevelTwo.objects.filter(id=al2_id).first()
-#                     al2_dict = model_to_dict(al2_model)
-#                     al2_dict.update({'administrative_level_one_string': al2_model.administrative_level_one.name})
-#                     al2_dict.update({'country': al2_model.administrative_level_one.country.id})
-#                     al2_dict.update({'country_string': al2_model.administrative_level_one.country.name})
-#                     unique_l2s.append(al2_dict)
-#         return unique_l2s
-#
-#     def get_species(self, obj):
-#         unique_species_ids = []
-#         unique_species = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-#                 if locationspecies is not None:
-#                     for alocationspecies in locationspecies:
-#                         species = Species.objects.filter(id=alocationspecies.species_id).first()
-#                         if species is not None:
-#                             if species.id not in unique_species_ids:
-#                                 unique_species_ids.append(species.id)
-#                                 unique_species.append(model_to_dict(species))
-#         return unique_species
-#
-#     def get_flyways(self, obj):
-#         unique_flyway_ids = []
-#         unique_flyways = []
-#         eventlocations = obj.eventlocations.values()
-#         if eventlocations is not None:
-#             for eventlocation in eventlocations:
-#                 flyway_ids = list(EventLocationFlyway.objects.filter(
-#                     event_location=eventlocation['id']).values_list('flyway_id', flat=True))
-#                 if flyway_ids is not None:
-#                     for flyway_id in flyway_ids:
-#                         if flyway_id is not None and flyway_id not in unique_flyway_ids:
-#                             unique_flyway_ids.append(flyway_id)
-#                             flyway = Flyway.objects.filter(id=flyway_id).first()
-#                             unique_flyways.append(model_to_dict(flyway))
-#         return unique_flyways
-#
-#     def get_permission_source(self, obj):
-#         return determine_permission_source(self.context['request'].user, obj)
-#
-#     created_by_string = serializers.StringRelatedField(source='created_by')
-#     modified_by_string = serializers.StringRelatedField(source='modified_by')
-#     # eventdiagnoses = EventDiagnosisSerializer(many=True)
-#     eventdiagnoses = serializers.SerializerMethodField()
-#     administrativelevelones = serializers.SerializerMethodField()
-#     administrativeleveltwos = serializers.SerializerMethodField()
-#     flyways = serializers.SerializerMethodField()
-#     species = serializers.SerializerMethodField()
-#     event_type_string = serializers.StringRelatedField(source='event_type')
-#     event_status_string = serializers.StringRelatedField(source='event_status')
-#     organizations = OrganizationSerializer(many=True)
-#     permissions = DRYPermissionsField()
-#     permission_source = serializers.SerializerMethodField()
-#
-#     class Meta:
-#         model = Event
-#         fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
-#                   'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
-#                   'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
-#                   'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-#                   'organizations', 'permissions', 'permission_source',)
-
-
 class EventSummarySerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
-    # eventdiagnoses = EventDiagnosisSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     administrativelevelones = serializers.SerializerMethodField()
     administrativeleveltwos = serializers.SerializerMethodField()
@@ -5732,24 +4690,36 @@ class EventSummarySerializer(serializers.ModelSerializer):
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
 
-        if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
-                      'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
-                      'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions',
-                      'permission_source',)
-        elif user.role.is_superadmin or user.role.is_admin:
-            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                      'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
-                      'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups', 'organizations',
-                      'contacts', 'eventdiagnoses', 'administrativelevelones', 'administrativeleveltwos', 'flyways',
-                      'species', 'created_date', 'created_by', 'created_by_string',
-                      'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
-        else:
-            fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
-                      'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
-                      'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
-                      'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                      'organizations', 'permissions', 'permission_source',)
+        fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
+                  'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
+                  'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions',
+                  'permission_source',)
+        private_fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
+                          'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
+                          'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
+                          'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
+                          'organizations', 'permissions', 'permission_source',)
+        admin_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
+                        'end_date', 'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
+                        'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups',
+                        'organizations', 'contacts', 'eventdiagnoses', 'administrativelevelones',
+                        'administrativeleveltwos', 'flyways', 'species', 'created_date', 'created_by',
+                        'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'permissions',
+                        'permission_source',)
+
+        if user and user.is_authenticated:
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = admin_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = Event.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
 
         super(EventSummarySerializer, self).__init__(*args, **kwargs)
 
@@ -5879,13 +4849,6 @@ class EventDiagnosisDetailPublicSerializer(serializers.ModelSerializer):
         fields = ('diagnosis', 'diagnosis_string', 'suspect', 'major',)
 
 
-# class EventDiagnosisDetailSerializer(serializers.ModelSerializer):
-#
-#     class Meta:
-#         model = EventDiagnosis
-#         fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'suspect', 'major', 'priority',)
-
-
 class ServiceRequestDetailSerializer(serializers.ModelSerializer):
     request_type_string = serializers.StringRelatedField(source='request_type')
     request_response_string = serializers.StringRelatedField(source='request_response')
@@ -5905,177 +4868,6 @@ class ServiceRequestDetailSerializer(serializers.ModelSerializer):
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string', 'comments',)
 
 
-# class EventDetailPublicSerializer(serializers.ModelSerializer):
-#     permissions = DRYPermissionsField()
-#     permission_source = serializers.SerializerMethodField()
-#     event_type_string = serializers.StringRelatedField(source='event_type')
-#     event_status_string = serializers.StringRelatedField(source='event_status')
-#     eventlocations = EventLocationDetailPublicSerializer(many=True)
-#     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
-#     organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
-#     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
-#
-#     def get_eventgroups(self, obj):
-#         pub_groups = []
-#         if obj.eventgroups is not None:
-#             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-#             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
-#             for evtgrp in evtgrps:
-#                 evt_ids = list(Event.objects.filter(eventgroups=evtgrp.id, public=True).values_list('id', flat=True))
-#                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
-#                 pub_groups.append(group)
-#         return pub_groups
-#
-#     def get_organizations(self, obj):
-#         pub_orgs = []
-#         if obj.organizations is not None:
-#             orgs = obj.organizations.all()
-#             evtorgs = EventOrganization.objects.filter(
-#                 event=obj.id, organization__do_not_publish=False).order_by('priority')
-#             for evtorg in evtorgs:
-#                 org = [org for org in orgs if org.id == evtorg.organization.id][0]
-#                 new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-#                            'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-#                            'administrative_level_one': org.administrative_level_one.id,
-#                            'administrative_level_one_string': org.administrative_level_one.name,
-#                            'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-#                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
-#         return pub_orgs
-#
-#     def get_permission_source(self, obj):
-#         return determine_permission_source(self.context['request'].user, obj)
-#
-#     class Meta:
-#         model = Event
-#         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-#                   'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-#                   'organizations', 'permissions', 'permission_source',)
-#
-#
-# class EventDetailSerializer(serializers.ModelSerializer):
-#     created_by_string = serializers.StringRelatedField(source='created_by')
-#     modified_by_string = serializers.StringRelatedField(source='modified_by')
-#     created_by_first_name = serializers.StringRelatedField(source='created_by.first_name')
-#     created_by_last_name = serializers.StringRelatedField(source='created_by.last_name')
-#     created_by_organization = serializers.StringRelatedField(source='created_by.organization.id')
-#     created_by_organization_string = serializers.StringRelatedField(source='created_by.organization.name')
-#     permissions = DRYPermissionsField()
-#     permission_source = serializers.SerializerMethodField()
-#     event_type_string = serializers.StringRelatedField(source='event_type')
-#     event_status_string = serializers.StringRelatedField(source='event_status')
-#     eventlocations = EventLocationDetailSerializer(many=True)
-#     # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
-#     eventdiagnoses = serializers.SerializerMethodField()
-#     combined_comments = serializers.SerializerMethodField()
-#     comments = CommentSerializer(many=True)
-#     servicerequests = ServiceRequestDetailSerializer(many=True)
-#     organizations = serializers.SerializerMethodField()
-#     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
-#     read_collaborators = UserPublicSerializer(many=True)
-#     write_collaborators = UserPublicSerializer(many=True)
-#
-#     def get_combined_comments(self, obj):
-#         event_content_type = ContentType.objects.filter(model='event').first()
-#         event_comments = Comment.objects.filter(object_id=obj.id, content_type=event_content_type.id)
-#         evtloc_ids = list(EventLocation.objects.filter(event=obj.id).values_list('id', flat=True))
-#         evtloc_content_type = ContentType.objects.filter(model='eventlocation').first()
-#         evtloc_comments = Comment.objects.filter(object_id__in=evtloc_ids, content_type=evtloc_content_type.id)
-#         servreq_ids = list(ServiceRequest.objects.filter(event=obj.id).values_list('id', flat=True))
-#         servreq_content_type = ContentType.objects.filter(model='servicerequest').first()
-#         servreq_comments = Comment.objects.filter(object_id__in=servreq_ids, content_type=servreq_content_type)
-#         union_comments = event_comments.union(evtloc_comments).union(servreq_comments)#.order_by('-id')
-#         # return CommentSerializer(union_comments, many=True).data
-#         combined_comments = []
-#         for cmt in union_comments:
-#             # date_sort = datetime.strptime(str(cmt.created_date) + " 00:00:00." + str(cmt.id), "%Y-%m-%d %H:%M:%S.%f")
-#             date_sort = (str(cmt.created_date.year) + str(cmt.created_date.month).zfill(2)
-#                          + str(cmt.created_date.day).zfill(2) + "." + str(cmt.id).zfill(32))
-#             comment = {
-#                 "id": cmt.id, "comment": cmt.comment, "comment_type": cmt.comment_type.id, "object_id": cmt.object_id,
-#                 "content_type_string": cmt.content_type.model, "created_date": cmt.created_date,
-#                 "created_by": cmt.created_by.id, "created_by_string": cmt.created_by.username,
-#                 "created_by_first_name": cmt.created_by.first_name, "created_by_last_name": cmt.created_by.last_name,
-#                 "created_by_organization": cmt.created_by.organization.id,
-#                 "created_by_organization_string": cmt.created_by.organization.name,
-#                 "modified_date": cmt.modified_date, "modified_by": cmt.modified_by.id,
-#                 "modified_by_string": cmt.modified_by.username, "date_sort": date_sort
-#             }
-#             if cmt.content_type.model == 'event':
-#                 comment['object_name'] = Event.objects.filter(id=cmt.object_id).first().event_reference
-#             elif cmt.content_type.model == 'eventlocation':
-#                 comment['object_name'] = EventLocation.objects.filter(id=cmt.object_id).first().name
-#             combined_comments.append(comment)
-#         return combined_comments
-#
-#     def get_eventgroups(self, obj):
-#         pub_groups = []
-#         if obj.eventgroups is not None:
-#             evtgrp_ids = list(EventEventGroup.objects.filter(event=obj.id).values_list('eventgroup_id', flat=True))
-#             evtgrps = EventGroup.objects.filter(id__in=evtgrp_ids, category__name='Biologically Equivalent (Public)')
-#             for evtgrp in evtgrps:
-#                 evt_ids = list(EventEventGroup.objects.filter(eventgroup=evtgrp.id).values_list('event_id', flat=True))
-#                 group = {'id': evtgrp.id, 'name': evtgrp.name, 'events': evt_ids}
-#                 pub_groups.append(group)
-#         return pub_groups
-#
-#     def get_organizations(self, obj):
-#         pub_orgs = []
-#         if obj.organizations is not None:
-#             orgs = obj.organizations.all()
-#             evtorgs = EventOrganization.objects.filter(
-#                 event=obj.id, organization__do_not_publish=False).order_by('priority')
-#             for evtorg in evtorgs:
-#                 org = [org for org in orgs if org.id == evtorg.organization.id][0]
-#                 new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
-#                            'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-#                            'administrative_level_one': org.administrative_level_one.id,
-#                            'administrative_level_one_string': org.administrative_level_one.name,
-#                            'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
-#                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
-#         return pub_orgs
-#
-#     def get_eventdiagnoses(self, obj):
-#         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
-#         eventdiagnoses = []
-#         for event_diagnosis in event_diagnoses:
-#             if event_diagnosis.diagnosis:
-#                 diag_id = event_diagnosis.diagnosis.id
-#                 diag_name = event_diagnosis.diagnosis.name
-#                 if event_diagnosis.suspect:
-#                     diag_name = diag_name + " suspect"
-#                 diag_type = event_diagnosis.diagnosis.diagnosis_type
-#                 diag_type_id = event_diagnosis.diagnosis.diagnosis_type.id if diag_type else None
-#                 diag_type_name = event_diagnosis.diagnosis.diagnosis_type.name if diag_type else ''
-#                 created_by = event_diagnosis.created_by.id if event_diagnosis.created_by else None
-#                 created_by_string = event_diagnosis.created_by.username if event_diagnosis.created_by else ''
-#                 modified_by = event_diagnosis.modified_by.id if event_diagnosis.modified_by else None
-#                 modified_by_string = event_diagnosis.modified_by.username if event_diagnosis.modified_by else ''
-#                 altered_event_diagnosis = {"id": event_diagnosis.id, "event": event_diagnosis.event.id,
-#                                            "diagnosis": diag_id, "diagnosis_string": diag_name,
-#                                            "diagnosis_type": diag_type_id, "diagnosis_type_string": diag_type_name,
-#                                            "suspect": event_diagnosis.suspect, "major": event_diagnosis.major,
-#                                            "priority": event_diagnosis.priority,
-#                                            "created_date": event_diagnosis.created_date, "created_by": created_by,
-#                                            "created_by_string": created_by_string,
-#                                            "modified_date": event_diagnosis.modified_date, "modified_by": modified_by,
-#                                            "modified_by_string": modified_by_string}
-#                 eventdiagnoses.append(altered_event_diagnosis)
-#         return eventdiagnoses
-#
-#     def get_permission_source(self, obj):
-#         return determine_permission_source(self.context['request'].user, obj)
-#
-#     class Meta:
-#         model = Event
-#         fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-#                   'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-#                   'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
-#                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
-#                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
-#                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-#                   'permissions', 'permission_source',)
-
-
 class EventDetailSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -6089,18 +4881,37 @@ class EventDetailSerializer(serializers.ModelSerializer):
     staff_string = serializers.StringRelatedField(source='staff')
     event_status_string = serializers.StringRelatedField(source='event_status')
     legal_status_string = serializers.StringRelatedField(source='legal_status')
-    # eventlocations = EventLocationDetailSerializer(many=True)
     eventlocations = serializers.SerializerMethodField()
-    # eventdiagnoses = EventDiagnosisDetailSerializer(many=True)
     eventdiagnoses = serializers.SerializerMethodField()
     combined_comments = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True)
     servicerequests = ServiceRequestDetailSerializer(many=True)
     organizations = serializers.SerializerMethodField()
-    # eventgroups = EventGroupSerializer(many=True)
     eventgroups = serializers.SerializerMethodField()
     read_collaborators = UserSerializer(many=True)
     write_collaborators = UserSerializer(many=True)
+    is_privileged_user = serializers.SerializerMethodField()
+
+    def get_is_privileged_user(self, obj, *args, **kwargs):
+        user = None
+        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            user = kwargs['context']['request'].user
+        if not user or not user.is_authenticated or user.role.is_public:
+            return False
+        elif user.role.is_superadmin or user.role.is_admin:
+            return True
+        elif hasattr(kwargs['context']['request'], 'parser_context'):
+            pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+            if pk is not None and pk.isdigit():
+                obj = Event.objects.filter(id=pk).first()
+                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
+                            or user.id in list(User.objects.filter(
+                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                        ).values_list('id', flat=True))):
+                    return True
+        else:
+            return False
 
     def get_combined_comments(self, obj):
         event_content_type = ContentType.objects.filter(model='event').first()
@@ -6140,7 +4951,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
         if user and (user.role.is_superadmin or user.role.is_admin):
-            return EventGroupSerializer(many=True)
+            return EventGroupSerializer(many=True).data
         else:
             pub_groups = []
             if obj.eventgroups is not None:
@@ -6176,16 +4987,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
         if not user or not user.is_authenticated or user.role.is_public:
-            return EventLocationDetailPublicSerializer(many=True)
+            return EventLocationDetailPublicSerializer(many=True).data
         else:
-            return EventLocationDetailSerializer(many=True)
+            return EventLocationDetailSerializer(many=True).data
 
     def get_eventdiagnoses(self, obj, *args, **kwargs):
         user = None
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
         if not user or not user.is_authenticated or user.role.is_public:
-            return EventDiagnosisDetailPublicSerializer(many=True)
+            return EventDiagnosisDetailPublicSerializer(many=True).data
 
         event_diagnoses = EventDiagnosis.objects.filter(event=obj.id)
         eventdiagnoses = []
@@ -6222,27 +5033,37 @@ class EventDetailSerializer(serializers.ModelSerializer):
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
 
-        if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
-                      'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                      'organizations', 'permissions', 'permission_source',)
-        elif user.role.is_superadmin or user.role.is_admin:
-            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string', 'legal_status',
-                  'legal_status_string', 'legal_number', 'quality_check', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
-                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by',
-                  'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
-                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
-        else:
-            fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date', 'end_date',
-                  'affected_count', 'event_status', 'event_status_string', 'public', 'read_collaborators',
-                  'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations', 'organizations',
-                  'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
-                  'created_by_first_name', 'created_by_last_name', 'created_by_organization',
-                  'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
+        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                  'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                  'organizations', 'permissions', 'permission_source', 'is_privileged_user',)
+        private_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
+                          'end_date', 'affected_count', 'event_status', 'event_status_string', 'public',
+                          'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses',
+                          'eventlocations', 'organizations', 'combined_comments', 'comments', 'servicerequests',
+                          'created_by_string', 'created_by_first_name', 'created_by_last_name',
+                          'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
+                          'modified_by_string', 'permissions', 'permission_source', 'is_privileged_user',)
+        admin_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
+                        'end_date', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                        'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
+                        'organizations', 'combined_comments', 'comments', 'servicerequests', 'created_date',
+                        'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
+                        'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
+                        'modified_by_string', 'permissions', 'permission_source', 'is_privileged_user',)
+
+        if user and user.is_authenticated:
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = admin_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
+                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+                if pk is not None and pk.isdigit():
+                    obj = Event.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
+                        fields = private_fields
 
         super(EventDetailSerializer, self).__init__(*args, **kwargs)
 

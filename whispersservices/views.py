@@ -322,7 +322,6 @@ class EventViewSet(HistoryViewSet):
         generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
-    # TODO: would this be true?
     def destroy(self, request, *args, **kwargs):
         # if the event is complete, it cannot be deleted
         if self.get_object().complete:
@@ -1462,7 +1461,6 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
         return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
-# TODO: review every view's get_serializer method to ensure consistency and adherence to role/collaborator rules
 class DiagnosisBasisViewSet(HistoryViewSet):
     """
     list:
@@ -2005,7 +2003,7 @@ class AuthView(views.APIView):
         if user and user.is_authenticated:
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
-        return Response(self.serializer_class(user).data)
+        return Response(self.serializer_class(user, context={'request': request}).data)
 
 
 class RoleViewSet(HistoryViewSet):
@@ -2504,7 +2502,6 @@ class CSVEventSummaryRenderer(csv_renderers.PaginatedCSVRenderer):
               'eventdiagnoses': 'Event Diagnosis'}
 
 
-# TODO: event collaborators should be able to see private events if those have been shared to collaborators
 class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     """
     list:
@@ -3035,3 +3032,4 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
             queryset = public_queryset | personal_queryset
+            return queryset
