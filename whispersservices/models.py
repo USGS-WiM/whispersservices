@@ -1885,11 +1885,11 @@ class Comment(PermissionsHistoryModel):
                 if model_name in ['event', 'eventlocation', 'eventgroup']:
                     event = None
                     if model_name == 'event':
-                        event = Event.objects.get(pk=int(request.data['object_id']))
+                        event = Event.objects.filter(pk=int(request.data['object_id'])).first()
                     elif model_name == 'eventlocation':
-                        event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
+                        event = EventLocation.objects.filter(pk=int(request.data['object_id'])).first().event
                     elif model_name == 'eventgroup':
-                        event = EventEventGroup.objects.get(eventgroup=int(request.data['object_id'])).event
+                        event = EventEventGroup.objects.filter(eventgroup=int(request.data['object_id'])).first().event
                     if event:
                         if (request.user.id == event.created_by.id
                                 or ((event.created_by.organization.id == request.user.organization.id
@@ -1933,9 +1933,9 @@ class Comment(PermissionsHistoryModel):
         if model_name == 'event':
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
-            event = EventLocation.objects.get(pk=self.object_id).event
+            event = EventLocation.objects.filter(pk=self.object_id).first().event
         elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
+            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         if event:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
@@ -1948,9 +1948,9 @@ class Comment(PermissionsHistoryModel):
         if model_name == 'event':
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
-            event = EventLocation.objects.get(pk=self.object_id).event
+            event = EventLocation.objects.filter(pk=self.object_id).first().event
         elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
+            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         super(Comment, self).delete(*args, **kwargs)
 
         if event:
