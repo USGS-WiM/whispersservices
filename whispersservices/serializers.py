@@ -4601,13 +4601,25 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # source: User that requests an account upgrade or requesting an account above public
         source = ucr.created_by.username
         # recipients: WHISPers admin team, Admins of organization requested
+        # check if the requested org has itself as its parent org,
+        #  and if so alert the admins (this situation should not be allowed)
+        if ucr.organization_requested.parent_organization.id == ucr.organization_requested.id:
+            org_list = [ucr.organization_requested.id, ]
+            message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
+            message += " has itself as its parent organization, which can cause infinite recursion when"
+            message += " the parent_organizations or child_organizations properties of this organization are accessed."
+            message += " Please correct this situation before a RecursionError occurs. If this organization has no"
+            message += " parent organization, set the parent organization value to null."
+            construct_email("Infinite Recursive Organization Found", message)
+        else:
+            org_list = ucr.organization_requested.parent_organizations
         recipients = list(User.objects.filter(
             Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-                role=3, organization__in=ucr.organization_requested.parent_organizations)
+                role=3, organization__in=org_list)
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
         email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-            role=3, organization__in=ucr.organization_requested.parent_organizations)).values_list('email', flat=True))
+            role=3, organization__in=org_list)).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
@@ -4805,6 +4817,13 @@ class OrganizationPublicSerializer(serializers.ModelSerializer):
 
 class OrganizationSerializer(serializers.ModelSerializer):
 
+    def validate(self, data):
+        if self.instance:
+            if 'parent_organization' in data and data['parent_organization'].id is not None and (
+                    data['parent_organization'].id == data['id'] or data['parent_organization'].id == self.instance.id):
+                raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+        return data
+
     class Meta:
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
@@ -4814,6 +4833,13 @@ class OrganizationSerializer(serializers.ModelSerializer):
 class OrganizationAdminSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    def validate(self, data):
+        if self.instance:
+            if 'parent_organization' in data and data['parent_organization'].id is not None and (
+                    data['parent_organization'].id == data['id'] or data['parent_organization'].id == self.instance.id):
+                raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+        return data
 
     class Meta:
         model = Organization

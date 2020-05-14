@@ -2492,6 +2492,12 @@ class Organization(AdminPermissionsHistoryNameModel):
     do_not_publish = models.BooleanField(default=False, help_text='A boolean value indicating if an organization is supposed to be published or not')
     laboratory = models.BooleanField(default=False, help_text='A boolean value indicating if an organization has a laboratory or not')
 
+    # override the save method to prevent infinite recursion
+    #  (ensure the organization does not have itself as its parent organization)
+    def save(self, *args, **kwargs):
+        self.parent_organization = None if self.parent_organization.id == self.id else self.parent_organization
+        super(Organization, self).save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
