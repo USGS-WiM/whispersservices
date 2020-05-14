@@ -5605,6 +5605,10 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
     eventdiagnoses = EventDiagnosisDetailPublicSerializer(many=True)
     organizations = serializers.SerializerMethodField()  # OrganizationPublicSerializer(many=True)
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
+    is_privileged_user = serializers.SerializerMethodField()
+
+    def get_is_privileged_user(self, obj):
+        return False
 
     def get_eventgroups(self, obj):
         pub_groups = []
@@ -5643,7 +5647,7 @@ class EventDetailPublicSerializer(serializers.ModelSerializer):
         model = Event
         fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
                   'event_status', 'event_status_string', 'eventgroups', 'eventdiagnoses', 'eventlocations',
-                  'organizations', 'permissions', 'permission_source',)
+                  'organizations', 'permissions', 'permission_source', 'is_privileged_user',)
 
 
 class EventDetailSerializer(serializers.ModelSerializer):
@@ -5667,6 +5671,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
     eventgroups = serializers.SerializerMethodField()  # EventGroupPublicSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
+    is_privileged_user = serializers.SerializerMethodField()
+
+    def get_is_privileged_user(self, obj):
+        return True
 
     def get_combined_comments(self, obj):
         event_content_type = ContentType.objects.filter(model='event').first()
@@ -5770,7 +5778,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by', 'created_by_string',
                   'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
+                  'permissions', 'permission_source', 'is_privileged_user',)
 
 
 class EventDetailAdminSerializer(serializers.ModelSerializer):
@@ -5796,6 +5804,10 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
     eventgroups = EventGroupSerializer(many=True)
     read_collaborators = UserPublicSerializer(many=True)
     write_collaborators = UserPublicSerializer(many=True)
+    is_privileged_user = serializers.SerializerMethodField()
+
+    def get_is_privileged_user(self, obj):
+        return True
 
     def get_combined_comments(self, obj):
         event_content_type = ContentType.objects.filter(model='event').first()
@@ -5885,7 +5897,7 @@ class EventDetailAdminSerializer(serializers.ModelSerializer):
                   'combined_comments', 'comments', 'servicerequests', 'created_date', 'created_by',
                   'created_by_string', 'created_by_first_name', 'created_by_last_name', 'created_by_organization',
                   'created_by_organization_string', 'modified_date', 'modified_by', 'modified_by_string',
-                  'permissions', 'permission_source',)
+                  'permissions', 'permission_source', 'is_privileged_user',)
 
 
 class FlatEventDetailSerializer(serializers.Serializer):
