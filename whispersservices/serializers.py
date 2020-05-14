@@ -4603,7 +4603,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # recipients: WHISPers admin team, Admins of organization requested
         # check if the requested org has itself as its parent org,
         #  and if so alert the admins (this situation should not be allowed)
-        if ucr.organization_requested.parent_organization.id == ucr.organization_requested.id:
+        if (ucr.organization_requested.parent_organization
+                and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
             org_list = [ucr.organization_requested.id, ]
             message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
             message += " has itself as its parent organization, which can cause infinite recursion when"
