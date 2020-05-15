@@ -1,6 +1,10 @@
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter, CharFilter, BooleanFilter
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter
 from whispersservices.models import *
 from whispersservices.field_descriptions import *
+
+
+class NumberInFilter(BaseInFilter, NumberFilter):
+    pass
 
 
 # TODO: improve labels such that only unique fields (like affected_count__gte) have string literal values, while all other labels (like diagnosis) are assigned to variables
@@ -27,3 +31,35 @@ class EventSummaryFilter(FilterSet):
         fields = ['complete', 'event_type', 'diagnosis', 'diagnosis_type', 'species', 'administrative_level_one',
                   'administrative_level_two', 'flyway', 'country', 'gnis_id', 'affected_count__gte',
                   'affected_count__lte', 'start_date', 'end_date']
+
+
+class EventAbstractFilter(FilterSet):
+    contains = CharFilter(field_name='text', lookup_expr='contains', label='Filter by string contained in event abstract text')
+
+    class Meta:
+        model: EventAbstract
+        fields = ['contains', ]
+
+
+class AdministrativeLevelOneFilter(FilterSet):
+    country = NumberInFilter(field_name='country', lookup_expr='in', label='Filter by country ID (or a list of country IDs)')
+
+    class Meta:
+        model: AdministrativeLevelOne
+        fields = ['country', ]
+
+
+class AdministrativeLevelTwoFilter(FilterSet):
+    administrativelevelone = NumberInFilter(field_name='administrative_level_one', lookup_expr='in', label='Filter by administrative level one (e.g., state or province) ID (or a list of administrative level one IDs)')
+
+    class Meta:
+        model: AdministrativeLevelOne
+        fields = ['administrativelevelone', ]
+
+
+class DiagnosisFilter(FilterSet):
+    diagnosis_type = NumberInFilter(field_name='diagnosis_type', lookup_expr='in', label='Filter by diagnosis type ID (or a list of diagnosis type IDs)')
+
+    class Meta:
+        model: Diagnosis
+        fields = ['diagnosis_type', ]

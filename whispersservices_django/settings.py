@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'dry_rest_permissions',
     'django_celery_beat',
+    'django_filters',
     'whispersservices',
 ]
 

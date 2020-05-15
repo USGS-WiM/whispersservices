@@ -642,6 +642,9 @@ class EventAbstractViewSet(HistoryViewSet):
     # not visible in api
 
     serializer_class = EventAbstractSerializer
+    queryset = EventAbstract.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = EventAbstractFilter
 
     def destroy(self, request, *args, **kwargs):
         # if the related event is complete, no relates to abstracts can be deleted
@@ -650,13 +653,6 @@ class EventAbstractViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
         return super(EventAbstractViewSet, self).destroy(request, *args, **kwargs)
-
-    def get_queryset(self):
-        queryset = EventAbstract.objects.all()
-        contains = self.request.query_params.get('contains', None) if self.request else None
-        if contains is not None:
-            queryset = queryset.filter(text__contains=contains)
-        return queryset
 
 
 class EventCaseViewSet(HistoryViewSet):
@@ -952,16 +948,9 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
     Deletes an administrative level one.
     """
 
-    def get_queryset(self):
-        queryset = AdministrativeLevelOne.objects.all()
-        country = self.request.query_params.get('country', None) if self.request else None
-        if country is not None and country != '':
-            if LIST_DELIMITER in country:
-                country_list = country.split(',')
-                queryset = queryset.filter(country__in=country_list)
-            else:
-                queryset = queryset.filter(country__exact=country)
-        return queryset
+    queryset = AdministrativeLevelOne.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = AdministrativeLevelOneFilter
 
     def get_serializer_class(self):
         if self.request and 'slim' in self.request.query_params:
@@ -994,6 +983,10 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
     Deletes an administrative level two.
     """
 
+    queryset = AdministrativeLevelTwo.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = AdministrativeLevelTwoFilter
+
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         # A request for a new lookup item is made. Partner or above.
@@ -1003,17 +996,6 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         # message = "Please add a new administrative level two:"
         # return construct_email(request.data, request.user.email, message)
         return generate_notification_request_new("administrativeleveltwos", request)
-
-    def get_queryset(self):
-        queryset = AdministrativeLevelTwo.objects.all()
-        administrative_level_one = self.request.query_params.get('administrativelevelone', None)
-        if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMITER in administrative_level_one:
-                administrative_level_one_list = administrative_level_one.split(',')
-                queryset = queryset.filter(administrative_level_one__in=administrative_level_one_list)
-            else:
-                queryset = queryset.filter(administrative_level_one__exact=administrative_level_one)
-        return queryset
 
     def get_serializer_class(self):
         if self.request and 'slim' in self.request.query_params:
@@ -1295,6 +1277,9 @@ class DiagnosisViewSet(HistoryViewSet):
     """
 
     serializer_class = DiagnosisSerializer
+    queryset = Diagnosis.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = DiagnosisFilter
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
@@ -1305,18 +1290,6 @@ class DiagnosisViewSet(HistoryViewSet):
         # message = "Please add a new diagnosis:"
         # return construct_email(request.data, request.user.email, message)
         return generate_notification_request_new("diagnoses", request)
-
-    # override the default queryset to allow filtering by URL argument diagnosis_type
-    def get_queryset(self):
-        queryset = Diagnosis.objects.all()
-        diagnosis_type = self.request.query_params.get('diagnosis_type', None) if self.request else None
-        if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMITER in diagnosis_type:
-                diagnosis_type_list = diagnosis_type.split(',')
-                queryset = queryset.filter(diagnosis_type__in=diagnosis_type_list)
-            else:
-                queryset = queryset.filter(diagnosis_type__exact=diagnosis_type)
-        return queryset
 
 
 class DiagnosisTypeViewSet(HistoryViewSet):
