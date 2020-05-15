@@ -1890,11 +1890,11 @@ class Comment(PermissionsHistoryModel):
                 if model_name in ['event', 'eventlocation', 'eventgroup']:
                     event = None
                     if model_name == 'event':
-                        event = Event.objects.get(pk=int(request.data['object_id']))
+                        event = Event.objects.filter(pk=int(request.data['object_id'])).first()
                     elif model_name == 'eventlocation':
-                        event = EventLocation.objects.get(pk=int(request.data['object_id'])).event
+                        event = EventLocation.objects.filter(pk=int(request.data['object_id'])).first().event
                     elif model_name == 'eventgroup':
-                        event = EventEventGroup.objects.get(eventgroup=int(request.data['object_id'])).event
+                        event = EventEventGroup.objects.filter(eventgroup=int(request.data['object_id'])).first().event
                     if event:
                         if (request.user.id == event.created_by.id
                                 or ((event.created_by.organization.id == request.user.organization.id
@@ -1938,9 +1938,9 @@ class Comment(PermissionsHistoryModel):
         if model_name == 'event':
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
-            event = EventLocation.objects.get(pk=self.object_id).event
+            event = EventLocation.objects.filter(pk=self.object_id).first().event
         elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
+            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         if event:
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
@@ -1953,9 +1953,9 @@ class Comment(PermissionsHistoryModel):
         if model_name == 'event':
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
-            event = EventLocation.objects.get(pk=self.object_id).event
+            event = EventLocation.objects.filter(pk=self.object_id).first().event
         elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.get(eventgroup=self.object_id).event
+            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         super(Comment, self).delete(*args, **kwargs)
 
         if event:
@@ -2202,6 +2202,7 @@ class UserChangeRequest(PermissionsHistoryModel):
                                          related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')
+    comments = GenericRelation('Comment', related_name='userchangerequests')
 
     @staticmethod
     def has_create_permission(request):
@@ -2496,6 +2497,12 @@ class Organization(AdminPermissionsHistoryNameModel):
     parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='organizations')
     do_not_publish = models.BooleanField(default=False, help_text='A boolean value indicating if an organization is supposed to be published or not')
     laboratory = models.BooleanField(default=False, help_text='A boolean value indicating if an organization has a laboratory or not')
+
+    # override the save method to prevent infinite recursion
+    #  (ensure the organization does not have itself as its parent organization)
+    def save(self, *args, **kwargs):
+        self.parent_organization = None if self.parent_organization.id == self.id else self.parent_organization
+        super(Organization, self).save(*args, **kwargs)
 
     def __str__(self):
         return self.name

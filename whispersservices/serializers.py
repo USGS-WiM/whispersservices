@@ -3820,7 +3820,7 @@ class UserSerializer(serializers.ModelSerializer):
             if role_requested or organization_requested:
                 role_requested = role_requested if role_requested else user.role.id
                 organization_requested = organization_requested if organization_requested else user.organization.id
-                comment = new_user_change_request.pop('comment', None)
+                comment = new_user_change_request.pop('comment', '')
                 user_change_request = {'requester': user.id, 'role_requested': role_requested,
                                        'organization_requested': organization_requested, 'comment': comment,
                                        'created_by': user.id, 'modified_by': user.id}
@@ -4004,7 +4004,6 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class UserChangeRequestSerializer(serializers.ModelSerializer):
-    comment = serializers.CharField(write_only=True, required=False)
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
@@ -4030,13 +4029,26 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # source: User that requests an account upgrade or requesting an account above public
         source = ucr.created_by.username
         # recipients: WHISPers admin team, Admins of organization requested
+        # check if the requested org has itself as its parent org,
+        #  and if so alert the admins (this situation should not be allowed)
+        if (ucr.organization_requested.parent_organization
+                and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
+            org_list = [ucr.organization_requested.id, ]
+            message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
+            message += " has itself as its parent organization, which can cause infinite recursion when"
+            message += " the parent_organizations or child_organizations properties of this organization are accessed."
+            message += " Please correct this situation before a RecursionError occurs. If this organization has no"
+            message += " parent organization, set the parent organization value to null."
+            construct_email("Infinite Recursive Organization Found", message)
+        else:
+            org_list = ucr.organization_requested.parent_organizations
         recipients = list(User.objects.filter(
             Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-                role=3, organization__in=ucr.organization_requested.parent_organizations)
+                role=3, organization__in=org_list)
         ).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
         email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-            role=3, organization__in=ucr.organization_requested.parent_organizations)).values_list('email', flat=True))
+            role=3, organization__in=org_list)).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
@@ -4067,9 +4079,9 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         request_response_updated = False
 
-        # remove child comments list from the request
-        if 'new_comments' in validated_data:
-            validated_data.pop('new_comments')
+        # remove child comment from the request
+        if 'comment' in validated_data:
+            validated_data.pop('comment')
 
         # Only allow NWHC admins or requester's org admin to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
@@ -4137,11 +4149,12 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     response_by = serializers.StringRelatedField()
+    comment = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
 
     class Meta:
         model = UserChangeRequest
         fields = ('id', 'requester', 'role_requested', 'organization_requested', 'request_response', 'response_by',
-                  'comment', 'created_date', 'created_by', 'created_by_string',
+                  'comment', 'comments', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
@@ -4227,6 +4240,13 @@ class CircleSerializer(serializers.ModelSerializer):
 class OrganizationSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+
+    def validate(self, data):
+        if self.instance:
+            if 'parent_organization' in data and data['parent_organization'].id is not None and (
+                    data['parent_organization'].id == data['id'] or data['parent_organization'].id == self.instance.id):
+                raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+        return data
 
     def __init__(self, *args, **kwargs):
         user = None
