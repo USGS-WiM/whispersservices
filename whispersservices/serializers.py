@@ -4427,7 +4427,7 @@ class UserSerializer(serializers.ModelSerializer):
             if role_requested or organization_requested:
                 role_requested = role_requested if role_requested else user.role.id
                 organization_requested = organization_requested if organization_requested else user.organization.id
-                comment = new_user_change_request.pop('comment', None)
+                comment = new_user_change_request.pop('comment', '')
                 user_change_request = {'requester': user.id, 'role_requested': role_requested,
                                        'organization_requested': organization_requested, 'comment': comment,
                                        'created_by': user.id, 'modified_by': user.id}
@@ -4575,7 +4575,6 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class UserChangeRequestSerializer(serializers.ModelSerializer):
-    comment = serializers.CharField(write_only=True, required=False)
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
@@ -4651,9 +4650,9 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         request_response_updated = False
 
-        # remove child comments list from the request
-        if 'new_comments' in validated_data:
-            validated_data.pop('new_comments')
+        # remove child comment from the request
+        if 'comment' in validated_data:
+            validated_data.pop('comment')
 
         # Only allow NWHC admins or requester's org admin to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
@@ -4721,11 +4720,12 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     response_by = serializers.StringRelatedField()
+    comment = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
 
     class Meta:
         model = UserChangeRequest
         fields = ('id', 'requester', 'role_requested', 'organization_requested', 'request_response', 'response_by',
-                  'comment', 'created_date', 'created_by', 'created_by_string',
+                  'comment', 'comments', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 

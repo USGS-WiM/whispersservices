@@ -2197,6 +2197,7 @@ class UserChangeRequest(PermissionsHistoryModel):
                                          related_name='userchangerequests', help_text='A foreign key integer value identifying a response to this request')
     response_by = models.ForeignKey(settings.AUTH_USER_MODEL, models.PROTECT, null=True, blank=True, db_index=True,
                                     related_name='userchangerequests_responder', help_text='A foreign key integer value identifying the responding user to this request')
+    comments = GenericRelation('Comment', related_name='userchangerequests')
 
     @staticmethod
     def has_create_permission(request):
