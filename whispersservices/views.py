@@ -1602,6 +1602,14 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 class NotificationViewSet(HistoryViewSet):
     serializer_class = NotificationSerializer
+    # queryset = Notification.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = NotificationFilter
+    # filterset_fields = ('all', 'recipient', )
+
+    def get_queryset(self):
+        self.kwargs['action'] = getattr(self, 'action', None)
+        return Notification.objects.all()
 
     @action(methods=['post'], detail=False)
     def bulk_update(self, request):
@@ -1640,43 +1648,43 @@ class NotificationViewSet(HistoryViewSet):
         else:
             return Response({"non-field errors": response_errors}, status=400)
 
-    def get_queryset(self):
-        queryset = Notification.objects.all()
-        user = get_request_user(self.request)
-
-        # anonymous users cannot see anything
-        if not user or not user.is_authenticated:
-            return Notification.objects.none()
-        # public users cannot see anything
-        elif user.role.is_public:
-            return Notification.objects.none()
-        # admins and superadmins can see notifications that belong to anyone (if they use the 'recipient' query param)
-        # or everyone (if they use the 'all' query param, or get a single one), but default to just getting their own
-        elif user.role.is_superadmin or user.role.is_admin:
-            if self.action in PK_REQUESTS:
-                pk = self.request.parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
-                    queryset = Notification.objects.filter(id=pk)
-                    return queryset
-                raise NotFound
-            get_all = True if self.request is not None and 'all' in self.request.query_params else False
-            if get_all:
-                return Notification.objects.all()
-            else:
-                recipient = self.request.query_params.get('recipient', None) if self.request else None
-                if recipient is not None and recipient != '':
-                    if LIST_DELIMITER in recipient:
-                        recipient_list = recipient.split(',')
-                        queryset = queryset.filter(recipient__in=recipient_list)
-                    else:
-                        queryset = queryset.filter(recipient__exact=recipient)
-                else:
-                    queryset = Notification.objects.all().filter(recipient__exact=user.id)
-        # otherwise return only what belongs to the user
-        else:
-            queryset = Notification.objects.filter(recipient__exact=user.id)
-
-        return queryset.order_by('-id')
+    # def get_queryset(self):
+    #     queryset = Notification.objects.all()
+    #     user = get_request_user(self.request)
+    #
+    #     # anonymous users cannot see anything
+    #     if not user or not user.is_authenticated:
+    #         return Notification.objects.none()
+    #     # public users cannot see anything
+    #     elif user.role.is_public:
+    #         return Notification.objects.none()
+    #     # admins and superadmins can see notifications that belong to anyone (if they use the 'recipient' query param)
+    #     # or everyone (if they use the 'all' query param, or get a single one), but default to just getting their own
+    #     elif user.role.is_superadmin or user.role.is_admin:
+    #         if self.action in PK_REQUESTS:
+    #             pk = self.request.parser_context['kwargs'].get('pk', None)
+    #             if pk is not None and pk.isdigit():
+    #                 queryset = Notification.objects.filter(id=pk)
+    #                 return queryset
+    #             raise NotFound
+    #         get_all = True if self.request is not None and 'all' in self.request.query_params else False
+    #         if get_all:
+    #             return Notification.objects.all()
+    #         else:
+    #             recipient = self.request.query_params.get('recipient', None) if self.request else None
+    #             if recipient is not None and recipient != '':
+    #                 if LIST_DELIMITER in recipient:
+    #                     recipient_list = recipient.split(',')
+    #                     queryset = queryset.filter(recipient__in=recipient_list)
+    #                 else:
+    #                     queryset = queryset.filter(recipient__exact=recipient)
+    #             else:
+    #                 queryset = Notification.objects.all().filter(recipient__exact=user.id)
+    #     # otherwise return only what belongs to the user
+    #     else:
+    #         queryset = Notification.objects.filter(recipient__exact=user.id)
+    #
+    #     return queryset.order_by('-id')
 
 
 class NotificationCuePreferenceViewSet(HistoryViewSet):
