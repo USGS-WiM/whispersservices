@@ -1664,12 +1664,12 @@ class NotificationViewSet(HistoryViewSet):
     #         if self.action in PK_REQUESTS:
     #             pk = self.request.parser_context['kwargs'].get('pk', None)
     #             if pk is not None and pk.isdigit():
-    #                 queryset = Notification.objects.filter(id=pk)
+    #                 queryset = Notification.objects.filter(id=pk).order_by('-id')
     #                 return queryset
     #             raise NotFound
     #         get_all = True if self.request is not None and 'all' in self.request.query_params else False
     #         if get_all:
-    #             return Notification.objects.all()
+    #             return Notification.objects.all().order_by('-id')
     #         else:
     #             recipient = self.request.query_params.get('recipient', None) if self.request else None
     #             if recipient is not None and recipient != '':
@@ -1778,46 +1778,49 @@ class CommentViewSet(HistoryViewSet):
     """
 
     serializer_class = CommentSerializer
+    queryset = Comment.objects.all()
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = CommentFilter
 
-    # override the default queryset to allow filtering by URL arguments
-    def get_queryset(self):
-        user = get_request_user(self.request)
-
-        # all requests from anonymous or public users return nothing
-        if not user or not user.is_authenticated or user.role.is_public:
-            return Comment.objects.none()
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = Comment.objects.all()
-        # partners can see comments owned by the user or user's org
-        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
-            # they can also see comments for events on which they are collaborators:
-            collab_evt_ids = list(Event.objects.filter(
-                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
-            ).values_list('id', flat=True))
-            collab_evtloc_ids = list(EventLocation.objects.filter(
-                event__in=collab_evt_ids).values_list('id', flat=True))
-            collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
-                event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
-            collab_srvreq_ids = list(ServiceRequest.objects.filter(
-                event__in=collab_evt_ids).values_list('id', flat=True))
-            queryset = Comment.objects.filter(
-                Q(created_by__exact=user.id) |
-                Q(created_by__organization__exact=user.organization) |
-                Q(created_by__organization__in=user.child_organizations) |
-                Q(content_type__model='event', object_id__in=collab_evt_ids) |
-                Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-                Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
-                Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
-            )
-        # otherwise return nothing
-        else:
-            return Comment.objects.none()
-
-        contains = self.request.query_params.get('contains', None) if self.request else None
-        if contains is not None:
-            queryset = queryset.filter(comment__contains=contains)
-        return queryset
+    # # override the default queryset to allow filtering by URL arguments
+    # def get_queryset(self):
+    #     user = get_request_user(self.request)
+    #
+    #     # all requests from anonymous or public users return nothing
+    #     if not user or not user.is_authenticated or user.role.is_public:
+    #         return Comment.objects.none()
+    #     # admins and superadmins can see everything
+    #     elif user.role.is_superadmin or user.role.is_admin:
+    #         queryset = Comment.objects.all()
+    #     # partners can see comments owned by the user or user's org
+    #     elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+    #         # they can also see comments for events on which they are collaborators:
+    #         collab_evt_ids = list(Event.objects.filter(
+    #             Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+    #         ).values_list('id', flat=True))
+    #         collab_evtloc_ids = list(EventLocation.objects.filter(
+    #             event__in=collab_evt_ids).values_list('id', flat=True))
+    #         collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
+    #             event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
+    #         collab_srvreq_ids = list(ServiceRequest.objects.filter(
+    #             event__in=collab_evt_ids).values_list('id', flat=True))
+    #         queryset = Comment.objects.filter(
+    #             Q(created_by__exact=user.id) |
+    #             Q(created_by__organization__exact=user.organization) |
+    #             Q(created_by__organization__in=user.child_organizations) |
+    #             Q(content_type__model='event', object_id__in=collab_evt_ids) |
+    #             Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
+    #             Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
+    #             Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
+    #         )
+    #     # otherwise return nothing
+    #     else:
+    #         return Comment.objects.none()
+    #
+    #     contains = self.request.query_params.get('contains', None) if self.request else None
+    #     if contains is not None:
+    #         queryset = queryset.filter(comment__contains=contains)
+    #     return queryset
 
 
 class CommentTypeViewSet(HistoryViewSet):
@@ -1901,7 +1904,10 @@ class UserViewSet(HistoryViewSet):
     Deletes an artifact.
     """
 
+    queryset = User.objects.all()
     serializer_class = UserSerializer
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = UserFilter
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):
@@ -1933,41 +1939,41 @@ class UserViewSet(HistoryViewSet):
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
 
-    # override the default queryset to allow filtering by URL arguments
-    def get_queryset(self):
-        user = get_request_user(self.request)
-
-        # anonymous users cannot see anything
-        if not user or not user.is_authenticated:
-            return User.objects.none()
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = User.objects.all()
-        # public and partner users can only see themselves
-        elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
-            return User.objects.filter(pk=user.id)
-        # partneradmin can see data owned by the user or user's org
-        elif user.role.is_partneradmin:
-            queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
-                organization__in=user.organization.child_organizations))
-        # otherwise return nothing
-        else:
-            return User.objects.none()
-
-        # filter by username, exact
-        username = self.request.query_params.get('username', None)
-        if username is not None:
-            queryset = queryset.filter(username__exact=username)
-        email = self.request.query_params.get('email', None)
-        if email is not None:
-            queryset = queryset.filter(email__exact=email)
-        role = self.request.query_params.get('role', None)
-        if role is not None:
-            queryset = queryset.filter(role__exact=role)
-        organization = self.request.query_params.get('organization', None)
-        if email is not None:
-            queryset = queryset.filter(organization__exact=organization)
-        return queryset
+    # # override the default queryset to allow filtering by URL arguments
+    # def get_queryset(self):
+    #     user = get_request_user(self.request)
+    #
+    #     # anonymous users cannot see anything
+    #     if not user or not user.is_authenticated:
+    #         return User.objects.none()
+    #     # admins and superadmins can see everything
+    #     elif user.role.is_superadmin or user.role.is_admin:
+    #         queryset = User.objects.all()
+    #     # public and partner users can only see themselves
+    #     elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
+    #         return User.objects.filter(pk=user.id)
+    #     # partneradmin can see data owned by the user or user's org
+    #     elif user.role.is_partneradmin:
+    #         queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
+    #             organization__in=user.organization.child_organizations))
+    #     # otherwise return nothing
+    #     else:
+    #         return User.objects.none()
+    #
+    #     # filter by username, exact
+    #     username = self.request.query_params.get('username', None)
+    #     if username is not None:
+    #         queryset = queryset.filter(username__exact=username)
+    #     email = self.request.query_params.get('email', None)
+    #     if email is not None:
+    #         queryset = queryset.filter(email__exact=email)
+    #     role = self.request.query_params.get('role', None)
+    #     if role is not None:
+    #         queryset = queryset.filter(role__exact=role)
+    #     organization = self.request.query_params.get('organization', None)
+    #     if email is not None:
+    #         queryset = queryset.filter(organization__exact=organization)
+    #     return queryset
 
 
 class AuthView(views.APIView):
@@ -2147,6 +2153,9 @@ class OrganizationViewSet(HistoryViewSet):
     Deletes a organization.
     """
 
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = OrganizationFilter
+
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
     def request_new(self, request):
         # A request for a new lookup item is made. Partner or above.
@@ -2167,18 +2176,18 @@ class OrganizationViewSet(HistoryViewSet):
         user = get_request_user(self.request)
         queryset = Organization.objects.all()
 
-        if self.request:
-            users = self.request.query_params.get('users', None)
-            if users is not None and users != '':
-                users_list = users.split(',')
-                queryset = queryset.filter(users__in=users_list)
-            contacts = self.request.query_params.get('contacts', None)
-            if contacts is not None and contacts != '':
-                contacts_list = contacts.split(',')
-                queryset = queryset.filter(contacts__in=contacts_list)
-            laboratory = self.request.query_params.get('laboratory', None)
-            if laboratory is not None and laboratory.capitalize() in ['True', 'False']:
-                queryset = queryset.filter(laboratory__exact=laboratory.capitalize())
+        # if self.request:
+        #     users = self.request.query_params.get('users', None)
+        #     if users is not None and users != '':
+        #         users_list = users.split(',')
+        #         queryset = queryset.filter(users__in=users_list)
+        #     contacts = self.request.query_params.get('contacts', None)
+        #     if contacts is not None and contacts != '':
+        #         contacts_list = contacts.split(',')
+        #         queryset = queryset.filter(contacts__in=contacts_list)
+        #     laboratory = self.request.query_params.get('laboratory', None)
+        #     if laboratory is not None and laboratory.capitalize() in ['True', 'False']:
+        #         queryset = queryset.filter(laboratory__exact=laboratory.capitalize())
 
         # all requests from anonymous users must only return published data
         if not user or not user.is_authenticated:
@@ -2300,20 +2309,20 @@ class ContactViewSet(HistoryViewSet):
         else:
             return Contact.objects.none()
 
-        org = query_params.get('org', None)
-        if org is not None and org != '':
-            if LIST_DELIMITER in org:
-                org_list = org.split(',')
-                queryset = queryset.filter(organization__in=org_list)
-            else:
-                queryset = queryset.filter(organization__exact=org)
-        owner_org = query_params.get('ownerorg', None)
-        if owner_org is not None and owner_org != '':
-            if LIST_DELIMITER in owner_org:
-                owner_org_list = owner_org.split(',')
-                queryset = queryset.filter(owner_organization__in=owner_org_list)
-            else:
-                queryset = queryset.filter(owner_organization__exact=owner_org)
+        # org = query_params.get('org', None)
+        # if org is not None and org != '':
+        #     if LIST_DELIMITER in org:
+        #         org_list = org.split(',')
+        #         queryset = queryset.filter(organization__in=org_list)
+        #     else:
+        #         queryset = queryset.filter(organization__exact=org)
+        # owner_org = query_params.get('ownerorg', None)
+        # if owner_org is not None and owner_org != '':
+        #     if LIST_DELIMITER in owner_org:
+        #         owner_org_list = owner_org.split(',')
+        #         queryset = queryset.filter(owner_organization__in=owner_org_list)
+        #     else:
+        #         queryset = queryset.filter(owner_organization__exact=owner_org)
         return queryset
 
     def get_serializer_class(self):
@@ -2449,14 +2458,14 @@ class SearchViewSet(HistoryViewSet):
         else:
             return Search.objects.none()
 
-        owner = query_params.get('owner', None)
-        if owner is not None and owner != '':
-            if LIST_DELIMITER not in owner:
-                owner_list = owner.split(',')
-                queryset = queryset.filter(created_by__in=owner_list)
-            else:
-                queryset = queryset.filter(created_by__exact=owner)
-        return queryset
+        # owner = query_params.get('owner', None)
+        # if owner is not None and owner != '':
+        #     if LIST_DELIMITER not in owner:
+        #         owner_list = owner.split(',')
+        #         queryset = queryset.filter(created_by__in=owner_list)
+        #     else:
+        #         queryset = queryset.filter(created_by__exact=owner)
+        # return queryset
 
 
 ######
@@ -2501,10 +2510,9 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     Returns an event summary by id.
     """
 
-    queryset = Event.objects.all()
     schema = AutoSchema(operation_id_base="EventSummary")
-    # filterset_class = EventSummaryFilter
-    # filterset_fields = ['complete', 'event_type']
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = EventSummaryFilter
 
     @action(detail=False)
     def get_count(self, request):
@@ -2638,264 +2646,6 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
             queryset = public_queryset | personal_queryset
 
-        # check for params that should use the 'and' operator
-        and_params = query_params.get('and_params', None)
-
-        # filter by complete, exact
-        complete = query_params.get('complete', None)
-        if complete is not None and complete.capitalize() in ['True', 'False']:
-            queryset = queryset.filter(complete__exact=complete.capitalize())
-        # filter by public, exact
-        public = query_params.get('public', None)
-        if public is not None and public.capitalize() in ['True', 'False']:
-            queryset = queryset.filter(public__exact=public.capitalize())
-        # filter by permission_source, exact list
-        permission_source = query_params.get('permission_source', None)
-        if permission_source is not None and permission_source != '':
-            if LIST_DELIMITER in permission_source:
-                permission_source_list = permission_source.split(',')
-                if ('own' in permission_source_list and 'organization' in permission_source_list
-                        and 'collaboration' in permission_source_list):
-                    queryset = queryset.filter(
-                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
-                            created_by__organization__in=user.organization.child_organizations) | Q(
-                            read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-                elif 'own' in permission_source_list and 'organization' in permission_source_list:
-                    queryset = queryset.filter(
-                        Q(created_by=user.id) | Q(created_by__organization=user.organization.id) | Q(
-                            created_by__organization__in=user.organization.child_organizations)).distinct()
-                elif 'own' in permission_source_list and 'collaboration' in permission_source_list:
-                    queryset = queryset.filter(
-                        Q(created_by=user.id) | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-                elif 'organization' in permission_source_list and 'collaboration' in permission_source_list:
-                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
-                        created_by__organization__in=user.organization.child_organizations) | Q(
-                        read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).exclude(created_by=user.id).distinct()
-                elif 'own' in permission_source_list:
-                    queryset = queryset.filter(created_by=user.id)
-                elif 'organization' in permission_source_list:
-                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
-                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
-                elif 'collaboration' in permission_source_list:
-                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-            else:
-                if 'own' == permission_source:
-                    queryset = queryset.filter(created_by=user.id)
-                elif 'organization' == permission_source:
-                    queryset = queryset.filter(Q(created_by__organization=user.organization.id) | Q(
-                        created_by__organization__in=user.organization.child_organizations)).exclude(created_by=user.id).distinct()
-                elif 'collaboration' == permission_source:
-                    queryset = queryset.filter(Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-        # filter by event_type ID, exact list
-        event_type = query_params.get('event_type', None)
-        if event_type is not None and event_type != '':
-            if LIST_DELIMITER in event_type:
-                event_type_list = event_type.split(',')
-                queryset = queryset.filter(event_type__in=event_type_list)
-            else:
-                queryset = queryset.filter(event_type__exact=event_type)
-        # filter by diagnosis ID, exact list
-        diagnosis = query_params.get('diagnosis', None)
-        if diagnosis is not None and diagnosis != '':
-            if LIST_DELIMITER in diagnosis:
-                diagnosis_list = diagnosis.split(',')
-                queryset = queryset.prefetch_related('eventdiagnoses').filter(
-                    eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
-                if and_params is not None and 'diagnosis' in and_params:
-                    # first, count the species for each returned event
-                    # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(count_diagnoses=Count(
-                        'eventdiagnoses__diagnosis', distinct=True)).filter(
-                        count_diagnoses__gte=len(diagnosis_list))
-                    diagnosis_list_ints = [int(i) for i in diagnosis_list]
-                    # next, find only the events that have _all_ the requested values, not just any of them
-                    for item in queryset:
-                        evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
-                        all_diagnoses = [evtdiag.diagnosis.id for evtdiag in evtdiags]
-                        if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
-                            queryset = queryset.exclude(pk=item.id)
-            else:
-                queryset = queryset.filter(eventdiagnoses__diagnosis__exact=diagnosis).distinct()
-        # filter by diagnosistype ID, exact list
-        diagnosis_type = query_params.get('diagnosis_type', None)
-        if diagnosis_type is not None and diagnosis_type != '':
-            if LIST_DELIMITER in diagnosis_type:
-                diagnosis_type_list = diagnosis_type.split(',')
-                queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
-                    eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
-                if and_params is not None and 'diagnosis_type' in and_params:
-                    # first, count the species for each returned event
-                    # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(count_diagnosis_types=Count(
-                        'eventdiagnoses__diagnosis__diagnosis_type', distinct=True)).filter(
-                        count_diagnosis_types__gte=len(diagnosis_type_list))
-                    diagnosis_type_list_ints = [int(i) for i in diagnosis_type_list]
-                    # next, find only the events that have _all_ the requested values, not just any of them
-                    for item in queryset:
-                        evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
-                        all_diagnosis_types = [evtdiag.diagnosis.diagnosis_type.id for evtdiag in evtdiags]
-                        if not set(diagnosis_type_list_ints).issubset(set(all_diagnosis_types)):
-                            queryset = queryset.exclude(pk=item.id)
-            else:
-                queryset = queryset.filter(eventdiagnoses__diagnosis__diagnosis_type__exact=diagnosis_type).distinct()
-        # filter by species ID, exact list
-        species = query_params.get('species', None)
-        if species is not None and species != '':
-            if LIST_DELIMITER in species:
-                species_list = species.split(',')
-                queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
-                    eventlocations__locationspecies__species__in=species_list).distinct()
-                if and_params is not None and 'species' in and_params:
-                    # first, count the species for each returned event
-                    # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(count_species=Count(
-                        'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
-                    species_list_ints = [int(i) for i in species_list]
-                    # next, find only the events that have _all_ the requested values, not just any of them
-                    for item in queryset:
-                        evtlocs = EventLocation.objects.filter(event_id=item.id)
-                        locspecs = LocationSpecies.objects.filter(event_location__in=evtlocs)
-                        all_species = [locspec.species.id for locspec in locspecs]
-                        if not set(species_list_ints).issubset(set(all_species)):
-                            queryset = queryset.exclude(pk=item.id)
-            else:
-                queryset = queryset.filter(eventlocations__locationspecies__species__exact=species).distinct()
-        # filter by administrative_level_one, exact list
-        administrative_level_one = query_params.get('administrative_level_one', None)
-        if administrative_level_one is not None and administrative_level_one != '':
-            if LIST_DELIMITER in administrative_level_one:
-                admin_level_one_list = administrative_level_one.split(',')
-                queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
-                    eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
-                if and_params is not None and 'administrative_level_one' in and_params:
-                    # this _should_ be fairly straight forward with the postgresql ArrayAgg function,
-                    # (which would offload the hard work to postgresql and make this whole operation faster)
-                    # but that function is just throwing an error about a Serial data type,
-                    # so the following is a work-around
-
-                    # first, count the eventlocations for each returned event
-                    # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(
-                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_one_list))
-                    admin_level_one_list_ints = [int(i) for i in admin_level_one_list]
-                    # next, find only the events that have _all_ the requested values, not just any of them
-                    for item in queryset:
-                        evtlocs = EventLocation.objects.filter(event_id=item.id)
-                        all_a1s = [evtloc.administrative_level_one.id for evtloc in evtlocs]
-                        if not set(admin_level_one_list_ints).issubset(set(all_a1s)):
-                            queryset = queryset.exclude(pk=item.id)
-            else:
-                queryset = queryset.filter(
-                    eventlocations__administrative_level_one__exact=administrative_level_one).distinct()
-        # filter by administrative_level_two, exact list
-        administrative_level_two = query_params.get('administrative_level_two', None)
-        if administrative_level_two is not None and administrative_level_two != '':
-            if LIST_DELIMITER in administrative_level_two:
-                admin_level_two_list = administrative_level_two.split(',')
-                queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
-                    eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
-                if and_params is not None and 'administrative_level_two' in and_params:
-                    # first, count the eventlocations for each returned event
-                    # and only allow those with the same or greater count as the length of the query_param list
-                    queryset = queryset.annotate(
-                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_two_list))
-                    admin_level_two_list_ints = [int(i) for i in admin_level_two_list]
-                    # next, find only the events that have _all_ the requested values, not just any of them
-                    for item in queryset:
-                        evtlocs = EventLocation.objects.filter(event_id=item.id)
-                        all_a2s = [evtloc.administrative_level_two.id for evtloc in evtlocs]
-                        if not set(admin_level_two_list_ints).issubset(set(all_a2s)):
-                            queryset = queryset.exclude(pk=item.id)
-            else:
-                queryset = queryset.filter(
-                    eventlocations__administrative_level_two__exact=administrative_level_two).distinct()
-        # filter by flyway, exact list
-        flyway = query_params.get('flyway', None)
-        if flyway is not None and flyway != '':
-            queryset = queryset.prefetch_related('eventlocations__flyway')
-            if LIST_DELIMITER in flyway:
-                flyway_list = flyway.split(',')
-                queryset = queryset.filter(eventlocations__flyway__in=flyway_list).distinct()
-            else:
-                queryset = queryset.filter(eventlocations__flyway__exact=flyway).distinct()
-        # filter by country, exact list
-        country = query_params.get('country', None)
-        if country is not None and country != '':
-            queryset = queryset.prefetch_related('eventlocations__country')
-            if LIST_DELIMITER in country:
-                country_list = country.split(',')
-                queryset = queryset.filter(eventlocations__country__in=country_list).distinct()
-            else:
-                queryset = queryset.filter(eventlocations__country__exact=country).distinct()
-        # filter by gnis_id, exact list
-        gnis_id = query_params.get('gnis_id', None)
-        if gnis_id is not None and gnis_id != '':
-            queryset = queryset.prefetch_related('eventlocations__gnis_id')
-            if LIST_DELIMITER in gnis_id:
-                gnis_id_list = country.split(',')
-                queryset = queryset.filter(eventlocations__gnis_id__in=gnis_id_list).distinct()
-            else:
-                queryset = queryset.filter(eventlocations__gnis_id__exact=gnis_id).distinct()
-        # filter by affected, (greater than or equal to only, less than or equal to only,
-        # or between both, depending on which URL params appear)
-        affected_count__gte = query_params.get('affected_count__gte', None)
-        affected_count__lte = query_params.get('affected_count__lte', None)
-        if affected_count__gte is not None and affected_count__lte is not None:
-            queryset = queryset.filter(affected_count__gte=affected_count__gte, affected_count__lte=affected_count__lte)
-        elif affected_count__gte is not None:
-            queryset = queryset.filter(affected_count__gte=affected_count__gte)
-        elif affected_count__lte is not None:
-            queryset = queryset.filter(affected_count__lte=affected_count__lte)
-
-        # # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
-        # # the date filters below are date-exclusive
-        # start_date = query_params.get('start_date', None)
-        # end_date = query_params.get('end_date', None)
-        # if start_date is not None and end_date is not None:
-        #     queryset = queryset.filter(start_date__gt=start_date, end_date__lt=end_date)
-        # elif start_date is not None:
-        #     queryset = queryset.filter(start_date__gt=start_date)
-        # elif end_date is not None:
-        #     queryset = queryset.filter(end_date__lt=end_date)
-
-        # filter by start and end date (after only, before only, or between both, depending on which URL params appear)
-        # the date filters below are date-inclusive
-        start_date = query_params.get('start_date', None)
-        end_date = query_params.get('end_date', None)
-        if start_date is not None and end_date is not None:
-            queryset = queryset.filter(
-                Q(start_date__lte=start_date, end_date__gte=start_date)
-                | Q(start_date__gte=start_date, start_date__lte=end_date)
-            )
-        elif start_date is not None and end_date is None:
-            queryset = queryset.filter(
-                Q(start_date__lte=start_date, end_date__gte=start_date)
-                | Q(start_date__lte=start_date, end_date__isnull=True)
-                | Q(start_date__gte=start_date, start_date__lte=Now())
-            )
-        elif start_date is None and end_date is not None:
-            queryset = queryset.filter(start_date__lte=end_date)
-
-        # TODO: determine the intended use of the following three query params
-        # because only admins or fellow org or circle members should even be able to filter on these values
-        # perhaps these should instead be used implicitly based on the requester
-        # (query will auto-filter based on the requester's ID/org/circle properties)
-        # rather than something a requester explicitly queries?
-        # # filter by owner ID, exact
-        # owner = query_params.get('owner', None)
-        # if owner is not None:
-        #     queryset = queryset.filter(created_by__exact=owner)
-        # # filter by ownerorg ID, exact
-        # owner_org = query_params.get('owner_org', None)
-        # if owner_org is not None:
-        #     queryset = queryset.prefetch_related('created_by__organization')
-        #     queryset = queryset.filter(created_by__organization__exact=owner_org)
-        # # filter by circle ID, exact
-        # TODO: this might need to be changed to select only events where the user is in a circle attached to this event
-        # rather than the current set up where any circle ID can be used
-        # circle = query_params.get('circle', None)
-        # if circle is not None:
-        #     queryset = queryset.filter(Q(circle_read__exact=circle) | Q(circle_write__exact=circle))
         return queryset
 
 

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+{% load static %}
   <head>
     <title>WHISPers API Documentation</title>
     <meta charset="utf-8"/>
@@ -66,7 +67,8 @@
     <script src="//unpkg.com/swagger-ui-dist@3/swagger-ui-bundle.js"></script>
     <script>
     const ui = SwaggerUIBundle({
-        url: "{% url schema_url %}",
+        {#url: "{% url schema_url %}",#}
+        url: "{% static "openapi-schema.yml" %}",
         dom_id: '#swagger-ui',
         presets: [
           SwaggerUIBundle.presets.apis,

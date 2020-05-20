@@ -1,5 +1,7 @@
 from django.urls import path
 from django.conf.urls import url, include
+from django.conf.urls.static import static
+from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.views.generic.base import TemplateView
 from whispersservices import views
@@ -70,10 +72,11 @@ urlpatterns = [
     url(r'^api-auth/', include('rest_framework.urls', namespace='rest_framework')),
     url(r'^login/$', auth_views.LoginView.as_view(template_name='rest_framework/login.html'), name='login'),
     url(r'^logout/$', auth_views.LogoutView.as_view(), name='logout'),
+    # url('docs/', TemplateView.as_view(template_name="swagger-ui.html")),
     path('openapi/', get_schema_view(title="WHISPersServices", description="API for WHISPers", version="1.5.0"), name='openapi-schema'),
     path('docs/', TemplateView.as_view(template_name='swagger-ui.html',
-                                             extra_context={'schema_url': 'openapi-schema'}), name='swagger-ui'),
+                                             extra_context={'schema_url': 'openapi-schema.yml'}), name='swagger-ui'),
     path('redocs/', TemplateView.as_view(template_name='redoc.html',
                                         extra_context={'schema_url': 'openapi-schema'}), name='redoc'),
     url(r'^auth/$', views.AuthView.as_view(), name='authenticate'),
-]
+] # + static(settings.STATIC_URL)
