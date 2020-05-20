@@ -4150,6 +4150,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     response_by = serializers.StringRelatedField()
     comment = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
+    comments = CommentSerializer(many=True)
 
     class Meta:
         model = UserChangeRequest
