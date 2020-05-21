@@ -2018,7 +2018,7 @@ class OrganizationViewSet(HistoryViewSet):
                 contacts_list = contacts.split(',')
                 queryset = queryset.filter(contacts__in=contacts_list)
             laboratory = self.request.query_params.get('laboratory', None)
-            if laboratory is not None and laboratory in ['True', 'true', 'False', 'false']:
+            if laboratory is not None and laboratory.capitalize() in ['True', 'False', ]:
                 queryset = queryset.filter(laboratory__exact=laboratory)
 
         # all requests from anonymous users must only return published data
@@ -2153,6 +2153,11 @@ class ContactViewSet(HistoryViewSet):
                 queryset = queryset.filter(owner_organization__in=owner_org_list)
             else:
                 queryset = queryset.filter(owner_organization__exact=owner_org)
+        active = query_params.get('active', None)
+        if active is not None and active.capitalize() in ['True', 'False', ]:
+            queryset = queryset.filter(active__exact=active)
+        else:
+            queryset = queryset.filter(active=True)
         return queryset
 
     def get_serializer_class(self):
@@ -2533,7 +2538,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
         # filter by complete, exact
         complete = query_params.get('complete', None)
-        if complete is not None and complete in ['True', 'true', 'False', 'false']:
+        if complete is not None and complete.capitalize() in ['True', 'False', ]:
             queryset = queryset.filter(complete__exact=complete)
         # filter by event_type ID, exact list
         event_type = query_params.get('event_type', None)
