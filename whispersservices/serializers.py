@@ -4829,7 +4829,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory', 'active',)
 
 
 class OrganizationAdminSerializer(serializers.ModelSerializer):
@@ -4847,7 +4847,7 @@ class OrganizationAdminSerializer(serializers.ModelSerializer):
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
                   'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish', 'laboratory',
-                  'created_date', 'created_by', 'created_by_string',
+                  'active', 'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
