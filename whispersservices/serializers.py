@@ -4274,7 +4274,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory', 'active',)
+                  'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
 
 
 class OrganizationAdminSerializer(serializers.ModelSerializer):
@@ -4285,7 +4285,7 @@ class OrganizationAdminSerializer(serializers.ModelSerializer):
         model = Organization
         fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
                   'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish', 'laboratory',
-                  'active', 'created_date', 'created_by', 'created_by_string',
+                  'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
@@ -4320,7 +4320,7 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
-                  'organization_string', 'owner_organization', 'owner_organization_string',
+                  'organization_string', 'owner_organization', 'owner_organization_string', 'active',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
 
