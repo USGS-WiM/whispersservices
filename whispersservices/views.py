@@ -2323,6 +2323,11 @@ class ContactViewSet(HistoryViewSet):
         #         queryset = queryset.filter(owner_organization__in=owner_org_list)
         #     else:
         #         queryset = queryset.filter(owner_organization__exact=owner_org)
+        # active = query_params.get('active', None)
+        # if active is not None and active.capitalize() in ['True', 'False', ]:
+        #     queryset = queryset.filter(active__exact=active.capitalize())
+        # else:
+        #     queryset = queryset.filter(active=True)
         return queryset
 
     def get_serializer_class(self):

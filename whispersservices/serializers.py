@@ -4323,7 +4323,7 @@ class ContactSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contact
         fields = ('id', 'first_name', 'last_name', 'email', 'phone', 'affiliation', 'title', 'position', 'organization',
-                  'organization_string', 'owner_organization', 'owner_organization_string',
+                  'organization_string', 'owner_organization', 'owner_organization_string', 'active',
                   'created_date', 'created_by', 'created_by_string',
                   'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
 

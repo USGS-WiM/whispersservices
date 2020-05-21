@@ -470,7 +470,7 @@ class Staff(AdminPermissionsHistoryModel):
     first_name = models.CharField(max_length=128, help_text='An alphanumeric value of the staff members first name')
     last_name = models.CharField(max_length=128, help_text='An alphanumeric value of the staff members last name')
     role = models.ForeignKey('Role', models.PROTECT, related_name='staff', help_text='A foreign key integer value for the staff role')
-    active = models.BooleanField(default=False, help_text='A boolean value indication if a staff memeber is active or not')
+    active = models.BooleanField(default=False, help_text='A boolean value indication if a staff member is active or not')
 
     def __str__(self):
         return self.first_name + " " + self.last_name
@@ -2533,6 +2533,7 @@ class Contact(PermissionsHistoryModel):
     position = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the position of this contact')
     # contact_type = models.ForeignKey('ContactType', models.PROTECT, related_name='contacts')  # COMMENT: this related table is not shown in the ERD
     organization = models.ForeignKey('Organization', models.PROTECT, related_name='contacts', null=True, help_text='A foreign key integer value identifying the organization to which this contact belongs to')
+    active = models.BooleanField(default=True, help_text='A boolean value indication if a contact is active or not')
 
     @staticmethod
     def has_create_permission(request):

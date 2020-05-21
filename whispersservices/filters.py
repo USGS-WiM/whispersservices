@@ -203,10 +203,11 @@ class OrganizationFilter(FilterSet):
 class ContactFilter(FilterSet):
     org = NumberInFilter(field_name='organization', lookup_expr='in')
     ownerorg = NumberInFilter(field_name='owner_organization', lookup_expr='in')
+    active = BooleanFilter()
 
     class Meta:
         model: User
-        fields = ['org', 'ownerorg', ]
+        fields = ['org', 'ownerorg', 'active', ]
 
 
 class SearchFilter(FilterSet):
