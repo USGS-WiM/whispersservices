@@ -2496,7 +2496,8 @@ class Organization(AdminPermissionsHistoryNameModel):
     # override the save method to prevent infinite recursion
     #  (ensure the organization does not have itself as its parent organization)
     def save(self, *args, **kwargs):
-        self.parent_organization = None if self.parent_organization.id == self.id else self.parent_organization
+        if self.parent_organization is not None and self.parent_organization.id == self.id:
+            self.parent_organization = None
         super(Organization, self).save(*args, **kwargs)
 
     def __str__(self):
