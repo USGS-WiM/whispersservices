@@ -266,10 +266,11 @@ class EventViewSet(HistoryViewSet):
         source = user.username
         # recipients: user(s) chosen from among the collaborator list
         recipients = User.objects.filter(id__in=recipient_ids)
-        recipient_ids = [user.id for user in recipients]
+        recipient_ids = []
         recipient_names = ''
-        for user in recipients:
-            recipient_names += ", " + user.first_name + " " + user.last_name
+        for recipient in recipients:
+            recipient_ids.append(recipient.id)
+            recipient_names += ", " + recipient.first_name + " " + recipient.last_name
         recipient_names = recipient_names.replace(", ", "", 1)
         # email forwarding: Automatic, to all users included in the notification request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
