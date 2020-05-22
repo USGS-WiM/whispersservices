@@ -236,7 +236,8 @@ class EventViewSet(HistoryViewSet):
         recipients_message += " is required to create collaborator alerts."
         if 'recipients' in request.data:
             recipient_ids = request.data['recipients']
-            if not isinstance(recipient_ids, list) or not all(isinstance(x, int) for x in recipient_ids):
+            if (not isinstance(recipient_ids, list) or len(recipient_ids) == 0
+                    or not all(isinstance(x, int) for x in recipient_ids)):
                 raise serializers.ValidationError(recipients_message)
             else:
                 event_user_ids = set(list(User.objects.filter(
