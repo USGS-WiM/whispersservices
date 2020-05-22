@@ -69,7 +69,7 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
         # notify admins of error
         new_recip = EMAIL_WHISPERS
         new_subject = "WHISPERS ADMIN: Problem Encountered During generate_notification_task"
-        new_body = "While generating a notification, a problem was encountered. No notification was created."
+        new_body = "A problem was encountered while generating a notification. No notification was created."
         new_body += " The cause of the problem was"
         if not recipients and not subject:
             new_body += " a null recipient list and a null subject."
@@ -81,6 +81,15 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
             new_body += " the subject length was greater than the maximum allowed length of the subject field."
         new_body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
         new_body += " during task " + str(current_task.request.id)
+        new_body += "<br /><br />The intended settings of the notification were:"
+        new_body += "<br />recipients: " + str(recipients)
+        new_body += "<br />source: " + source
+        new_body += "<br />event_id: " + str(event_id)
+        new_body += "<br />client_page: " + client_page
+        new_body += "<br />subject: " + subject
+        new_body += "<br />body: " + body
+        new_body += "<br />send_email: " + str(send_email)
+        new_body += "<br />email_to: " + str(email_to)
         notif_email = construct_notification_email(new_recip, new_subject, new_body, False)
         print(notif_email.__dict__)
     else:
