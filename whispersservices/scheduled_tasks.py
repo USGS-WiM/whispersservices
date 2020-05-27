@@ -733,7 +733,7 @@ def all_events(events_created_yesterday, events_updated_yesterday, yesterday):
 
 @shared_task()
 def standard_notifications():
-    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
+    yesterday = datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
     new_events = Event.objects.filter(created_date=yesterday)
     updated_events = Event.objects.filter(modified_date=yesterday)
 
@@ -776,8 +776,25 @@ def standard_notifications():
     return True
 
 
+# purge old notifications, regardless whether they have been read: 90 days with 500 messages max
 @shared_task()
-def stale_events():
+def purge_stale_notifications():
+    # 90 days purge (all notifications)
+    ninety_days_ago = datetime.strftime(datetime.now() - timedelta(days=90), '%Y-%m-%d')
+    Notification.objects.filter(created_date__gte=ninety_days_ago).delete()
+
+    # 500 max purge (notifications per user)
+    users_with_notifs_over_500 = Notification.objects.values('recipient').order_by().annotate(
+        user_notif_count=Count('recipient')).filter(user_notif_count__gt=500)
+    for user in users_with_notifs_over_500:
+        ids_over_500 = Notification.objects.filter(
+            recipient=user['recipient']).order_by("-pk").values_list("pk", flat=True)[500:]
+        Notification.objects.filter(pk__in=list(ids_over_500)).delete()
+    return True
+
+
+@shared_task()
+def stale_event_notifications():
     stale_event_periods = Configuration.objects.filter(name='stale_event_periods').first()
     if stale_event_periods:
         stale_event_periods_list = stale_event_periods.value.split(',')
@@ -785,8 +802,8 @@ def stale_events():
             stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Stale Events').first()
             for period in stale_event_periods_list_ints:
-                period_date = datetime.strftime(datetime.now() - timedelta(period), '%Y-%m-%d')
-                all_stale_events = Event.objects.filter(complete=False, created_date=period_date)
+                period_date = datetime.strftime(datetime.now() - timedelta(days=period), '%Y-%m-%d')
+                all_stale_events = Event.objects.filter(complete=False, created_date__gte=period_date)
                 for event in all_stale_events:
                     recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
                     recipients += [event.created_by.id, ]
@@ -994,7 +1011,7 @@ def custom_notifications():
     # An event with a number affected greater than or equal to the provided integer is created,
     # OR an event location is added/updated that meets that criteria
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
-    yesterday = datetime.strftime(datetime.now() - timedelta(1), '%Y-%m-%d')
+    yesterday = datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
 
     custom_notification_cues_new = NotificationCueCustom.objects.filter(
         notification_cue_preference__create_when_new=True)
