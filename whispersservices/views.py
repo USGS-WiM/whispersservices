@@ -995,8 +995,6 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
         if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        # message = "Please add a new administrative level two:"
-        # return construct_email(request.data, request.user.email, message)
         return generate_notification_request_new("administrativeleveltwos", request)
 
     def get_serializer_class(self):
@@ -1289,8 +1287,6 @@ class DiagnosisViewSet(HistoryViewSet):
         if request is None or not request.user or not request.user.is_authenticated or request.user.role.is_public:
             raise PermissionDenied
 
-        # message = "Please add a new diagnosis:"
-        # return construct_email(request.data, request.user.email, message)
         return generate_notification_request_new("diagnoses", request)
 
 
@@ -1603,11 +1599,29 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 
 class NotificationViewSet(HistoryViewSet):
+    """
+        list:
+        Returns a list of all notifications.
+
+        create:
+        Creates a notification.
+
+        read:
+        Returns a notification by id.
+
+        update:
+        Updates a notification.
+
+        partial_update:
+        Updates parts of a notification.
+
+        delete:
+        Deletes a notification.
+        """
+
     serializer_class = NotificationSerializer
-    # queryset = Notification.objects.all()
     filter_backends = (DjangoFilterBackend,)
     filterset_class = NotificationFilter
-    # filterset_fields = ('all', 'recipient', )
 
     def get_queryset(self):
         self.kwargs['action'] = getattr(self, 'action', None)
@@ -1780,49 +1794,45 @@ class CommentViewSet(HistoryViewSet):
     """
 
     serializer_class = CommentSerializer
-    queryset = Comment.objects.all()
     filter_backends = (DjangoFilterBackend,)
     filterset_class = CommentFilter
 
-    # # override the default queryset to allow filtering by URL arguments
-    # def get_queryset(self):
-    #     user = get_request_user(self.request)
-    #
-    #     # all requests from anonymous or public users return nothing
-    #     if not user or not user.is_authenticated or user.role.is_public:
-    #         return Comment.objects.none()
-    #     # admins and superadmins can see everything
-    #     elif user.role.is_superadmin or user.role.is_admin:
-    #         queryset = Comment.objects.all()
-    #     # partners can see comments owned by the user or user's org
-    #     elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
-    #         # they can also see comments for events on which they are collaborators:
-    #         collab_evt_ids = list(Event.objects.filter(
-    #             Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
-    #         ).values_list('id', flat=True))
-    #         collab_evtloc_ids = list(EventLocation.objects.filter(
-    #             event__in=collab_evt_ids).values_list('id', flat=True))
-    #         collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
-    #             event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
-    #         collab_srvreq_ids = list(ServiceRequest.objects.filter(
-    #             event__in=collab_evt_ids).values_list('id', flat=True))
-    #         queryset = Comment.objects.filter(
-    #             Q(created_by__exact=user.id) |
-    #             Q(created_by__organization__exact=user.organization) |
-    #             Q(created_by__organization__in=user.child_organizations) |
-    #             Q(content_type__model='event', object_id__in=collab_evt_ids) |
-    #             Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-    #             Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
-    #             Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
-    #         )
-    #     # otherwise return nothing
-    #     else:
-    #         return Comment.objects.none()
-    #
-    #     contains = self.request.query_params.get('contains', None) if self.request else None
-    #     if contains is not None:
-    #         queryset = queryset.filter(comment__contains=contains)
-    #     return queryset
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # all requests from anonymous or public users return nothing
+        if not user or not user.is_authenticated or user.role.is_public:
+            return Comment.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Comment.objects.all()
+        # partners can see comments owned by the user or user's org
+        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
+            # they can also see comments for events on which they are collaborators:
+            collab_evt_ids = list(Event.objects.filter(
+                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
+            ).values_list('id', flat=True))
+            collab_evtloc_ids = list(EventLocation.objects.filter(
+                event__in=collab_evt_ids).values_list('id', flat=True))
+            collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
+                event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
+            collab_srvreq_ids = list(ServiceRequest.objects.filter(
+                event__in=collab_evt_ids).values_list('id', flat=True))
+            queryset = Comment.objects.filter(
+                Q(created_by__exact=user.id) |
+                Q(created_by__organization__exact=user.organization) |
+                Q(created_by__organization__in=user.child_organizations) |
+                Q(content_type__model='event', object_id__in=collab_evt_ids) |
+                Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
+                Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
+                Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
+            )
+        # otherwise return nothing
+        else:
+            return Comment.objects.none()
+
+        return queryset
 
 
 class CommentTypeViewSet(HistoryViewSet):
@@ -1906,7 +1916,6 @@ class UserViewSet(HistoryViewSet):
     Deletes an artifact.
     """
 
-    queryset = User.objects.all()
     serializer_class = UserSerializer
     filter_backends = (DjangoFilterBackend,)
     filterset_class = UserFilter
@@ -1941,41 +1950,28 @@ class UserViewSet(HistoryViewSet):
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
 
-    # # override the default queryset to allow filtering by URL arguments
-    # def get_queryset(self):
-    #     user = get_request_user(self.request)
-    #
-    #     # anonymous users cannot see anything
-    #     if not user or not user.is_authenticated:
-    #         return User.objects.none()
-    #     # admins and superadmins can see everything
-    #     elif user.role.is_superadmin or user.role.is_admin:
-    #         queryset = User.objects.all()
-    #     # public and partner users can only see themselves
-    #     elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
-    #         return User.objects.filter(pk=user.id)
-    #     # partneradmin can see data owned by the user or user's org
-    #     elif user.role.is_partneradmin:
-    #         queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
-    #             organization__in=user.organization.child_organizations))
-    #     # otherwise return nothing
-    #     else:
-    #         return User.objects.none()
-    #
-    #     # filter by username, exact
-    #     username = self.request.query_params.get('username', None)
-    #     if username is not None:
-    #         queryset = queryset.filter(username__exact=username)
-    #     email = self.request.query_params.get('email', None)
-    #     if email is not None:
-    #         queryset = queryset.filter(email__exact=email)
-    #     role = self.request.query_params.get('role', None)
-    #     if role is not None:
-    #         queryset = queryset.filter(role__exact=role)
-    #     organization = self.request.query_params.get('organization', None)
-    #     if email is not None:
-    #         queryset = queryset.filter(organization__exact=organization)
-    #     return queryset
+    # override the default queryset to allow filtering by URL arguments
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return User.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = User.objects.all()
+        # public and partner users can only see themselves
+        elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
+            return User.objects.filter(pk=user.id)
+        # partneradmin can see data owned by the user or user's org
+        elif user.role.is_partneradmin:
+            queryset = User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
+                organization__in=user.organization.child_organizations))
+        # otherwise return nothing
+        else:
+            return User.objects.none()
+
+        return queryset
 
 
 class AuthView(views.APIView):
@@ -2178,19 +2174,6 @@ class OrganizationViewSet(HistoryViewSet):
         user = get_request_user(self.request)
         queryset = Organization.objects.all()
 
-        # if self.request:
-        #     users = self.request.query_params.get('users', None)
-        #     if users is not None and users != '':
-        #         users_list = users.split(',')
-        #         queryset = queryset.filter(users__in=users_list)
-        #     contacts = self.request.query_params.get('contacts', None)
-        #     if contacts is not None and contacts != '':
-        #         contacts_list = contacts.split(',')
-        #         queryset = queryset.filter(contacts__in=contacts_list)
-        #     laboratory = self.request.query_params.get('laboratory', None)
-        #     if laboratory is not None and laboratory.capitalize() in ['True', 'False']:
-        #         queryset = queryset.filter(laboratory__exact=laboratory.capitalize())
-
         # all requests from anonymous users must only return published data
         if not user or not user.is_authenticated:
             return queryset.filter(do_not_publish=False)
@@ -2311,25 +2294,6 @@ class ContactViewSet(HistoryViewSet):
         else:
             return Contact.objects.none()
 
-        # org = query_params.get('org', None)
-        # if org is not None and org != '':
-        #     if LIST_DELIMITER in org:
-        #         org_list = org.split(',')
-        #         queryset = queryset.filter(organization__in=org_list)
-        #     else:
-        #         queryset = queryset.filter(organization__exact=org)
-        # owner_org = query_params.get('ownerorg', None)
-        # if owner_org is not None and owner_org != '':
-        #     if LIST_DELIMITER in owner_org:
-        #         owner_org_list = owner_org.split(',')
-        #         queryset = queryset.filter(owner_organization__in=owner_org_list)
-        #     else:
-        #         queryset = queryset.filter(owner_organization__exact=owner_org)
-        # active = query_params.get('active', None)
-        # if active is not None and active.capitalize() in ['True', 'False', ]:
-        #     queryset = queryset.filter(active__exact=active.capitalize())
-        # else:
-        #     queryset = queryset.filter(active=True)
         return queryset
 
     def get_serializer_class(self):
@@ -2392,6 +2356,8 @@ class SearchViewSet(HistoryViewSet):
     """
 
     serializer_class = SearchSerializer
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = OrganizationFilter
 
     @action(detail=False)
     def user_searches(self, request):
@@ -2465,14 +2431,7 @@ class SearchViewSet(HistoryViewSet):
         else:
             return Search.objects.none()
 
-        # owner = query_params.get('owner', None)
-        # if owner is not None and owner != '':
-        #     if LIST_DELIMITER not in owner:
-        #         owner_list = owner.split(',')
-        #         queryset = queryset.filter(created_by__in=owner_list)
-        #     else:
-        #         queryset = queryset.filter(created_by__exact=owner)
-        # return queryset
+        return queryset
 
 
 ######

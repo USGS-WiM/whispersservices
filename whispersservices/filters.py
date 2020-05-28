@@ -1,7 +1,8 @@
-from django.db.models import Count, Q
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, ChoiceFilter, DateRangeFilter
+from django.db.models import Count
+from django.db.models.functions import Now
+from django_filters.rest_framework import FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, ChoiceFilter, DateRangeFilter
 from django_filters.widgets import BooleanWidget
-from rest_framework.exceptions import PermissionDenied, NotFound
+from rest_framework.exceptions import NotFound
 from whispersservices.models import *
 from whispersservices.field_descriptions import *
 
@@ -32,7 +33,7 @@ class EmptyBooleanWidget(BooleanWidget):
 
 
 class EventAbstractFilter(FilterSet):
-    contains = CharFilter(field_name='text', lookup_expr='contains', label='Filter by string contained in event abstract text')
+    contains = CharFilter(field_name='text', lookup_expr='icontains', label='Filter by string contained in event abstract text, not case-sensitive')
 
     class Meta:
         model: EventAbstract
@@ -114,43 +115,7 @@ class NotificationFilter(FilterSet):
 
 
 class CommentFilter(FilterSet):
-    contains = CharFilter(field_name='comment', lookup_expr='icontains')
-
-    @property
-    def qs(self):
-        parent = super().qs
-        user = getattr(self.request, 'user', None)
-
-        # all requests from anonymous or public users return nothing
-        if not user or not user.is_authenticated or user.role.is_public:
-            return parent.none()
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = parent.all()
-        # partners can see comments owned by the user or user's org
-        elif user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager or user.role.is_partneradmin:
-            # they can also see comments for events on which they are collaborators:
-            collab_evt_ids = list(Event.objects.filter(
-                Q(eventwriteusers__user__in=[user.id, ]) | Q(eventreadusers__user__in=[user.id, ])
-            ).values_list('id', flat=True))
-            collab_evtloc_ids = list(EventLocation.objects.filter(
-                event__in=collab_evt_ids).values_list('id', flat=True))
-            collab_evtgrp_ids = list(set(list(EventEventGroup.objects.filter(
-                event__in=collab_evt_ids).values_list('eventgroup', flat=True))))
-            collab_srvreq_ids = list(ServiceRequest.objects.filter(
-                event__in=collab_evt_ids).values_list('id', flat=True))
-            return Comment.objects.filter(
-                Q(created_by__exact=user.id) |
-                Q(created_by__organization__exact=user.organization) |
-                Q(created_by__organization__in=user.child_organizations) |
-                Q(content_type__model='event', object_id__in=collab_evt_ids) |
-                Q(content_type__model='eventlocation', object_id__in=collab_evtloc_ids) |
-                Q(content_type__model='eventgroup', object_id__in=collab_evtgrp_ids) |
-                Q(content_type__model='servicerequest', object_id__in=collab_srvreq_ids)
-            )
-        # otherwise return nothing
-        else:
-            return parent.none()
+    contains = CharFilter(field_name='comment', lookup_expr='icontains', label='Filter by string contained in comment text, not case-sensitive')
 
     class Meta:
         model: Comment
@@ -158,32 +123,10 @@ class CommentFilter(FilterSet):
 
 
 class UserFilter(FilterSet):
-    username = CharFilter(field_name='username', lookup_expr='exact')
-    email = CharFilter(field_name='email', lookup_expr='exact')
-    role = CharFilter(field_name='role', lookup_expr='exact')
-    organization = CharFilter(field_name='organization', lookup_expr='exact')
-
-    @property
-    def qs(self):
-        parent = super().qs
-        user = getattr(self.request, 'user', None)
-
-        # anonymous users cannot see anything
-        if not user or not user.is_authenticated:
-            return parent.none()
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = parent.all()
-        # public and partner users can only see themselves
-        elif user.role.is_public or user.role.is_affiliate or user.role.is_partner or user.role.is_partnermanager:
-            return User.objects.filter(pk=user.id)
-        # partneradmin can see data owned by the user or user's org
-        elif user.role.is_partneradmin:
-            return User.objects.all().filter(Q(id__exact=user.id) | Q(organization__exact=user.organization) | Q(
-                organization__in=user.organization.child_organizations))
-        # otherwise return nothing
-        else:
-            return parent.none()
+    username = CharFilter(field_name='username', lookup_expr='exact', label='Filter by username, exact match')
+    email = CharFilter(field_name='email', lookup_expr='exact', label='Filter by email, exact match')
+    role = NumberInFilter(field_name='role', lookup_expr='in', label='Filter by role ID (or a list of role IDs)')
+    organization = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
 
     class Meta:
         model: User
@@ -191,9 +134,9 @@ class UserFilter(FilterSet):
 
 
 class OrganizationFilter(FilterSet):
-    users = CharFilter(field_name='users', lookup_expr='exact')
-    contacts = CharFilter(field_name='contacts', lookup_expr='exact')
-    laboratory = CharFilter(field_name='laboratory', lookup_expr='exact')
+    users = NumberInFilter(field_name='users', lookup_expr='in', label='Filter by user ID (or a list of user IDs)')
+    contacts = NumberInFilter(field_name='contacts', lookup_expr='in', label='Filter by contact ID (or a list of contact IDs)')
+    laboratory = BooleanFilter(label='Filter by whether organization is a laboratory or not')
 
     class Meta:
         model: User
@@ -201,9 +144,9 @@ class OrganizationFilter(FilterSet):
 
 
 class ContactFilter(FilterSet):
-    org = NumberInFilter(field_name='organization', lookup_expr='in')
-    ownerorg = NumberInFilter(field_name='owner_organization', lookup_expr='in')
-    active = BooleanFilter()
+    org = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
+    ownerorg = NumberInFilter(field_name='owner_organization', lookup_expr='in', label='Filter by owner organization ID (or a list of owner organization IDs)')
+    active = BooleanFilter(label='Filter by whether contact is active or not')
 
     class Meta:
         model: User
@@ -211,7 +154,7 @@ class ContactFilter(FilterSet):
 
 
 class SearchFilter(FilterSet):
-    org = NumberInFilter(field_name='organization', lookup_expr='in')
+    org = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
 
     class Meta:
         model: Search
@@ -222,8 +165,9 @@ class SearchFilter(FilterSet):
 #     while all other labels (like diagnosis) are assigned to variables
 #       e.g., complete = BooleanFilter(field_name='complete', lookup_expr='exact', label=event.complete)
 class EventSummaryFilter(FilterSet):
-    # TODO: properly set these choices (need to be tuples)
-    AND_PARAMS = (('diagnosis', 'diagnosis'), ('diagnosis_type', 'diagnosis_type'), ('species', 'species'), ('administrative_level_one', 'administrative_level_one'), ('administrative_level_two', 'administrative_level_two'), )
+    AND_PARAMS = (('diagnosis', 'diagnosis'), ('diagnosis_type', 'diagnosis_type'), ('species', 'species'),
+                  ('administrative_level_one', 'administrative_level_one'),
+                  ('administrative_level_two', 'administrative_level_two'), )
     PERMISSION_SOURCES = (('own', 'own'), ('organization', 'organization'), ('collaboration', 'collaboration'), )
 
     # do nothing, as this query param is not an independent filter on any fields,
@@ -429,8 +373,8 @@ class EventSummaryFilter(FilterSet):
         return queryset
 
     and_params = ChoiceFilter(choices=AND_PARAMS, method=filter_and_params)
-    complete = BooleanFilter()
-    public = BooleanFilter()
+    complete = BooleanFilter(label='Filter by whether event is complete or not')
+    public = BooleanFilter(label='Filter by whether event is public or not')
     permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method=filter_permission_sources)
     event_type = NumberInFilter(lookup_expr='in')
     diagnosis = NumberInFilter(method=filter_diagnosis)
