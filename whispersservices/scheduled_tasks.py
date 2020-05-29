@@ -781,7 +781,7 @@ def standard_notifications():
 def purge_stale_notifications():
     # 90 days purge (all notifications)
     ninety_days_ago = datetime.strftime(datetime.now() - timedelta(days=90), '%Y-%m-%d')
-    Notification.objects.filter(created_date__gte=ninety_days_ago).delete()
+    Notification.objects.filter(created_date__lte=ninety_days_ago).delete()
 
     # 500 max purge (notifications per user)
     users_with_notifs_over_500 = Notification.objects.values('recipient').order_by().annotate(
