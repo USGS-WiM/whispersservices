@@ -55,7 +55,8 @@ def get_change_info(history_record, model_name):
         details = "<br />A Species Diagnosis Organization was {}: {}".format(
             alt_action, history_record.organization.name)
     else:
-        details = "<br />A {} was {}".format(model_name, action)
+        a_an = "An" if model[0].lower() in ['a', 'e', 'i', 'o', 'u'] else "A"
+        details = "<br />{} {} was {}".format(a_an, model, action)
     return details.rstrip()
 
 
@@ -165,10 +166,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                 continue
                             # substitute related object names for foreign key IDs
                             elif model_name == 'event':
-                                # but also ignore automatically calculated fields (non-editable by user)
-                                if fld in ['start_date', 'end_date', 'affected_count']:
-                                    continue
-                                elif fld == 'event_type':
+                                if fld == 'event_type':
                                     change.new = EventType.objects.get(id=change.new) if change.new else change.new
                                     change.old = EventType.objects.get(id=change.old) if change.old else change.old
                                 elif fld == 'event_reference':
@@ -250,7 +248,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         change.old = "\"\"" if change.old == '' else change.old
                                     else:
                                         continue
-                                if fld == 'country':
+                                elif fld == 'country':
                                     change.new = Country.objects.get(id=change.new) if change.new else change.new
                                     change.old = Country.objects.get(id=change.old) if change.old else change.old
                                 elif fld == 'administrative_level_one':
@@ -269,7 +267,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                     locality = AdministrativeLevelLocality.objects.filter(country=h.country).first()
                                     if locality and locality.admin_level_two_name:
                                         change.field = locality.admin_level_two_name
-                                if fld == 'latitude':
+                                elif fld == 'latitude':
                                     # check permissions (visible to privileged users only!)
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
@@ -281,7 +279,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         change.old = "\"\"" if change.old == '' else change.old
                                     else:
                                         continue
-                                if fld == 'longitude':
+                                elif fld == 'longitude':
                                     # check permissions (visible to privileged users only!)
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
@@ -306,7 +304,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         change.old = LandOwnership.objects.get(id=chg.old) if chg.old else chg.old
                                     else:
                                         continue
-                                if fld == 'gnis_name':
+                                elif fld == 'gnis_name':
                                     # check permissions (visible to privileged users only!)
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
@@ -318,7 +316,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         change.old = "\"\"" if change.old == '' else change.old
                                     else:
                                         continue
-                                if fld == 'gnis_id':
+                                elif fld == 'gnis_id':
                                     # check permissions (visible to privileged users only!)
                                     if (cue_user.id == h.created_by.id
                                             or cue_user.organization.id == h.created_by.organization.id
@@ -520,12 +518,12 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
     return [recipients, event_user.username, event.id, 'event', subject, body, send_email, email_to, org]
 
 
-def own_events_new(events_created_yesterday, user_id):
+def own_events_new(events_created_yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Your Events').first()
 
     standard_notification_cues_new = NotificationCueStandard.objects.filter(
-        standard_type__name='Own', notification_cue_preference__create_when_new=True, created_by=user_id)
+        standard_type__name='Own', notification_cue_preference__create_when_new=True, created_by=user.id)
     for event in events_created_yesterday:
         for cue in standard_notification_cues_new:
             if cue.created_by.id == event.created_by.id:
@@ -535,12 +533,12 @@ def own_events_new(events_created_yesterday, user_id):
     return notifications
 
 
-def own_events_updated(events_updated_yesterday, yesterday, user_id):
+def own_events_updated(events_updated_yesterday, yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Your Events').first()
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
-        standard_type__name='Own', notification_cue_preference__create_when_modified=True, created_by=user_id)
+        standard_type__name='Own', notification_cue_preference__create_when_modified=True, created_by=user.id)
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
@@ -563,12 +561,12 @@ def own_events_updated(events_updated_yesterday, yesterday, user_id):
     return notifications
 
 
-def organization_events_new(events_created_yesterday, user_id):
+def organization_events_new(events_created_yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Organization Events').first()
 
     standard_notification_cues_new = NotificationCueStandard.objects.filter(
-        standard_type__name='Organization', notification_cue_preference__create_when_new=True, created_by=user_id)
+        standard_type__name='Organization', notification_cue_preference__create_when_new=True, created_by=user.id)
     for event in events_created_yesterday:
         for cue in standard_notification_cues_new:
             if (cue.created_by.organization.id == event.created_by.organization.id
@@ -579,12 +577,12 @@ def organization_events_new(events_created_yesterday, user_id):
     return notifications
 
 
-def organization_events_updated(events_updated_yesterday, yesterday, user_id):
+def organization_events_updated(events_updated_yesterday, yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Organization Events').first()
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
-        standard_type__name='Organization', notification_cue_preference__create_when_modified=True, created_by=user_id)
+        standard_type__name='Organization', notification_cue_preference__create_when_modified=True, created_by=user.id)
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
@@ -608,12 +606,12 @@ def organization_events_updated(events_updated_yesterday, yesterday, user_id):
     return notifications
 
 
-def collaborator_events_new(events_created_yesterday, user_id):
+def collaborator_events_new(events_created_yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Events').first()
 
     standard_notification_cues_new = NotificationCueStandard.objects.filter(
-        standard_type__name='Collaborator', notification_cue_preference__create_when_new=True, created_by=user_id)
+        standard_type__name='Collaborator', notification_cue_preference__create_when_new=True, created_by=user.id)
     for event in events_created_yesterday:
         event_collaborator_ids = set(list(User.objects.filter(
             Q(eventwriteusers__event_id=event.id) |
@@ -627,12 +625,12 @@ def collaborator_events_new(events_created_yesterday, user_id):
     return notifications
 
 
-def collaborator_events_updated(events_updated_yesterday, yesterday, user_id):
+def collaborator_events_updated(events_updated_yesterday, yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Events').first()
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
-        standard_type__name='Collaborator', notification_cue_preference__create_when_modified=True, created_by=user_id)
+        standard_type__name='Collaborator', notification_cue_preference__create_when_modified=True, created_by=user.id)
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
@@ -659,22 +657,23 @@ def collaborator_events_updated(events_updated_yesterday, yesterday, user_id):
     return notifications
 
 
-def all_events_new(events_created_yesterday, user_id):
+def all_events_new(events_created_yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='ALL Events').first()
 
     standard_notification_cues_new = NotificationCueStandard.objects.filter(
-        standard_type__name='All', notification_cue_preference__create_when_new=True, created_by=user_id)
+        standard_type__name='All', notification_cue_preference__create_when_new=True, created_by=user.id)
     for event in events_created_yesterday:
-        for cue in standard_notification_cues_new:
-            # do not create notifications for private events for users who are not the event owner
-            #  or not in their org or are not event collaborators
-            if event.public or (cue.created_by.id == event.created_by.id
-                                or cue.created_by.organization.id == event.created_by.organization.id
-                                or cue.created_by.organization.id in event.created_by.parent_organizations
-                                or cue.created_by.id in list(User.objects.filter(
-                        Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
-                    ).values_list('id', flat=True))):
+        # check if event is private, and if so check user permissions
+        # do not create notifications for private events for users who are not the event owner
+        #  or not in their org or are not event collaborators
+        if event.public or (user.id == event.created_by.id
+                            or user.organization.id == event.created_by.organization.id
+                            or user.organization.id in event.created_by.parent_organizations
+                            or user.id in list(User.objects.filter(
+                    Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
+                ).values_list('id', flat=True))):
+            for cue in standard_notification_cues_new:
                 send_email = cue.notification_cue_preference.send_email
                 recipients = [cue.created_by.id, ]
                 email_to = [cue.created_by.email, ] if send_email else []
@@ -701,12 +700,12 @@ def all_events_new(events_created_yesterday, user_id):
     return notifications
 
 
-def all_events_updated(events_updated_yesterday, yesterday, user_id):
+def all_events_updated(events_updated_yesterday, yesterday, user):
     notifications = []
     msg_tmp = NotificationMessageTemplate.objects.filter(name='ALL Events').first()
 
     standard_notification_cues_updated = NotificationCueStandard.objects.filter(
-        standard_type__name='All', notification_cue_preference__create_when_modified=True, created_by=user_id)
+        standard_type__name='All', notification_cue_preference__create_when_modified=True, created_by=user.id)
     for event in events_updated_yesterday:
         # Create one notification per distinct updater (not including the creator)
         # django_simple_history.history_type: + for create, ~ for update, and - for delete
@@ -763,16 +762,17 @@ def all_events_updated(events_updated_yesterday, yesterday, user_id):
 
 @shared_task(soft_time_limit=595, time_limit=600)
 def standard_notifications_by_user(yesterday, user_id):
+    user = User.objects.filter(id=user_id).first()
 
     try:
         new_events = Event.objects.filter(created_date=yesterday)
         updated_events = Event.objects.filter(modified_date=yesterday)
 
         if new_events:
-            own_evts_n = own_events_new(new_events, user_id)
-            org_evts_n = organization_events_new(new_events, user_id)
-            collab_evts_n = collaborator_events_new(new_events, user_id)
-            all_evts_n = all_events_new(new_events, user_id)
+            own_evts_n = own_events_new(new_events, user)
+            org_evts_n = organization_events_new(new_events, user)
+            collab_evts_n = collaborator_events_new(new_events, user)
+            all_evts_n = all_events_new(new_events, user)
         else:
             own_evts_n = []
             org_evts_n = []
@@ -780,10 +780,10 @@ def standard_notifications_by_user(yesterday, user_id):
             all_evts_n = []
 
         if updated_events:
-            own_evts_u = own_events_updated(updated_events, yesterday, user_id)
-            org_evts_u = organization_events_updated(updated_events, yesterday, user_id)
-            collab_evts_u = collaborator_events_updated(updated_events, yesterday, user_id)
-            all_evts_u = all_events_updated(updated_events, yesterday, user_id)
+            own_evts_u = own_events_updated(updated_events, yesterday, user)
+            org_evts_u = organization_events_updated(updated_events, yesterday, user)
+            collab_evts_u = collaborator_events_updated(updated_events, yesterday, user)
+            all_evts_u = all_events_updated(updated_events, yesterday, user)
         else:
             own_evts_u = []
             org_evts_u = []
@@ -823,7 +823,6 @@ def standard_notifications_by_user(yesterday, user_id):
                 generate_notification.delay(*notification)
 
     except SoftTimeLimitExceeded:
-        user = User.objects.filter(id=user_id).first()
         recip = EMAIL_WHISPERS
         subject = "WHISPERS ADMIN: Timeout Encountered During standard_notifications_by_user_task"
         body = "A timeout was encountered while generating standard notifications for user "
@@ -1088,6 +1087,7 @@ def build_custom_notifications_query(cue, base_queryset):
 
 @shared_task(soft_time_limit=595, time_limit=600)
 def custom_notifications_by_user(yesterday, user_id):
+    user = User.objects.filter(id=user_id).first()
 
     try:
         # An event with a number affected greater than or equal to the provided integer is created,
@@ -1095,7 +1095,7 @@ def custom_notifications_by_user(yesterday, user_id):
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
 
         custom_notification_cues_new = NotificationCueCustom.objects.filter(
-            notification_cue_preference__create_when_new=True, created_by=user_id)
+            notification_cue_preference__create_when_new=True, created_by=user.id)
         base_queryset = Event.objects.filter(created_date=yesterday)
         for cue in custom_notification_cues_new:
             queryset, criteria = build_custom_notifications_query(cue, base_queryset)
@@ -1104,10 +1104,10 @@ def custom_notifications_by_user(yesterday, user_id):
                 for event in queryset:
                     # do not create notifications for private events for users who are not the event owner
                     #  or not in their org or are not event collaborators
-                    if event.public or (cue.created_by.id == event.created_by.id
-                                        or cue.created_by.organization.id == event.created_by.organization.id
-                                        or cue.created_by.organization.id in event.created_by.parent_organizations
-                                        or cue.created_by.id in list(User.objects.filter(
+                    if event.public or (user.id == event.created_by.id
+                                        or user.organization.id == event.created_by.organization.id
+                                        or user.organization.id in event.created_by.parent_organizations
+                                        or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                             ).values_list('id', flat=True))):
                         send_email = cue.notification_cue_preference.send_email
@@ -1135,10 +1135,10 @@ def custom_notifications_by_user(yesterday, user_id):
                 for event in queryset:
                     # do not create notifications for private events for users who are not the event owner
                     #  or not in their org or are not event collaborators
-                    if event.public or (cue.created_by.id == event.created_by.id
-                                        or cue.created_by.organization.id == event.created_by.organization.id
-                                        or cue.created_by.organization.id in event.created_by.parent_organizations
-                                        or cue.created_by.id in list(User.objects.filter(
+                    if event.public or (user.id == event.created_by.id
+                                        or user.organization.id == event.created_by.organization.id
+                                        or user.organization.id in event.created_by.parent_organizations
+                                        or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                             ).values_list('id', flat=True))):
                         # Create one notification per distinct updater (not including the creator)
@@ -1175,7 +1175,6 @@ def custom_notifications_by_user(yesterday, user_id):
                                                                 send_email, email_to)
 
     except SoftTimeLimitExceeded:
-        user = User.objects.filter(id=user_id).first()
         recip = EMAIL_WHISPERS
         subject = "WHISPERS ADMIN: Timeout Encountered During custom_notifications_by_user_task"
         body = "A timeout was encountered while generating custom notifications for user "
