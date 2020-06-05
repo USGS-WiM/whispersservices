@@ -407,6 +407,7 @@ class CommentSerializer(serializers.ModelSerializer):
                 source = comment.created_by.username
                 recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
                 email_to = [service_request.created_by.email, ]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 subject = msg_tmp.subject_template.format(event_id=event_id)
                 body = msg_tmp.body_template.format(event_id=event_id)
@@ -416,6 +417,7 @@ class CommentSerializer(serializers.ModelSerializer):
                 source = service_request.created_by.username
                 recipients = [comment.created_by.id, ]
                 email_to = [comment.created_by.email, ]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 subject = msg_tmp.subject_template.format(event_id=event_id)
                 body = msg_tmp.body_template.format(event_id=event_id)
@@ -3931,6 +3933,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                 combined_comment = combined_comment + "<br />" + comment.comment
         else:
             combined_comment = "None"
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
         subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name, event_id=event_id)
         body = msg_tmp.body_template.format(
@@ -4407,6 +4410,7 @@ class UserSerializer(serializers.ModelSerializer):
         recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
         # email forwarding: Automatic, to user's email and to whispers@usgs.gov
         email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
         subject = msg_tmp.subject_template
         body = msg_tmp.body_template
@@ -4620,6 +4624,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
         email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
             role=3, organization__in=org_list)).values_list('email', flat=True))
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
@@ -4638,6 +4643,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         recipients = [ucr.created_by.id, ]
         # email forwarding: Automatic to the user's email
         email_to = [ucr.created_by.email, ]
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
         subject = msg_tmp.subject_template
         body = msg_tmp.body_template
@@ -4693,6 +4699,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                     instance.requester.id, ]
                 # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                 email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
                 subject = msg_tmp.subject_template
                 body = msg_tmp.body_template.format(role=instance.role_requested.name,
@@ -4708,6 +4715,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                     instance.requester.id, ]
                 # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                 email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
                 subject = msg_tmp.subject_template
                 body = msg_tmp.body_template

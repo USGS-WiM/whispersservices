@@ -346,6 +346,7 @@ class Event(PermissionsHistoryModel):
             self.__original_event_status = self.event_status
             # source: system
             source = 'system'
+            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
             madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
             # recipients: Epi staff
@@ -1395,6 +1396,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             email_to += [event.created_by.email, ]
             evt_loc = self.location_species.event_location
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
+            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
             subject = msg_tmp.subject_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
@@ -1607,6 +1609,7 @@ class ServiceRequest(PermissionsHistoryModel):
             recipients = [self.created_by.id, self.event.created_by.id, ]
             # email forwarding: Automatic, to the user who made the request and event owner
             email_to = [self.created_by.email, self.event.created_by.email, ]
+            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Response').first()
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(event_id=event_id)
@@ -2287,6 +2290,7 @@ class EventReadUser(PermissionsHistoryModel):
             # email forwarding: Automatic, to user that was made a collaborator.
             email_to = [self.user.email, ]
             event_id = self.event.id
+            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
@@ -2356,6 +2360,7 @@ class EventWriteUser(PermissionsHistoryModel):
             # email forwarding: Automatic, to user that was made a collaborator.
             email_to = [self.user.email, ]
             event_id = self.event.id
+            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
