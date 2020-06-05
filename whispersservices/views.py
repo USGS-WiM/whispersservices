@@ -100,6 +100,7 @@ def generate_notification_request_new(lookup_table, request):
     recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
     # email forwarding: Automatic, to whispers@usgs.gov
     email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
+    # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
     msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
     subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
     body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
@@ -275,6 +276,7 @@ class EventViewSet(HistoryViewSet):
         recipient_names = recipient_names.replace(", ", "", 1)
         # email forwarding: Automatic, to all users included in the notification request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
         body = msg_tmp.body_template.format(
@@ -315,6 +317,7 @@ class EventViewSet(HistoryViewSet):
             Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
                 role__in=[3, 4], organization__in=event_owner.parent_organizations)
         ).values_list('email', flat=True))
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         subject = msg_tmp.subject_template.format(event_id=event.id)
         # {first_name,last_name,organization,event_id,comment,email}
@@ -2609,6 +2612,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             public_queryset = queryset.filter(public=True).distinct()
             personal_queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                | Q(created_by__organization__in=user.organization.child_organizations)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
             queryset = public_queryset | personal_queryset
 

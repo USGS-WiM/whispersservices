@@ -49,16 +49,17 @@ def construct_notification_email(recipient_email, subject, html_body, include_bo
     to_list = [recipient_email, ]
     bcc_list = []
     reply_list = [EMAIL_WHISPERS, ]
-    headers = None  # {'Message-ID': 'foo'}
+    headers = None
     email = EmailMultiAlternatives(subject, body, from_address, to_list, bcc_list, reply_to=reply_list, headers=headers)
     email.attach_alternative(html_body, "text/html")
     if settings.ENVIRONMENT in ['production', 'test']:
         try:
             email.send(fail_silently=False)
         except TypeError:
-            message = "Notification saved but send email failed, please contact the administrator."
-            # raise serializers.ValidationError(jsonify_errors(message))
+            message = "Send email failed, please contact the administrator."
             print(jsonify_errors(message))
+    else:
+        print(email.__dict__)
     return email
 
 
@@ -106,6 +107,5 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
             # ensure no duplicate email recipients
             email_to = list(set(email_to))
             for recip in email_to:
-                notif_email = construct_notification_email(recip, subject, body, True)
-                print(notif_email.__dict__)
+                construct_notification_email(recip, subject, body, True)
     return True
