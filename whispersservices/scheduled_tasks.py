@@ -7,7 +7,22 @@ from whispersservices.immediate_tasks import generate_notification, construct_no
 
 
 def get_yesterday():
-    return datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
+    return datetime.strftime(datetime.now() - timedelta(days=0), '%Y-%m-%d')
+
+
+def send_notification_template_message_keyerror_email(template_name, encountered_key, expected_keys):
+    recip = EMAIL_WHISPERS
+    subject = "WHISPERS ADMIN: Notification Message Template KeyError"
+    body = "The \"" + template_name + "\" Notification Message Template encountered a KeyError"
+    body += " at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + ". Encountered " + str(encountered_key.args[0])
+    body += ", which is not in the list of expected keys:"
+    str_keys = ""
+    for key in expected_keys:
+        str_keys += ", " + str(key)
+    str_keys = str_keys.replace(", ", "", 1)
+    body += " [" + str_keys + "]."
+    notif_email = construct_notification_email(recip, subject, body, False)
+    print(notif_email.__dict__)
 
 
 def send_missing_notification_template_message_email(task_name, template_name):
@@ -529,10 +544,18 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         last_name = event_user.last_name
         org = event_user.organization.name
 
-    subject = msg_tmp.subject_template.format(event_id=event.id)
-    body = msg_tmp.body_template.format(
-        first_name=first_name, last_name=last_name, created_updated=created_updated,
-        event_id=event.id, event_date=event_date, updates=updates, new_updated=new_updated)
+    try:
+        subject = msg_tmp.subject_template.format(event_id=event.id)
+    except KeyError as e:
+        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+        subject = ""
+    try:
+        body = msg_tmp.body_template.format(
+            first_name=first_name, last_name=last_name, created_updated=created_updated,
+            event_id=event.id, event_date=event_date, updates=updates, new_updated=new_updated)
+    except KeyError as e:
+        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+        body = ""
 
     return [recipients, event_user.username, event.id, 'event', subject, body, send_email, email_to, org]
 
@@ -702,11 +725,18 @@ def get_event_notifications_all_new(events_created_yesterday, user):
                 evt_loc_name += ", " + evtloc.administrative_level_one.abbreviation
                 evt_loc_name += ", " + evtloc.country.abbreviation
                 all_evt_locs = evt_loc_name if len(all_evt_locs) == 0 else all_evt_locs + "; " + evt_loc_name
-
-            subject = msg_tmp.subject_template.format(event_id=event.id)
-            body = msg_tmp.body_template.format(
-                event_id=event.id, organization=event.created_by.organization.name, event_location=all_evt_locs,
-                event_date=event.created_date, new_updated="New", created_updated="created", updates="N/A")
+            try:
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+            except KeyError as e:
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                subject = ""
+            try:
+                body = msg_tmp.body_template.format(
+                    event_id=event.id, organization=event.created_by.organization.name, event_location=all_evt_locs,
+                    event_date=event.created_date, new_updated="New", created_updated="created", updates="N/A")
+            except KeyError as e:
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                body = ""
             source = event.created_by.organization.name
             org = source
 
@@ -757,11 +787,21 @@ def get_event_notifications_all_updated(events_updated_yesterday, yesterday, use
                             all_evt_locs = evt_loc_name if len(
                                 all_evt_locs) == 0 else all_evt_locs + "; " + evt_loc_name
 
-                        subject = msg_tmp.subject_template.format(event_id=event.id)
-                        body = msg_tmp.body_template.format(
-                            event_id=event.id, organization=source, event_location=all_evt_locs,
-                            event_date=event.modified_date, new_updated="Updated", created_updated="updated",
-                            updates=updates)
+                        try:
+                            subject = msg_tmp.subject_template.format(event_id=event.id)
+                        except KeyError as e:
+                            send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                              msg_tmp.message_variables)
+                            subject = ""
+                        try:
+                            body = msg_tmp.body_template.format(
+                                event_id=event.id, organization=source, event_location=all_evt_locs,
+                                event_date=event.modified_date, new_updated="Updated", created_updated="updated",
+                                updates=updates)
+                        except KeyError as e:
+                            send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                              msg_tmp.message_variables)
+                            body = ""
 
                         notifications.append([recipients, source, event.id, 'event', subject, body,
                                               send_email, email_to, org])
@@ -960,10 +1000,19 @@ def stale_event_notifications():
                         evt_loc_name += ", " + evtloc.country.abbreviation
                         all_evt_locs = evt_loc_name if len(all_evt_locs) == 0 else all_evt_locs + "; " + evt_loc_name
 
-                    subject = msg_tmp.subject_template.format(event_id=event.id)
-                    body = msg_tmp.body_template.format(
-                        event_id=event.id, event_location=all_evt_locs, event_date=event.created_date,
-                        stale_period=str(period))
+                    try:
+                        subject = msg_tmp.subject_template.format(event_id=event.id)
+                    except KeyError as e:
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        subject = ""
+                    try:
+                        body = msg_tmp.body_template.format(
+                            event_id=event.id, event_location=all_evt_locs, event_date=event.created_date,
+                            stale_period=str(period))
+                    except KeyError as e:
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                          msg_tmp.message_variables)
+                        body = ""
                     source = 'system'
                     generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
     return True
@@ -1178,11 +1227,21 @@ def custom_notifications_by_user(yesterday, user_id):
                             # email forwarding: Optional, set by user.
                             email_to = [cue.created_by.email, ] if send_email else []
 
-                            subject = msg_tmp.subject_template.format(event_id=event.id)
-                            body = msg_tmp.body_template.format(new_updated="New", criteria=criteria,
-                                                                organization=event.created_by.organization.name,
-                                                                created_updated="created", event_id=event.id,
-                                                                event_date=event.created_date, updates="N/A")
+                            try:
+                                subject = msg_tmp.subject_template.format(event_id=event.id)
+                            except KeyError as e:
+                                send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                                  msg_tmp.message_variables)
+                                subject = ""
+                            try:
+                                body = msg_tmp.body_template.format(new_updated="New", criteria=criteria,
+                                                                    organization=event.created_by.organization.name,
+                                                                    created_updated="created", event_id=event.id,
+                                                                    event_date=event.created_date, updates="N/A")
+                            except KeyError as e:
+                                send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                                  msg_tmp.message_variables)
+                                body = ""
                             # source: any organization who creates or updates an event that meets the trigger criteria
                             source = event.created_by.organization.name
                             generate_notification.delay(recipients, source, event.id, 'event', subject, body,
@@ -1229,11 +1288,21 @@ def custom_notifications_by_user(yesterday, user_id):
 
                                     # only create notifications if there are update details (non-empty string)
                                     if updates:
-                                        subject = msg_tmp.subject_template.format(event_id=event.id)
-                                        body = msg_tmp.body_template.format(
-                                            new_updated="Updated", criteria=criteria, organization=source,
-                                            created_updated="updated", event_id=event.id,
-                                            event_date=event.modified_date, updates=updates)
+                                        try:
+                                            subject = msg_tmp.subject_template.format(event_id=event.id)
+                                        except KeyError as e:
+                                            send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                                              msg_tmp.message_variables)
+                                            subject = ""
+                                        try:
+                                            body = msg_tmp.body_template.format(
+                                                new_updated="Updated", criteria=criteria, organization=source,
+                                                created_updated="updated", event_id=event.id,
+                                                event_date=event.modified_date, updates=updates)
+                                        except KeyError as e:
+                                            send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                                              msg_tmp.message_variables)
+                                            body = ""
 
                                         generate_notification.delay(recipients, source, event.id, 'event', subject,
                                                                     body, send_email, email_to)

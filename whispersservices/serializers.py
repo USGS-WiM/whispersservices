@@ -409,6 +409,7 @@ class CommentSerializer(serializers.ModelSerializer):
                 email_to = [service_request.created_by.email, ]
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
                 subject = msg_tmp.subject_template.format(event_id=event_id)
                 body = msg_tmp.body_template.format(event_id=event_id)
                 from whispersservices.immediate_tasks import generate_notification
@@ -419,6 +420,7 @@ class CommentSerializer(serializers.ModelSerializer):
                 email_to = [comment.created_by.email, ]
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
                 subject = msg_tmp.subject_template.format(event_id=event_id)
                 body = msg_tmp.body_template.format(event_id=event_id)
                 from whispersservices.immediate_tasks import generate_notification
@@ -3935,6 +3937,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             combined_comment = "None"
         # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
+        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
         subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name, event_id=event_id)
         body = msg_tmp.body_template.format(
             first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
@@ -4626,6 +4629,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             role=3, organization__in=org_list)).values_list('email', flat=True))
         # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
+        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
         subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
         body = msg_tmp.body_template.format(
             first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
@@ -4702,6 +4706,7 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
                 subject = msg_tmp.subject_template
+                # TODO: add protection here for when body encounters a KeyError exception (see scheduled_tasks.py for examples)
                 body = msg_tmp.body_template.format(role=instance.role_requested.name,
                                                     organization=instance.organization_requested.name)
                 event = None

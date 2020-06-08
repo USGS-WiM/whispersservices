@@ -353,6 +353,7 @@ class Event(PermissionsHistoryModel):
             recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
             # email forwarding: Automatic, to nwhc-epi@usgs.gov
             email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             subject = msg_tmp.subject_template.format(event_id=self.id)
             body = msg_tmp.body_template.format(event_id=self.id)
             from whispersservices.immediate_tasks import generate_notification
@@ -1398,6 +1399,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
             short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
             # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             subject = msg_tmp.subject_template.format(
                 species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
             body = msg_tmp.body_template.format(
@@ -1611,6 +1613,7 @@ class ServiceRequest(PermissionsHistoryModel):
             email_to = [self.created_by.email, self.event.created_by.email, ]
             # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Response').first()
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(event_id=event_id)
             from whispersservices.immediate_tasks import generate_notification
@@ -2292,6 +2295,7 @@ class EventReadUser(PermissionsHistoryModel):
             event_id = self.event.id
             # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
                                                 username=user.username, collaborator_type="Read", event_id=event_id)
@@ -2362,6 +2366,7 @@ class EventWriteUser(PermissionsHistoryModel):
             event_id = self.event.id
             # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             subject = msg_tmp.subject_template.format(event_id=event_id)
             body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
                                                 username=user.username, collaborator_type="Write", event_id=event_id)
