@@ -109,6 +109,7 @@ EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
 EMAIL_TIMEOUT = CONFIG.get('email', 'EMAIL_TIMEOUT')
 DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
 EMAIL_WHISPERS = CONFIG.get('email', 'EMAIL_WHISPERS')
+EMAIL_NWHC_EPI = CONFIG.get('email', 'EMAIL_NWHC_EPI')
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
