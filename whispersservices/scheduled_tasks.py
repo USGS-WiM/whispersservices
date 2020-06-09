@@ -975,19 +975,31 @@ def purge_stale_notifications():
 
 @shared_task()
 def stale_event_notifications():
+    msg_tmp = NotificationMessageTemplate.objects.filter(name='Stale Events').first()
+    if not msg_tmp:
+        send_missing_notification_template_message_email('standard_notifications', 'Stale Events')
+        return True
+
     stale_event_periods = Configuration.objects.filter(name='stale_event_periods').first()
     if stale_event_periods:
         stale_event_periods_list = stale_event_periods.value.split(',')
         if all(x.strip().isdigit() for x in stale_event_periods_list):
             stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
-            msg_tmp = NotificationMessageTemplate.objects.filter(name='Stale Events').first()
-            for period in stale_event_periods_list_ints:
+            stale_event_periods_list_ints_len = len(stale_event_periods_list_ints) - 1
+            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+            for index, period in enumerate(stale_event_periods_list_ints):
                 period_date = datetime.strftime(datetime.now() - timedelta(days=period), '%Y-%m-%d')
-                all_stale_events = Event.objects.filter(complete=False, created_date__gte=period_date)
+                if index == stale_event_periods_list_ints_len:
+                    all_stale_events = Event.objects.filter(complete=False, created_date__lte=period_date)
+                else:
+                    next_period_date = datetime.strftime(datetime.now() - timedelta(
+                        days=stale_event_periods_list_ints[index + 1]), '%Y-%m-%d')
+                    all_stale_events = Event.objects.filter(
+                        complete=False, created_date__lte=period_date, created_date__gt=next_period_date)
                 for event in all_stale_events:
-                    recipients = list(User.objects.filter(name='nwhc-epi').values_list('id', flat=True))
+                    recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
                     recipients += [event.created_by.id, ]
-                    email_to = list(User.objects.filter(name='nwhc-epi').values_list('email', flat=True))
+                    email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
                     email_to += [event.created_by.email, ]
 
                     eventlocations = EventLocation.objects.filter(event=event.id)
@@ -1321,6 +1333,7 @@ def custom_notifications_by_user(yesterday, user_id):
 
 @shared_task(soft_time_limit=595, time_limit=600)
 def custom_notifications():
+    return True
     msg_tmp = NotificationMessageTemplate.objects.filter(name='Custom Notification').first()
 
     if not msg_tmp:
