@@ -102,6 +102,7 @@ def generate_notification_request_new(lookup_table, request):
     email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
     # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
     msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
+    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
     subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
     body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
                                   organization=user.organization.name, lookup_table=lookup_table,
@@ -278,6 +279,7 @@ class EventViewSet(HistoryViewSet):
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
+        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
         subject = msg_tmp.subject_template.format(event_id=event.id)
         body = msg_tmp.body_template.format(
             first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
@@ -319,6 +321,7 @@ class EventViewSet(HistoryViewSet):
         ).values_list('email', flat=True))
         # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
+        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
         subject = msg_tmp.subject_template.format(event_id=event.id)
         # {first_name,last_name,organization,event_id,comment,email}
         body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
