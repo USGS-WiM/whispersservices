@@ -206,6 +206,12 @@ class EventViewSet(HistoryViewSet):
     
     delete:
     Deletes an event.
+
+    alert_collaborator:
+    Sends an alert notification to a collaborator (or list of collaborators) of this event.
+
+    request_collaboration:
+    Sends a notification to the event owner and their superiors asking for the requester to become a collaborator on this event
     """
 
     serializer_class = EventSerializer
@@ -1038,22 +1044,22 @@ class AdministrativeLevelLocalityViewSet(HistoryViewSet):
 class LandOwnershipViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all landownerships.
+    Returns a list of all land ownerships.
 
     create:
-    Creates a new landownership.
+    Creates a new land ownership.
     
     read:
-    Returns a landownership by id.
+    Returns a land ownership by id.
     
     update:
-    Updates a landownership.
+    Updates a land ownership.
     
     partial_update:
-    Updates parts of a landownership.
+    Updates parts of a land ownership.
     
     delete:
-    Deletes a landownership.
+    Deletes a land ownership.
     """
 
     queryset = LandOwnership.objects.all()
@@ -1204,7 +1210,7 @@ class SpeciesViewSet(HistoryViewSet):
 class AgeBiasViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all age biasses.
+    Returns a list of all age biases.
 
     create:
     Creates an age bias.
@@ -1229,7 +1235,7 @@ class AgeBiasViewSet(HistoryViewSet):
 class SexBiasViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all sex biasses.
+    Returns a list of all sex biases.
 
     create:
     Creates a sex bias.
@@ -1606,25 +1612,27 @@ class ServiceRequestResponseViewSet(HistoryViewSet):
 
 class NotificationViewSet(HistoryViewSet):
     """
-        list:
-        Returns a list of all notifications.
+    list:
+    Returns a list of all notifications.
 
-        create:
-        Creates a notification.
+    create:
+    Creates a notification.
 
-        read:
-        Returns a notification by id.
+    read:
+    Returns a notification by id.
 
-        update:
-        Updates a notification.
+    update:
+    Updates a notification.
 
-        partial_update:
-        Updates parts of a notification.
+    partial_update:
+    Updates parts of a notification.
 
-        delete:
-        Deletes a notification.
-        """
+    delete:
+    Deletes a notification.
 
+    bulk_update:
+    Updates multiple notifications.
+    """
     serializer_class = NotificationSerializer
     filter_backends = (DjangoFilterBackend,)
     filterset_class = NotificationFilter
@@ -1710,6 +1718,25 @@ class NotificationViewSet(HistoryViewSet):
 
 
 class NotificationCuePreferenceViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all notification cue ('trigger') preferences.
+
+    create:
+    Creates a notification cue ('trigger') preference.
+
+    read:
+    Returns a notification cue ('trigger') preference by id.
+
+    update:
+    Updates a notification cue ('trigger') preference.
+
+    partial_update:
+    Updates parts of a notification cue ('trigger') preference.
+
+    delete:
+    Deletes a notification cue ('trigger') preference.
+    """
     serializer_class = NotificationCuePreferenceSerializer
 
     def get_queryset(self):
@@ -1729,6 +1756,25 @@ class NotificationCuePreferenceViewSet(HistoryViewSet):
 
 
 class NotificationCueCustomViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all custom notification cues ('triggers').
+
+    create:
+    Creates a custom notification cue ('trigger').
+
+    read:
+    Returns a custom notification cue ('trigger') by id.
+
+    update:
+    Updates a custom notification cue ('trigger').
+
+    partial_update:
+    Updates parts of a custom notification cue ('trigger').
+
+    delete:
+    Deletes a custom notification cue ('trigger').
+    """
     serializer_class = NotificationCueCustomSerializer
 
     def get_queryset(self):
@@ -1748,6 +1794,25 @@ class NotificationCueCustomViewSet(HistoryViewSet):
 
 
 class NotificationCueStandardViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all standard notification cues ('triggers').
+
+    create:
+    Creates a standard notification cue ('trigger').
+
+    read:
+    Returns a standard notification cue ('trigger') by id.
+
+    update:
+    Updates a standard notification cue ('trigger').
+
+    partial_update:
+    Updates parts of a standard notification cue ('trigger').
+
+    delete:
+    Deletes a standard notification cue ('trigger').
+    """
     serializer_class = NotificationCueStandardSerializer
 
     def get_queryset(self):
@@ -1767,6 +1832,25 @@ class NotificationCueStandardViewSet(HistoryViewSet):
 
 
 class NotificationCueStandardTypeViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all standard notification cue ('trigger') types.
+
+    create:
+    Creates a standard notification cue ('trigger') type.
+
+    read:
+    Returns a standard notification cue ('trigger') type by id.
+
+    update:
+    Updates a standard notification cue ('trigger') type.
+
+    partial_update:
+    Updates parts of a standard notification cue ('trigger') type.
+
+    delete:
+    Deletes a standard notification cue ('trigger') type.
+    """
     queryset = NotificationCueStandardType.objects.all()
     serializer_class = NotificationCueStandardTypeSerializer
 
@@ -1901,25 +1985,25 @@ class ArtifactViewSet(HistoryViewSet):
 class UserViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all artifacts.
+    Returns a list of all users.
 
     create:
-    Creates an artifact.
-
-    request_new:
-    Request to have a new user added.
+    Creates a user.
     
     read:
-    Returns an artifact by id.
+    Returns a user by id.
     
     update:
-    Updates an artifact.
+    Updates a user.
     
     partial_update:
-    Updates parts of an artifact.
+    Updates parts of a user.
     
     delete:
-    Deletes an artifact.
+    Deletes a user.
+
+    verify_email:
+    Returns two lists: one of users whose email addresses match the submitted email addresses, and one of email addresses that had no matches.
     """
 
     serializer_class = UserSerializer
@@ -1983,7 +2067,7 @@ class UserViewSet(HistoryViewSet):
 class AuthView(views.APIView):
     """
     create:
-    Determines if the submitted username and password match a user and whether the user is active
+    Determines if the submitted username and password match a user and whether the user is active.
     """
 
     authentication_classes = (CustomBasicAuthentication,)
@@ -2025,22 +2109,22 @@ class RoleViewSet(HistoryViewSet):
 class UserChangeRequestViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all role change requests.
+    Returns a list of all user change requests.
 
     create:
-    Creates a role change request.
+    Creates a user change request.
 
     read:
-    Returns a role change request by id.
+    Returns a user change request by id.
 
     update:
-    Updates a role change request.
+    Updates a user change request.
 
     partial_update:
-    Updates parts of a role change request.
+    Updates parts of a user change request.
 
     delete:
-    Deletes a role change request.
+    Deletes a user change request.
     """
 
     serializer_class = UserChangeRequestSerializer
@@ -2069,22 +2153,22 @@ class UserChangeRequestViewSet(HistoryViewSet):
 class UserChangeRequestResponseViewSet(HistoryViewSet):
     """
     list:
-    Returns a list of all role change request responses.
+    Returns a list of all user change request responses.
 
     create:
-    Creates a role change request response.
+    Creates a user change request response.
 
     read:
-    Returns a role change request response by id.
+    Returns a user change request response by id.
 
     update:
-    Updates a role change request response.
+    Updates a user change request response.
 
     partial_update:
-    Updates parts of a role change request response.
+    Updates parts of a user change request response.
 
     delete:
-    Deletes a role change request response.
+    Deletes a user change request response.
     """
 
     queryset = UserChangeRequestResponse.objects.all().exclude(name="Pending")
@@ -2657,7 +2741,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     Returns an event detail.
     
     flat:
-    Returns a flattened response for an event detail by id.
+    Returns a flattened (not nested) response for an event detail by id.
     """
 
     schema = AutoSchema(operation_id_base="EventDetail")
