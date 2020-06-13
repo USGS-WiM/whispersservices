@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
@@ -57,6 +58,14 @@ EMAIL_WHISPERS = settings.EMAIL_WHISPERS
 whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
 if whispers_email_address and whispers_email_address.value.count('@') == 1:
     EMAIL_WHISPERS = whispers_email_address.value
+
+
+def update_modified_fields(obj, request):
+    # update the modified fields so that the model is aware of who performed this delete,
+    #  which will bubble up to the event modified fields
+    obj.modified_by = request.user
+    obj.modified_date = date.today()
+    obj.save(update_fields=['modified_by', 'modified_date'])
 
 
 def get_request_user(request):
@@ -474,6 +483,9 @@ class EventEventGroupViewSet(HistoryViewSet):
             message = "EventGroup for a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventEventGroupViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by user type
@@ -725,6 +737,9 @@ class EventAbstractViewSet(HistoryViewSet):
             message = "Abstracts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventAbstractViewSet, self).destroy(request, *args, **kwargs)
 
     def get_queryset(self):
@@ -764,6 +779,9 @@ class EventCaseViewSet(HistoryViewSet):
             message = "Cases from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventCaseViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -796,6 +814,9 @@ class EventLabsiteViewSet(HistoryViewSet):
             message = "Labsites from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventLabsiteViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -827,6 +848,9 @@ class EventOrganizationViewSet(HistoryViewSet):
             message = "Organizations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -883,6 +907,9 @@ class EventContactViewSet(HistoryViewSet):
             message = "Contacts from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -937,6 +964,9 @@ class EventLocationViewSet(HistoryViewSet):
             message = "Locations from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventLocationViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -993,6 +1023,9 @@ class EventLocationContactViewSet(HistoryViewSet):
             message = "Contacts from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventLocationContactViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default queryset to allow filtering by URL arguments
@@ -1216,6 +1249,9 @@ class EventLocationFlywayViewSet(HistoryViewSet):
             message = "Flyways from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(EventLocationFlywayViewSet, self).destroy(request, *args, **kwargs)
 
 
@@ -1278,6 +1314,9 @@ class LocationSpeciesViewSet(HistoryViewSet):
             message = "Species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(LocationSpeciesViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1507,6 +1546,10 @@ class EventDiagnosisViewSet(HistoryViewSet):
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
 
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
+
         destroyed_event_diagnosis = super(EventDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
         # Ensure at least one other EventDiagnosis exists for the parent Event after the EventDiagnosis deletion above,
@@ -1575,6 +1618,9 @@ class SpeciesDiagnosisViewSet(HistoryViewSet):
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(SpeciesDiagnosisViewSet, self).destroy(request, *args, **kwargs)
 
     # override the default serializer_class to ensure the requester sees only permitted data
@@ -1633,6 +1679,9 @@ class SpeciesDiagnosisOrganizationViewSet(HistoryViewSet):
             message = "Diagnoses from a species from a location from a complete event may not be changed"
             message += " unless the event is first re-opened by the event owner or an administrator."
             raise serializers.ValidationError(message)
+        # update the modified fields so that the model is aware of who performed this delete,
+        #  which will bubble up to the event modified fields
+        update_modified_fields(self.get_object(), request)
         return super(SpeciesDiagnosisOrganizationViewSet, self).destroy(request, *args, **kwargs)
 
 
