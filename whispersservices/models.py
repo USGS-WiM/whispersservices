@@ -598,6 +598,13 @@ class EventOrganization(PermissionsHistoryModel):
     organization = models.ForeignKey('Organization', models.CASCADE, help_text='A foreign key integer value identifying a organization')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event organizations priority')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventOrganization, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event' in request.data:
@@ -610,10 +617,16 @@ class EventOrganization(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to update the parent event's modified_date
+    # override the save method to update the parent event's modified_date, but only when priority was not updated
     def save(self, *args, **kwargs):
         super(EventOrganization, self).save(*args, **kwargs)
-        if self.event.modified_by.id != self.modified_by.id or self.event.modified_date != self.modified_date:
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority and
+                (self.event.modified_by.id != self.modified_by.id or self.event.modified_date != self.modified_date)):
             event = Event.objects.filter(id=self.event.id).first()
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
@@ -716,6 +729,13 @@ class EventLocation(PermissionsHistoryModel):
     gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
     comments = GenericRelation('Comment', related_name='eventlocations')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventLocation, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event' in request.data:
@@ -766,22 +786,35 @@ class EventLocation(PermissionsHistoryModel):
         # End date: If 1 or more location end dates is null then leave blank, otherwise use latest date from locations.
         if len(locations) > 0:
             start_dates = [loc['start_date'] for loc in locations if loc['start_date'] is not None]
-            event.start_date = min(start_dates) if len(start_dates) > 0 else None
+            new_start_date = min(start_dates) if len(start_dates) > 0 else None
             end_dates = [loc['end_date'] for loc in locations]
             if len(end_dates) < 1 or None in end_dates:
-                event.end_date = None
+                new_end_date = None
             else:
-                event.end_date = max(end_dates)
+                new_end_date = max(end_dates)
         else:
-            event.start_date = None
-            event.end_date = None
+            new_start_date = None
+            new_end_date = None
 
         # affected_count
         new_affected_count = self.update_event_affected_count(event, locations)
 
         if (event.affected_count != new_affected_count
-                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+                or event.end_date != new_end_date or event.start_date != new_start_date):
             event.affected_count = new_affected_count
+            event.end_date = new_end_date
+            event.start_date = new_start_date
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date)):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1033,6 +1066,13 @@ class LocationSpecies(PermissionsHistoryModel):
     age_bias = models.ForeignKey('AgeBias', models.PROTECT, null=True, related_name='locationspecies')
     sex_bias = models.ForeignKey('SexBias', models.PROTECT, null=True, related_name='locationspecies')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(LocationSpecies, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event_location' in request.data:
@@ -1080,9 +1120,19 @@ class LocationSpecies(PermissionsHistoryModel):
         # affected_count
         new_affected_count = self.update_event_affected_count(event)
 
-        if (event.affected_count != new_affected_count
-                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+        if event.affected_count != new_affected_count:
             event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date)):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1226,6 +1276,13 @@ class EventDiagnosis(PermissionsHistoryModel):
     major = models.BooleanField(default=False, help_text='A boolean value indicating if the event diagnosis is major or not')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event diagnosis priority')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventDiagnosis, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event' in request.data:
@@ -1327,9 +1384,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     # keep track of "previous" diagnosis to detect if the value changes during save
     __original_diagnosis = None
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
     def __init__(self, *args, **kwargs):
         super(SpeciesDiagnosis, self).__init__(*args, **kwargs)
         self.__original_diagnosis = self.diagnosis
+        self.__original_priority = self.priority
 
     @staticmethod
     def has_create_permission(request):
@@ -1426,9 +1487,19 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # affected_count
         new_affected_count = self.update_event_affected_count(event)
 
-        if (event.affected_count != new_affected_count
-                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+        if event.affected_count != new_affected_count:
             event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
+
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date)):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
