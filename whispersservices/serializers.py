@@ -139,7 +139,7 @@ def calculate_priority_event_organization(instance):
     # calculate the priority value:
     # Sort by owner organization first, then by order of entry.
     priority = 1
-    evt_orgs = EventOrganization.objects.filter(organization=instance.organization).order_by('id')
+    evt_orgs = EventOrganization.objects.filter(event=instance.event.id).order_by('created_by__organization__id', 'id')
     for evt_org in evt_orgs:
         if evt_org.id == instance.id:
             instance.priority = priority
@@ -163,7 +163,7 @@ def calculate_priority_event_diagnosis(instance):
     self_priority_updated = False
     # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
     evtdiags = EventDiagnosis.objects.filter(
-        event=instance.event).exclude(id=instance.id).order_by('diagnosis__name')
+        event=instance.event.id).exclude(id=instance.id).order_by('diagnosis__name')
     for evtdiag in evtdiags:
         # if self has not been updated and self diagnosis less than or equal to this evtdiag diagnosis name,
         # first update self priority then update this evtdiag priority
@@ -307,7 +307,7 @@ def calculate_priority_species_diagnosis(instance):
     self_priority_updated = False
     # get all species_diagnoses for the parent location_species except self, and sort by diagnosis cause then name
     specdiags = SpeciesDiagnosis.objects.filter(
-        location_species=instance.location_species).exclude(
+        location_species=instance.location_species.id).exclude(
         id=instance.id).order_by('cause__id', 'diagnosis__name')
     for specdiag in specdiags:
         # if self has not been updated and self diagnosis cause equal to or less than this specdiag diagnosis cause,
