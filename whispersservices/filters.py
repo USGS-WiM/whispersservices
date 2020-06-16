@@ -52,7 +52,7 @@ class AdministrativeLevelTwoFilter(FilterSet):
     administrativelevelone = NumberInFilter(field_name='administrative_level_one', lookup_expr='in', label='Filter by administrative level one (e.g., state or province) ID (or a list of administrative level one IDs)')
 
     class Meta:
-        model = AdministrativeLevelOne
+        model = AdministrativeLevelTwo
         fields = ['administrativelevelone', ]
 
 
