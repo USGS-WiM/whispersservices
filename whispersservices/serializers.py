@@ -140,7 +140,7 @@ def calculate_priority_event_organization(instance):
     # calculate the priority value:
     # Sort by owner organization first, then by order of entry.
     priority = 1
-    evt_orgs = EventOrganization.objects.filter(organization=instance.organization).order_by('id')
+    evt_orgs = EventOrganization.objects.filter(event=instance.event.id).order_by('created_by__organization__id', 'id')
     for evt_org in evt_orgs:
         if evt_org.id == instance.id:
             instance.priority = priority
@@ -164,7 +164,7 @@ def calculate_priority_event_diagnosis(instance):
     self_priority_updated = False
     # get all event_diagnoses for the parent event except self, and sort by diagnosis name ascending
     evtdiags = EventDiagnosis.objects.filter(
-        event=instance.event).exclude(id=instance.id).order_by('diagnosis__name')
+        event=instance.event.id).exclude(id=instance.id).order_by('diagnosis__name')
     for evtdiag in evtdiags:
         # if self has not been updated and self diagnosis less than or equal to this evtdiag diagnosis name,
         # first update self priority then update this evtdiag priority
@@ -308,7 +308,7 @@ def calculate_priority_species_diagnosis(instance):
     self_priority_updated = False
     # get all species_diagnoses for the parent location_species except self, and sort by diagnosis cause then name
     specdiags = SpeciesDiagnosis.objects.filter(
-        location_species=instance.location_species).exclude(
+        location_species=instance.location_species.id).exclude(
         id=instance.id).order_by('cause__id', 'diagnosis__name')
     for specdiag in specdiags:
         # if self has not been updated and self diagnosis cause equal to or less than this specdiag diagnosis cause,
@@ -943,12 +943,12 @@ class EventSerializer(serializers.ModelSerializer):
                         event_org = EventOrganization.objects.create(event=event, organization=org,
                                                                      created_by=user, modified_by=user)
                         event_org.priority = calculate_priority_event_organization(event_org)
-                        event_org.save()
+                        event_org.save(update_fields=['priority', ])
         else:
             event_org = EventOrganization.objects.create(event=event, organization=user.organization,
                                                          created_by=user, modified_by=user)
             event_org.priority = calculate_priority_event_organization(event_org)
-            event_org.save()
+            event_org.save(update_fields=['priority', ])
 
         # create the child comments for this event
         if new_comments is not None:
@@ -1031,7 +1031,7 @@ class EventSerializer(serializers.ModelSerializer):
             #                                                             diagnosis=diagnosis, suspect=suspect,
             #                                                             created_by=user, modified_by=user)
             #             event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
-            #             event_diagnosis.save()
+            #             event_diagnosis.save(update_fields=['priority', ])
             #             new_event_diagnoses_created.append(event_diagnosis)
             #     # If any new event diagnoses were created, check for existing Pending record and delete it
             #     if len(new_event_diagnoses_created) > 0:
@@ -1650,7 +1650,7 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         event_organization.priority = calculate_priority_event_organization(event_organization)
-        event_organization.save()
+        event_organization.save(update_fields=['priority', ])
 
         return event_organization
 
@@ -1659,10 +1659,11 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
 
         instance.organization = validated_data.get('organization', instance.organization)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_organization(instance)
-        instance.save()
+        instance.save(update_fields=['priority', ])
 
         return instance
 
@@ -2215,7 +2216,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         evt_location.priority = calculate_priority_event_location(evt_location)
-        evt_location.save()
+        evt_location.save(update_fields=['priority', ])
 
         return evt_location
 
@@ -2256,10 +2257,11 @@ class EventLocationSerializer(serializers.ModelSerializer):
         if ('name' in validated_data and 'gnis_name' in validated_data
                 and validated_data['name'] == '' and validated_data['gnis_name'] != ''):
             validated_data['name'] = validated_data['gnis_name']
+        instance.save()
 
         # calculate the priority value:
         instance.priority = calculate_priority_event_location(instance)
-        instance.save()
+        instance.save(update_fields=['priority', ])
 
         return instance
 
@@ -2651,7 +2653,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         location_species.priority = calculate_priority_location_species(location_species)
-        location_species.save()
+        location_species.save(update_fields=['priority', ])
 
         return location_species
 
@@ -2669,10 +2671,11 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         instance.age_bias = validated_data.get('age_bias', instance.age_bias)
         instance.sex_bias = validated_data.get('sex_bias', instance.sex_bias)
         instance.modified_by = user if user else validated_data.get('modified_by', instance.modified_by)
+        instance.save()
 
         # calculate the priority value:
         instance.priority = calculate_priority_location_species(instance)
-        instance.save()
+        instance.save(update_fields=['priority', ])
 
         return instance
 
@@ -2868,7 +2871,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         suspect = False if False in matching_specdiags_suspect else submitted_suspect
         event_diagnosis = EventDiagnosis.objects.create(**validated_data, suspect=suspect)
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
-        event_diagnosis.save()
+        event_diagnosis.save(update_fields=['priority', ])
 
         # Now that we have the new event diagnoses created,
         # check for existing Pending record and delete it
@@ -2881,7 +2884,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
-        event_diagnosis.save()
+        event_diagnosis.save(update_fields=['priority', ])
 
         return event_diagnosis
 
@@ -2908,9 +2911,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         if instance.event.complete:
             [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
 
+        instance.save()
+
         # calculate the priority value:
         instance.priority = calculate_priority_event_diagnosis(instance)
-        instance.save()
+        instance.save(update_fields=['priority', ])
 
         return instance
 
@@ -3072,7 +3077,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         species_diagnosis.priority = calculate_priority_species_diagnosis(species_diagnosis)
-        species_diagnosis.save()
+        species_diagnosis.save(update_fields=['priority', ])
 
         if new_species_diagnosis_organizations is not None:
             for org_id in new_species_diagnosis_organizations:
@@ -3110,7 +3115,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
 
         # calculate the priority value:
         instance.priority = calculate_priority_species_diagnosis(instance)
-        instance.save()
+        instance.save(update_fields=['priority', ])
 
         # identify and delete relates where org IDs are present in old list but not new list
         delete_org_ids = list(set(old_org_ids) - set(new_org_ids))

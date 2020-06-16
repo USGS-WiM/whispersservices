@@ -603,6 +603,13 @@ class EventOrganization(PermissionsHistoryModel):
     organization = models.ForeignKey('Organization', models.CASCADE, help_text='A foreign key integer value identifying a organization')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event organizations priority')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventOrganization, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event' in request.data:
@@ -615,21 +622,32 @@ class EventOrganization(PermissionsHistoryModel):
         event_id = self.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    # override the save method to update the parent event's modified_date
+    # override the save method to update the parent event's modified_date, but only when priority was not updated
     def save(self, *args, **kwargs):
         super(EventOrganization, self).save(*args, **kwargs)
-        event = Event.objects.filter(id=self.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (not self.event.modified_by or not self.event.modified_date
+                     or (self.event.modified_by.id != self.modified_by.id
+                         or self.event.modified_date != self.modified_date))):
+            event = Event.objects.filter(id=self.event.id).first()
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event.id).first()
         super(EventOrganization, self).delete(*args, **kwargs)
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not event.modified_by or not event.modified_date
+                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -663,18 +681,22 @@ class EventContact(PermissionsHistoryModel):
     # override the save method to update the parent event's modified_date
     def save(self, *args, **kwargs):
         super(EventContact, self).save(*args, **kwargs)
-        event = Event.objects.filter(id=self.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not self.event.modified_by or not self.event.modified_date
+                or self.event.modified_by.id != self.modified_by.id or self.event.modified_date != self.modified_date):
+            event = Event.objects.filter(id=self.event.id).first()
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event.id).first()
         super(EventContact, self).delete(*args, **kwargs)
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not self.event.modified_by or not self.event.modified_date
+                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -716,6 +738,13 @@ class EventLocation(PermissionsHistoryModel):
     gnis_name = models.CharField(max_length=256, blank=True, default='', help_text='An alphanumeric value of the GNIS name of this event location')
     gnis_id = models.CharField(max_length=256, blank=True, db_index=True, default='')
     comments = GenericRelation('Comment', related_name='eventlocations')
+
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventLocation, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
 
     @staticmethod
     def has_create_permission(request):
@@ -767,24 +796,40 @@ class EventLocation(PermissionsHistoryModel):
         # End date: If 1 or more location end dates is null then leave blank, otherwise use latest date from locations.
         if len(locations) > 0:
             start_dates = [loc['start_date'] for loc in locations if loc['start_date'] is not None]
-            event.start_date = min(start_dates) if len(start_dates) > 0 else None
+            new_start_date = min(start_dates) if len(start_dates) > 0 else None
             end_dates = [loc['end_date'] for loc in locations]
             if len(end_dates) < 1 or None in end_dates:
-                event.end_date = None
+                new_end_date = None
             else:
-                event.end_date = max(end_dates)
+                new_end_date = max(end_dates)
         else:
-            event.start_date = None
-            event.end_date = None
+            new_start_date = None
+            new_end_date = None
 
         # affected_count
-        event.affected_count = self.update_event_affected_count(event, locations)
+        new_affected_count = self.update_event_affected_count(event, locations)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if (event.affected_count != new_affected_count
+                or event.end_date != new_end_date or event.start_date != new_start_date):
+            event.affected_count = new_affected_count
+            event.end_date = new_end_date
+            event.start_date = new_start_date
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
-        event.save()
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (not event.modified_by or not event.modified_date
+                     or (event.modified_by.id != self.modified_by.id
+                         or event.modified_date != self.modified_date))):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
@@ -794,13 +839,15 @@ class EventLocation(PermissionsHistoryModel):
         locations = EventLocation.objects.filter(event=event.id).values('id', 'start_date', 'end_date')
 
         # affected_count
-        event.affected_count = self.update_event_affected_count(event, locations)
+        new_affected_count = self.update_event_affected_count(event, locations)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-
-        event.save()
+        if (event.affected_count != new_affected_count
+                or not event.modified_by or not event.modified_date
+                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+            event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return self.name
@@ -834,18 +881,22 @@ class EventLocationContact(PermissionsHistoryModel):
     # override the save method to update the parent event's modified_date
     def save(self, *args, **kwargs):
         super(EventLocationContact, self).save(*args, **kwargs)
-        event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not self.event_location.event.modified_by or not self.event_location.event.modified_date
+                or self.event_location.event.modified_by.id != self.modified_by.id
+                or self.event_location.event.modified_date != self.modified_date):
+            event = Event.objects.filter(id=self.event_location.event.id).first()
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
         super(EventLocationContact, self).delete(*args, **kwargs)
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if not event.modified_by or not event.modified_date or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -967,18 +1018,21 @@ class EventLocationFlyway(PermissionsHistoryModel):
     # override the save method to update the parent event's modified_date
     def save(self, *args, **kwargs):
         super(EventLocationFlyway, self).save(*args, **kwargs)
-        event = Event.objects.filter(id=self.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (self.event_location.event.modified_by.id != self.modified_by.id
+                or self.event_location.event.modified_date != self.modified_date):
+            event = Event.objects.filter(id=self.event_location.event.id).first()
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.event_location.event.id).first()
         super(EventLocationFlyway, self).delete(*args, **kwargs)
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date:
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -1026,6 +1080,13 @@ class LocationSpecies(PermissionsHistoryModel):
     age_bias = models.ForeignKey('AgeBias', models.PROTECT, null=True, related_name='locationspecies')
     sex_bias = models.ForeignKey('SexBias', models.PROTECT, null=True, related_name='locationspecies')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(LocationSpecies, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event_location' in request.data:
@@ -1038,7 +1099,7 @@ class LocationSpecies(PermissionsHistoryModel):
         event_id = self.event_location.event.id
         return determine_object_update_permission(self, request, event_id)
 
-    def update_event_affected_location(self, event):
+    def update_event_affected_count(self, event):
         # If EventType = Morbidity/Mortality
         # then Sum(Max(estimated_dead, dead) + Max(estimated_sick, sick)) from location_species table
         # If Event Type = Surveillance then Sum(number_positive) from species_diagnosis table
@@ -1068,17 +1129,29 @@ class LocationSpecies(PermissionsHistoryModel):
     # override the save method to calculate the parent event's affected_count and update the modified_date
     def save(self, *args, **kwargs):
         super(LocationSpecies, self).save(*args, **kwargs)
-
         event = Event.objects.filter(id=self.event_location.event.id).first()
 
         # affected_count
-        event.affected_count = self.update_event_affected_location(event)
+        new_affected_count = self.update_event_affected_count(event)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if event.affected_count != new_affected_count:
+            event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
-        event.save()
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (not event.modified_by or not event.modified_date
+                     or (event.modified_by.id != self.modified_by.id
+                         or event.modified_date != self.modified_date))):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date and affected_count
     def delete(self, *args, **kwargs):
@@ -1086,13 +1159,15 @@ class LocationSpecies(PermissionsHistoryModel):
         super(LocationSpecies, self).delete(*args, **kwargs)
 
         # affected_count
-        event.affected_count = self.update_event_affected_location(event)
+        new_affected_count = self.update_event_affected_count(event)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-
-        event.save()
+        if (event.affected_count != new_affected_count
+                or not event.modified_by or not event.modified_date
+                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+            event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -1218,6 +1293,13 @@ class EventDiagnosis(PermissionsHistoryModel):
     major = models.BooleanField(default=False, help_text='A boolean value indicating if the event diagnosis is major or not')
     priority = models.IntegerField(null=True, help_text='An integer value indicating the event diagnosis priority')
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
+    def __init__(self, *args, **kwargs):
+        super(EventDiagnosis, self).__init__(*args, **kwargs)
+        self.__original_priority = self.priority
+
     @staticmethod
     def has_create_permission(request):
         if request and 'event' in request.data:
@@ -1249,7 +1331,9 @@ class EventDiagnosis(PermissionsHistoryModel):
         # update the event modified_date only when the diagnosis is not Pending or Undetermined
         #  to avoid an infinite loop, since one of those two diagnoses are is always created when an Event is created
         #  or updated without an already existing event diagnosis
-        if diagnosis_name not in ['Pending', 'Undetermined']:
+        if (diagnosis_name not in ['Pending', 'Undetermined']
+                and (not event.modified_by or not event.modified_date
+                     or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date)):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1318,9 +1402,13 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     # keep track of "previous" diagnosis to detect if the value changes during save
     __original_diagnosis = None
 
+    # keep track of "previous" priority to detect if the value changes during save
+    __original_priority = None
+
     def __init__(self, *args, **kwargs):
         super(SpeciesDiagnosis, self).__init__(*args, **kwargs)
         self.__original_diagnosis = self.diagnosis
+        self.__original_priority = self.priority
 
     @staticmethod
     def has_create_permission(request):
@@ -1383,7 +1471,6 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 self.suspect_count = 1
 
         super(SpeciesDiagnosis, self).save(*args, **kwargs)
-
         event = Event.objects.filter(id=self.location_species.event_location.event.id).first()
 
         # create real time notifications for high impact diseases
@@ -1416,13 +1503,26 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         diagnosis = self.diagnosis
 
         # affected_count
-        event.affected_count = self.update_event_affected_count(event)
+        new_affected_count = self.update_event_affected_count(event)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
+        if event.affected_count != new_affected_count:
+            event.affected_count = new_affected_count
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
-        event.save()
+        # DO NOT update the parent event if only the priority field has changed
+        # (code has been written elsewhere to only ever update priority field on its own,
+        #  not in combination with other fields, for this exact purpose)
+        # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
+        # of notifications and emails that are of no use and only annoy the users
+        if (self.priority == self.__original_priority
+                and (not event.modified_by or not event.modified_date
+                     or (event.modified_by.id != self.modified_by.id
+                         or event.modified_date != self.modified_date))):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
         # if any speciesdiagnosis is confirmed, then the eventdiagnosis with the same diagnosis is also confirmed
         if not self.suspect:
@@ -1473,14 +1573,16 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 event=event, diagnosis=new_diagnosis, suspect=False, priority=1,
                 created_by=self.created_by, modified_by=self.modified_by)
 
-        # affected_count
-        event.affected_count = self.update_event_affected_count(event)
+            # affected_count
+            new_affected_count = self.update_event_affected_count(event)
 
-        # modified_date
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-
-        event.save()
+            if (event.affected_count != new_affected_count
+                    or not event.modified_by or not event.modified_date
+                    or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+                event.affected_count = new_affected_count
+                event.modified_by = self.modified_by
+                event.modified_date = self.modified_date
+                event.save()
 
     def __str__(self):
         return str(self.diagnosis) + " suspect" if self.suspect else str(self.diagnosis)
@@ -1516,18 +1618,24 @@ class SpeciesDiagnosisOrganization(PermissionsHistoryModel):
     # override the save method to update the parent event's modified_date
     def save(self, *args, **kwargs):
         super(SpeciesDiagnosisOrganization, self).save(*args, **kwargs)
-        event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not self.species_diagnosis.location_species.event_location.event.modified_by
+                or not self.species_diagnosis.location_species.event_location.event.modified_date
+                or self.species_diagnosis.location_species.event_location.event.modified_by.id != self.modified_by.id
+                or self.species_diagnosis.location_species.event_location.event.modified_date != self.modified_date):
+            event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         event = Event.objects.filter(id=self.species_diagnosis.location_species.event_location.event.id).first()
         super(SpeciesDiagnosisOrganization, self).delete(*args, **kwargs)
-        event.modified_by = self.modified_by
-        event.modified_date = self.modified_date
-        event.save()
+        if (not event.modified_by or not event.modified_date
+                or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
+            event.modified_by = self.modified_by
+            event.modified_date = self.modified_date
+            event.save()
 
     def __str__(self):
         return str(self.id)
@@ -1602,9 +1710,7 @@ class ServiceRequest(PermissionsHistoryModel):
 
     # override the save method to create real time notifications
     def save(self, *args, **kwargs):
-        is_new = False if self.id else True
         super(ServiceRequest, self).save(*args, **kwargs)
-
         event_id = self.event.id
 
         # Create a 'Service Request Response' notification if a service request response is updated.
@@ -1937,7 +2043,6 @@ class Comment(PermissionsHistoryModel):
     # update the parent event's modified_date (if applicable)
     def save(self, *args, **kwargs):
         super(Comment, self).save(*args, **kwargs)
-
         # modified_date
         event = None
         model_name = self.content_type.model
@@ -1947,7 +2052,8 @@ class Comment(PermissionsHistoryModel):
             event = EventLocation.objects.filter(pk=self.object_id).first().event
         elif model_name == 'eventgroup':
             event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
-        if event:
+        if event and (not event.modified_by or not event.modified_date
+                      or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
@@ -1964,7 +2070,8 @@ class Comment(PermissionsHistoryModel):
             event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         super(Comment, self).delete(*args, **kwargs)
 
-        if event:
+        if event and (not event.modified_by or not event.modified_date
+                      or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
             event.modified_by = self.modified_by
             event.modified_date = self.modified_date
             event.save()
