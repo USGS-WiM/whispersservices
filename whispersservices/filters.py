@@ -36,7 +36,7 @@ class EventAbstractFilter(FilterSet):
     contains = CharFilter(field_name='text', lookup_expr='icontains', label='Filter by string contained in event abstract text, not case-sensitive')
 
     class Meta:
-        model: EventAbstract
+        model = EventAbstract
         fields = ['contains', ]
 
 
@@ -44,7 +44,7 @@ class AdministrativeLevelOneFilter(FilterSet):
     country = NumberInFilter(field_name='country', lookup_expr='in', label='Filter by country ID (or a list of country IDs)')
 
     class Meta:
-        model: AdministrativeLevelOne
+        model = AdministrativeLevelOne
         fields = ['country', ]
 
 
@@ -52,7 +52,7 @@ class AdministrativeLevelTwoFilter(FilterSet):
     administrativelevelone = NumberInFilter(field_name='administrative_level_one', lookup_expr='in', label='Filter by administrative level one (e.g., state or province) ID (or a list of administrative level one IDs)')
 
     class Meta:
-        model: AdministrativeLevelOne
+        model = AdministrativeLevelOne
         fields = ['administrativelevelone', ]
 
 
@@ -60,7 +60,7 @@ class DiagnosisFilter(FilterSet):
     diagnosis_type = NumberInFilter(field_name='diagnosis_type', lookup_expr='in', label='Filter by diagnosis type ID (or a list of diagnosis type IDs)')
 
     class Meta:
-        model: Diagnosis
+        model = Diagnosis
         fields = ['diagnosis_type', ]
 
 
@@ -110,7 +110,7 @@ class NotificationFilter(FilterSet):
             return Notification.objects.filter(recipient__exact=user.id).order_by('-id')
 
     class Meta:
-        model: Notification
+        model = Notification
         fields = ['all', 'recipient', ]
 
 
@@ -118,7 +118,7 @@ class CommentFilter(FilterSet):
     contains = CharFilter(field_name='comment', lookup_expr='icontains', label='Filter by string contained in comment text, not case-sensitive')
 
     class Meta:
-        model: Comment
+        model = Comment
         fields = ['contains', ]
 
 
@@ -129,7 +129,7 @@ class UserFilter(FilterSet):
     organization = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
 
     class Meta:
-        model: User
+        model = User
         fields = ['username', 'email', 'role', 'organization', ]
 
 
@@ -139,8 +139,8 @@ class OrganizationFilter(FilterSet):
     laboratory = BooleanFilter(label='Filter by whether organization is a laboratory or not')
 
     class Meta:
-        model: User
-        fields = ['user', 'contacts', 'laboratory', ]
+        model = Organization
+        fields = ['users', 'contacts', 'laboratory', ]
 
 
 class ContactFilter(FilterSet):
@@ -149,7 +149,7 @@ class ContactFilter(FilterSet):
     active = BooleanFilter(label='Filter by whether contact is active or not')
 
     class Meta:
-        model: User
+        model = Contact
         fields = ['org', 'ownerorg', 'active', ]
 
 
@@ -157,7 +157,7 @@ class SearchFilter(FilterSet):
     org = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
 
     class Meta:
-        model: Search
+        model = Search
         fields = ['org', ]
 
 
