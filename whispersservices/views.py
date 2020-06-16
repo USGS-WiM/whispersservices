@@ -2622,12 +2622,16 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     @action(detail=False)
     def get_count(self, request):
         query_params = self.request.query_params if self.request else None
-        return Response({"count": self.build_queryset(query_params, get_user_events=False).count()})
+        events = self.build_queryset(query_params, get_user_events=False)
+        cnt = events.count() if events else 0
+        return Response({"count": cnt})
 
     @action(detail=False)
     def get_user_events_count(self, request):
         query_params = self.request.query_params if self.request else None
-        return Response({"count": self.build_queryset(query_params, get_user_events=True).count()})
+        events = self.build_queryset(query_params, get_user_events=True)
+        cnt = events.count() if events else 0
+        return Response({"count": cnt})
 
     @action(detail=False)
     def user_events(self, request):
