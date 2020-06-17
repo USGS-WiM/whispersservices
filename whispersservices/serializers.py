@@ -4587,9 +4587,16 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class UserChangeRequestSerializer(serializers.ModelSerializer):
+    requester = serializers.PrimaryKeyRelatedField(read_only=True)
 
     def create(self, validated_data):
         user = get_user(self.context, self.initial_data)
+
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError(
+                jsonify_errors("You must be an authenticated user to request a change."))
+        else:
+            validated_data['requester'] = user
 
         # pull out child comments list from the request
         comment = validated_data.pop('comment', None)
@@ -4672,6 +4679,12 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # Only allow NWHC admins or requester's org admin to alter the request response
         if 'request_response' in validated_data and validated_data['request_response'] is not None:
             user = get_user(self.context, self.initial_data)
+
+            if not user or not user.is_authenticated:
+                raise serializers.ValidationError(
+                    jsonify_errors("You must be an authenticated user to update a change request."))
+            else:
+                validated_data['requester'] = user
 
             if not (user.role.is_superadmin or user.role.is_admin or
                     (user.role.is_partneradmin and user.organization.id == instance.created_by.organization.id)):

@@ -2168,13 +2168,19 @@ class User(AbstractUser):
 
     @staticmethod
     def has_write_permission(request):
-        # # Prevent unsafe methods from appearing in the schema view/docs
-        # return False
         # This must be true otherwise no one, not even superadmins or owners, can write objects (update or destroy)
         return True
 
     @staticmethod
     def has_create_permission(request):
+        # Anyone can create a new user
+        return True
+
+    def has_object_write_permission(self, request):
+        # Anyone can write (this is just a pass-through method, specific object action permissions are handled below)
+        return True
+
+    def has_object_create_permission(self, request):
         # Anyone can create a new user
         return True
 
@@ -2314,8 +2320,11 @@ class UserChangeRequest(PermissionsHistoryModel):
 
     @staticmethod
     def has_create_permission(request):
-        # anyone can create
-        return True
+        # anyone with role of Public or above can create
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
 
     def has_object_update_permission(self, request):
         # Only admins can update
