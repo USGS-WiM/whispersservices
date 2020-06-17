@@ -1,6 +1,6 @@
 from django.db.models import Count
 from django.db.models.functions import Now
-from django_filters.rest_framework import FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, ChoiceFilter, DateRangeFilter
+from django_filters.rest_framework import FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, ChoiceFilter, DateFilter
 from django_filters.widgets import BooleanWidget
 from rest_framework.exceptions import NotFound
 from whispersservices.models import *
@@ -293,8 +293,8 @@ class EventSummaryFilter(FilterSet):
     # filter by administrative_level_one, exact list
     def filter_administrative_level_one(self, queryset, name, value):
         if value is not None and value != '':
-            if LIST_DELIMITER in value:
-                admin_level_one_list = value.split(',')
+            if isinstance(value, list):
+                admin_level_one_list = value
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
@@ -372,23 +372,25 @@ class EventSummaryFilter(FilterSet):
             queryset = queryset.filter(start_date__lte=end_date)
         return queryset
 
-    and_params = ChoiceFilter(choices=AND_PARAMS, method=filter_and_params)
+    # TODO: add label arguments to filters to prevent [invalid_name] displaying in filter form
+    # https://github.com/carltongibson/django-filter/issues/1009
+    and_params = ChoiceFilter(choices=AND_PARAMS, method='filter_and_params')
     complete = BooleanFilter(label='Filter by whether event is complete or not')
     public = BooleanFilter(label='Filter by whether event is public or not')
-    permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method=filter_permission_sources)
+    permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method='filter_permission_sources')
     event_type = NumberInFilter(lookup_expr='in')
-    diagnosis = NumberInFilter(method=filter_diagnosis)
-    diagnosis_type = NumberInFilter(method=filter_diagnosis_type)
-    species = NumberInFilter(method=filter_species)
-    administrative_level_one = NumberInFilter(method=filter_administrative_level_one)
-    administrative_level_two = NumberInFilter(method=filter_administrative_level_two)
+    diagnosis = NumberInFilter(method='filter_diagnosis')
+    diagnosis_type = NumberInFilter(method='filter_diagnosis_type')
+    species = NumberInFilter(method='filter_species')
+    administrative_level_one = NumberInFilter(method='filter_administrative_level_one')
+    administrative_level_two = NumberInFilter(method='filter_administrative_level_two')
     flyway = NumberInFilter(field_name='eventlocations__flyway', lookup_expr='in')
     country = NumberInFilter(field_name='eventlocations__country', lookup_expr='in')
     gnis_id = NumberInFilter(field_name='eventlocations__gnis_id', lookup_expr='in')
     affected_count__gte = NumberFilter(field_name='affected_count', lookup_expr='gte')
     affected_count__lte = NumberFilter(field_name='affected_count', lookup_expr='lte')
-    start_date = DateRangeFilter(method='filter_start_date')
-    end_date = DateRangeFilter(method='filter_end_date')
+    start_date = DateFilter(method='filter_start_end_date')
+    end_date = DateFilter(method='filter_start_end_date')
 
     class Meta:
         model = Event

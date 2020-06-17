@@ -2615,6 +2615,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
     Returns an event summary by id.
     """
 
+    queryset = Event.objects.all()
     schema = AutoSchema(operation_id_base="EventSummary")
     filter_backends = (DjangoFilterBackend,)
     filterset_class = EventSummaryFilter
@@ -2728,7 +2729,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 search.save()
 
         # then proceed to build the queryset
-        queryset = self.queryset
+        queryset = self.filter_queryset(self.queryset)
 
         # anonymous users can only see public data
         if not user or not user.is_authenticated or user.role.is_public:
