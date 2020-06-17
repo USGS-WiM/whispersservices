@@ -2127,7 +2127,7 @@ class AuthView(views.APIView):
         if user and user.is_authenticated:
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
-        return Response(self.serializer_class(user, context={'request': request}).data)
+        return Response(self.serializer_class(user, context={'request': request, 'view_name': 'auth'}).data)
 
 
 class RoleViewSet(HistoryViewSet):

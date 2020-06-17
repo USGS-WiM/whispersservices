@@ -3964,19 +3964,21 @@ class UserSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         user = None
         action = 'list'
+        view_name = ''
         if 'context' in kwargs:
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
-
+            if 'view_name' in kwargs['context']:
+                view_name = kwargs['context']['view_name']
         fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
         private_fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
                           'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login',
                           'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        if action == 'create':
+        if action == 'create' or view_name == 'auth':
             fields = private_fields
         elif user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
