@@ -406,7 +406,7 @@ class CommentSerializer(serializers.ModelSerializer):
             if comment.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
                 source = comment.created_by.username
                 recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
-                email_to = [service_request.created_by.email, ]
+                email_to = [service_request.created_by.email, service_request.event.created_by.email, ]
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
@@ -415,9 +415,17 @@ class CommentSerializer(serializers.ModelSerializer):
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
             else:
+                evt_locs = EventLocation.objects.filter(event=event_id)
+                hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+                hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+                if hfs_locations and any(
+                        [evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+                    recipients = [hfs_epi_user.id, ]
+                    email_to = [hfs_epi_user.email, ]
+                else:
+                    recipients = [madison_epi_user.id, ]
+                    email_to = [madison_epi_user.email, ]
                 source = service_request.created_by.username
-                recipients = [comment.created_by.id, ]
-                email_to = [comment.created_by.email, ]
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
