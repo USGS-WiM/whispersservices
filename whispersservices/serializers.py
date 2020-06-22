@@ -1343,7 +1343,7 @@ class EventSerializer(serializers.ModelSerializer):
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -1383,7 +1383,11 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         user = None
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
+            # this was triggered by a direct request to the endpoint
             user = kwargs['context']['request'].user
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
 
         if not user or not user.is_authenticated or user.role.is_public:
             fields = ('id', 'event', 'eventgroup',)
@@ -1679,10 +1683,15 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
         user = None
         action = 'list'
         if 'context' in kwargs:
+            # this was triggered by a direct request to the endpoint
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
+            action = 'create'
 
         fields = ('event', 'organization',)
         private_fields = ('id', 'event', 'organization', 'priority', 'created_date', 'created_by', 'created_by_string',
@@ -2277,10 +2286,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
         user = None
         action = 'list'
         if 'context' in kwargs:
+            # this was triggered by a direct request to the endpoint
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
+            action = 'create'
 
         fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
                   'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
@@ -2293,7 +2307,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                           'new_location_contacts', 'new_location_species', 'created_date', 'created_by',
                           'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',)
 
-        if user and user.is_authenticated:
+        if action == 'create' or (user and user.is_authenticated):
             if action == 'create' or user.role.is_superadmin or user.role.is_admin:
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
@@ -2691,10 +2705,16 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
         user = None
         action = 'list'
         if 'context' in kwargs:
+            # this was triggered by a direct request to the endpoint
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
+            action = 'create'
+
 
         fields = ('species', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
                   'dead_count_estimated', 'captive', 'age_bias', 'sex_bias',)
@@ -2931,10 +2951,16 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         user = None
         action = 'list'
         if 'context' in kwargs:
+            # this was triggered by a direct request to the endpoint
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
+            action = 'create'
+
 
         fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'suspect', 'major',)
         private_fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
@@ -2949,7 +2975,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 if pk is not None and pk.isdigit():
                     obj = EventDiagnosis.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id in obj.created_by.parent_organizations):
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
                         fields = private_fields
 
         super(EventDiagnosisSerializer, self).__init__(*args, **kwargs)
@@ -3145,10 +3174,15 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
         user = None
         action = 'list'
         if 'context' in kwargs:
+            # this was triggered by a direct request to the endpoint
             if 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
                 user = kwargs['context']['request'].user
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
+        elif 'data' in kwargs:
+            # this was triggered by another serializer or view
+            user = User.objects.filter(id=kwargs['data']['created_by']).first()
+            action = 'create'
 
         fields = ('diagnosis', 'diagnosis_string', 'suspect', 'tested_count', 'diagnosis_count', 'positive_count',
                   'suspect_count', 'pooled',)
@@ -4779,7 +4813,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -4969,7 +5003,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                             or user.organization.id in obj.created_by.parent_organizations
                             or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                         ).values_list('id', flat=True))):
                     return True
         else:
