@@ -223,6 +223,7 @@ class EventViewSet(HistoryViewSet):
     Sends a notification to the event owner and their superiors asking for the requester to become a collaborator on this event
     """
 
+    queryset = Event.objects.all()
     serializer_class = EventSerializer
 
     @action(detail=True, methods=['post'])
@@ -367,8 +368,12 @@ class EventViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
+        if not self.request:
+            return Event.objects.none()
+
+        queryset = self.filter_queryset(self.queryset) if self.request.query_params else self.queryset
+
         user = get_request_user(self.request)
-        queryset = Event.objects.all()
 
         # all requests from anonymous or public users must only return public data
         if not user or not user.is_authenticated or user.role.is_public:
@@ -1688,7 +1693,7 @@ class NotificationViewSet(HistoryViewSet):
 
     def get_queryset(self):
         self.kwargs['action'] = getattr(self, 'action', None)
-        return Notification.objects.all()
+        return self.filter_queryset(Notification.objects.all())
 
     @action(methods=['post'], detail=False)
     def bulk_update(self, request):
@@ -1726,44 +1731,6 @@ class NotificationViewSet(HistoryViewSet):
             return Response({"status": 'update completed'}, status=200)
         else:
             return Response({"non-field errors": response_errors}, status=400)
-
-    # def get_queryset(self):
-    #     queryset = Notification.objects.all()
-    #     user = get_request_user(self.request)
-    #
-    #     # anonymous users cannot see anything
-    #     if not user or not user.is_authenticated:
-    #         return Notification.objects.none()
-    #     # public users cannot see anything
-    #     elif user.role.is_public:
-    #         return Notification.objects.none()
-    #     # admins and superadmins can see notifications that belong to anyone (if they use the 'recipient' query param)
-    #     # or everyone (if they use the 'all' query param, or get a single one), but default to just getting their own
-    #     elif user.role.is_superadmin or user.role.is_admin:
-    #         if self.action in PK_REQUESTS:
-    #             pk = self.request.parser_context['kwargs'].get('pk', None)
-    #             if pk is not None and pk.isdigit():
-    #                 queryset = Notification.objects.filter(id=pk).order_by('-id')
-    #                 return queryset
-    #             raise NotFound
-    #         get_all = True if self.request is not None and 'all' in self.request.query_params else False
-    #         if get_all:
-    #             return Notification.objects.all().order_by('-id')
-    #         else:
-    #             recipient = self.request.query_params.get('recipient', None) if self.request else None
-    #             if recipient is not None and recipient != '':
-    #                 if LIST_DELIMITER in recipient:
-    #                     recipient_list = recipient.split(',')
-    #                     queryset = queryset.filter(recipient__in=recipient_list)
-    #                 else:
-    #                     queryset = queryset.filter(recipient__exact=recipient)
-    #             else:
-    #                 queryset = Notification.objects.all().filter(recipient__exact=user.id)
-    #     # otherwise return only what belongs to the user
-    #     else:
-    #         queryset = Notification.objects.filter(recipient__exact=user.id)
-    #
-    #     return queryset.order_by('-id')
 
 
 class NotificationCuePreferenceViewSet(HistoryViewSet):
@@ -1971,7 +1938,7 @@ class CommentViewSet(HistoryViewSet):
         else:
             return Comment.objects.none()
 
-        return queryset
+        return self.filter_queryset(queryset)
 
 
 class CommentTypeViewSet(HistoryViewSet):
@@ -2110,7 +2077,7 @@ class UserViewSet(HistoryViewSet):
         else:
             return User.objects.none()
 
-        return queryset
+        return self.filter_queryset(queryset)
 
 
 class AuthView(views.APIView):
@@ -2290,6 +2257,7 @@ class OrganizationViewSet(HistoryViewSet):
     Deletes a organization.
     """
 
+    queryset = Organization.objects.all()
     filter_backends = (DjangoFilterBackend,)
     filterset_class = OrganizationFilter
 
@@ -2310,8 +2278,12 @@ class OrganizationViewSet(HistoryViewSet):
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
+        if not self.request:
+            return Organization.objects.none()
+
+        queryset = self.filter_queryset(self.queryset) if self.request.query_params else self.queryset
+
         user = get_request_user(self.request)
-        queryset = Organization.objects.all()
 
         # all requests from anonymous users must only return published data
         if not user or not user.is_authenticated:
@@ -2496,7 +2468,7 @@ class SearchViewSet(HistoryViewSet):
 
     serializer_class = SearchSerializer
     filter_backends = (DjangoFilterBackend,)
-    filterset_class = OrganizationFilter
+    filterset_class = SearchFilter
 
     @action(detail=False)
     def user_searches(self, request):
@@ -2562,7 +2534,7 @@ class SearchViewSet(HistoryViewSet):
             return Search.objects.none()
         # user-specific requests and requests from non-admin user can only return data owned by the user
         elif get_user_searches or not (user.role.is_superadmin or user.role.is_admin):
-            queryset = Search.objects.all().filter(created_by__exact=user)
+            queryset = Search.objects.filter(created_by__exact=user)
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = Search.objects.all()
@@ -2570,7 +2542,7 @@ class SearchViewSet(HistoryViewSet):
         else:
             return Search.objects.none()
 
-        return queryset
+        return self.filter_queryset(queryset)
 
 
 ######
@@ -2798,7 +2770,6 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
     Returns a flattened (not nested) response for an event detail by id.
     """
 
-    schema = AutoSchema(operation_id_base="EventDetail")
     serializer_class = EventDetailSerializer
 
     @action(detail=True)

@@ -5157,7 +5157,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
