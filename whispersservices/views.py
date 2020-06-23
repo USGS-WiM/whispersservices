@@ -2652,7 +2652,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
             queryset = queryset.order_by('-id')
 
         frmt = self.request.query_params.get('format', '') if self.request else ''
-        if self.request and 'no_page' in self.request.query_params:
+        if self.request and 'no_page' not in self.request.query_params:
             page = self.paginate_queryset(queryset)
             if page is not None:
                 if frmt == 'csv':
