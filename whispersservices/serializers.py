@@ -1311,9 +1311,8 @@ class EventSerializer(serializers.ModelSerializer):
             if 'view' in kwargs['context'] and hasattr(kwargs['context']['view'], 'action'):
                 action = kwargs['context']['view'].action
 
-        fields = ('start_date', 'end_date', 'country', 'country_string', 'administrative_level_one',
-                  'administrative_level_one_string', 'administrative_level_two', 'administrative_level_two_string',
-                  'county_multiple', 'county_unknown', 'flyways',)
+        fields = ('id', 'event_type', 'event_type_string', 'complete', 'start_date', 'end_date', 'affected_count',
+                  'event_status', 'event_status_string', 'permissions', 'permission_source',)
         private_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
                           'end_date', 'affected_count', 'event_status', 'event_status_string', 'public',
                           'read_collaborators', 'write_collaborators', 'organizations', 'contacts', 'comments',
@@ -2715,10 +2714,10 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
             user = User.objects.filter(id=kwargs['data']['created_by']).first()
             action = 'create'
 
-
         fields = ('species', 'population_count', 'sick_count', 'dead_count', 'sick_count_estimated',
                   'dead_count_estimated', 'captive', 'age_bias', 'sex_bias',)
         private_fields = ('id', 'event_location', 'species', 'population_count', 'sick_count', 'dead_count',
+                          'sick_count_estimated', 'dead_count_estimated', 'priority', 'captive', 'age_bias', 'sex_bias',
                           'new_species_diagnoses', 'created_date', 'created_by', 'created_by_string',
                           'modified_date', 'modified_by', 'modified_by_string',)
 
@@ -2960,7 +2959,6 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
             # this was triggered by another serializer or view
             user = User.objects.filter(id=kwargs['data']['created_by']).first()
             action = 'create'
-
 
         fields = ('diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string', 'suspect', 'major',)
         private_fields = ('id', 'event', 'diagnosis', 'diagnosis_string', 'diagnosis_type', 'diagnosis_type_string',
@@ -4990,8 +4988,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
     def get_is_privileged_user(self, obj, *args, **kwargs):
         user = None
-        if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
-            user = kwargs['context']['request'].user
+        if 'request' in self.context and hasattr(self.context['request'], 'user'):
+            user = self.context['request'].user
         if not user or not user.is_authenticated or user.role.is_public:
             return False
         elif user.role.is_superadmin or user.role.is_admin:
@@ -5136,11 +5134,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
                           'end_date', 'affected_count', 'event_status', 'event_status_string', 'public',
                           'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses',
                           'eventlocations', 'organizations', 'combined_comments', 'comments', 'servicerequests',
-                          'created_by_string', 'created_by_first_name', 'created_by_last_name',
-                          'created_by_organization', 'created_by_organization_string', 'modified_date', 'modified_by',
-                          'modified_by_string', 'permissions', 'permission_source', 'is_privileged_user',)
+                          'created_date', 'created_by', 'created_by_string', 'created_by_first_name',
+                          'created_by_last_name', 'created_by_organization', 'created_by_organization_string',
+                          'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',
+                          'is_privileged_user',)
         admin_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
-                        'end_date', 'legal_status_string', 'legal_number', 'quality_check', 'public',
+                        'end_date', 'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
+                        'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public',
                         'read_collaborators', 'write_collaborators', 'eventgroups', 'eventdiagnoses', 'eventlocations',
                         'organizations', 'combined_comments', 'comments', 'servicerequests', 'created_date',
                         'created_by', 'created_by_string', 'created_by_first_name', 'created_by_last_name',
