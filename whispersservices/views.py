@@ -20,7 +20,9 @@ from whispersservices.models import *
 from whispersservices.permissions import *
 from whispersservices.pagination import *
 from whispersservices.authentication import *
+from whispersservices.tokens import email_verification_token
 from dry_rest_permissions.generics import DRYPermissions
+from django.shortcuts import get_object_or_404
 User = get_user_model()
 
 # TODO: implement type checking on custom actions to prevent internal server error (HTTP 500)
@@ -2265,6 +2267,24 @@ class UserViewSet(HistoryViewSet):
                 return Response(resp, status=200)
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
+
+    @action(detail=True, methods=['get'], permission_classes=[])
+    def confirm_email(self, request, pk=None):
+        # Bypass overridden get_queryset since user isn't authenticated but
+        # needs to be able to confirm email address
+        user = get_object_or_404(User, id=pk)
+        token = request.GET['token']
+        # TODO: don't check token if user email is already verified - let user
+        # know email is already verified
+        if user and email_verification_token.check_token(user, token):
+            user.is_active = True
+            # TODO: also flag email_verified to true?
+            user.save()
+            serializer_class = self.get_serializer_class()
+            serializer = serializer_class(user, context={'request': request})
+            return Response(serializer.data)
+        else:
+            return Response({"status": "Failed to confirm email address."}, status=400)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
