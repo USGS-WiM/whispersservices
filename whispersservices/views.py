@@ -103,22 +103,25 @@ def construct_email(request_data, requester_email, message):
 def generate_notification_request_new(lookup_table, request):
     user = get_request_user(request)
     user = user if user else User.objects.filter(id=1).first()
-    # source: User requesting a new option.
-    source = user.username
-    # recipients: WHISPers admin team
-    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
-    # email forwarding: Automatic, to whispers@usgs.gov
-    email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
-    # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
     msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
-    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-    subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
-    body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
-                                  organization=user.organization.name, lookup_table=lookup_table,
-                                  lookup_item=request.data)
-    event = None
-    from whispersservices.immediate_tasks import generate_notification
-    generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+    if not msg_tmp:
+        from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+        send_missing_notification_template_message_email('generate_notification_request_new', 'New Lookup Item Request')
+    else:
+        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+        subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
+        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                      organization=user.organization.name, lookup_table=lookup_table,
+                                      lookup_item=request.data)
+        event = None
+        # source: User requesting a new option.
+        source = user.username
+        # recipients: WHISPers admin team
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        # email forwarding: Automatic, to whispers@usgs.gov
+        email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
     return Response({"status": 'email sent'}, status=200)
 
 
@@ -293,15 +296,18 @@ class EventViewSet(HistoryViewSet):
         recipient_names = recipient_names.replace(", ", "", 1)
         # email forwarding: Automatic, to all users included in the notification request.
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
-        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-        subject = msg_tmp.subject_template.format(event_id=event.id)
-        body = msg_tmp.body_template.format(
-            first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
-            event_id=event.id, comment=comment, recipients=recipient_names)
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('eventviewset_alert_collaborator', 'Alert Collaborator')
+        else:
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+            subject = msg_tmp.subject_template.format(event_id=event.id)
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
+                event_id=event.id, comment=comment, recipients=recipient_names)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
 
         # Collaborator alert is also logged as an event-level comment.
         comment += "\r\nAlert sent to: " + recipient_names
@@ -324,26 +330,30 @@ class EventViewSet(HistoryViewSet):
         if not event:
             raise NotFound
 
-        event_owner = event.created_by
-        # recipients: event owner, org manager, org admin
-        recipients = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
-                role__in=[3, 4], organization__in=event_owner.parent_organizations)
-        ).values_list('id', flat=True))
-        # email forwarding: Automatic, to event owner, organization manager, and organization admin
-        email_to = list(User.objects.filter(
-            Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
-                role__in=[3, 4], organization__in=event_owner.parent_organizations)
-        ).values_list('email', flat=True))
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
-        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-        subject = msg_tmp.subject_template.format(event_id=event.id)
-        # {first_name,last_name,organization,event_id,comment,email}
-        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
-                                            organization=user.organization, event_id=event.id, comment=request.data)
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('eventviewset_request_collaboration',
+                                                             'Collaboration Request')
+        else:
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+            subject = msg_tmp.subject_template.format(event_id=event.id)
+            # {first_name,last_name,organization,event_id,comment,email}
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                                organization=user.organization, event_id=event.id, comment=request.data)
+            event_owner = event.created_by
+            # recipients: event owner, org manager, org admin
+            recipients = list(User.objects.filter(
+                Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                    role__in=[3, 4], organization__in=event_owner.parent_organizations)
+            ).values_list('id', flat=True))
+            # email forwarding: Automatic, to event owner, organization manager, and organization admin
+            email_to = list(User.objects.filter(
+                Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
+                    role__in=[3, 4], organization__in=event_owner.parent_organizations)
+            ).values_list('email', flat=True))
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
     def destroy(self, request, *args, **kwargs):

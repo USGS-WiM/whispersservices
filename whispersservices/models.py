@@ -348,22 +348,24 @@ class Event(PermissionsHistoryModel):
         # create real time notifications for quality check
         # trigger: Event status (event_status) is set to "Quality Check Needed"
         if self.event_status.name == 'Quality Check Needed' and self.event_status.id != self.__original_event_status.id:
-            self.__original_event_status = self.event_status
-            # source: system
-            source = 'system'
-            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
-            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            # recipients: Epi staff
-            recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
-            # email forwarding: Automatic, to nwhc-epi@usgs.gov
-            email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=self.id)
-            body = msg_tmp.body_template.format(event_id=self.id)
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
-            return True
+            if not msg_tmp:
+                from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                send_missing_notification_template_message_email('event_save', 'Quality Check')
+            else:
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                subject = msg_tmp.subject_template.format(event_id=self.id)
+                body = msg_tmp.body_template.format(event_id=self.id)
+                self.__original_event_status = self.event_status
+                # source: system
+                source = 'system'
+                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                # recipients: Epi staff
+                recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
+                # email forwarding: Automatic, to nwhc-epi@usgs.gov
+                email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
 
         def get_event_diagnoses():
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
@@ -1476,29 +1478,33 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # create real time notifications for high impact diseases
         # trigger: creating or updating a species diagnosis with a high impact diagnosis
         if self.diagnosis.high_impact and (is_new or (self.diagnosis.id != self.__original_diagnosis.id)):
-            self.__original_diagnosis = self.diagnosis
-            # source: User that adds a species diagnosis that is a reportable disease
-            source = self.created_by.username
-            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            # recipients: WHISPers admin team, WHISPers Epi staff, event owner
-            recipients = list(User.objects.filter(
-                Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
-            recipients += [event.created_by.id, ]
-            # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
-            email_to = list(User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
-            email_to += [event.created_by.email, ]
-            evt_loc = self.location_species.event_location
-            short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
-            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='High Impact Diseases').first()
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(
-                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
-            body = msg_tmp.body_template.format(
-                species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
-                event_id=self.location_species.event_location.event.id)
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+            if not msg_tmp:
+                from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                send_missing_notification_template_message_email('speciesdiagnosis_save', 'High Impact Diseases')
+            else:
+                self.__original_diagnosis = self.diagnosis
+                evt_loc = self.location_species.event_location
+                short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                subject = msg_tmp.subject_template.format(
+                    species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
+                body = msg_tmp.body_template.format(
+                    species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
+                    event_id=self.location_species.event_location.event.id)
+                # source: User that adds a species diagnosis that is a reportable disease
+                source = self.created_by.username
+                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                # recipients: WHISPers admin team, WHISPers Epi staff, event owner
+                recipients = list(User.objects.filter(
+                    Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
+                recipients += [event.created_by.id, ]
+                # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
+                email_to = list(
+                    User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
+                email_to += [event.created_by.email, ]
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
 
         diagnosis = self.diagnosis
 
@@ -1716,19 +1722,22 @@ class ServiceRequest(PermissionsHistoryModel):
         # Create a 'Service Request Response' notification if a service request response is updated.
         # Only counts for a Yes, No, or Maybe value - Pending is automatic and should not trigger any notification.
         if self.request_response.name in ['Yes', 'No', 'Maybe']:
-            # source: WHISPers admin who updates the request response value (i.e. responds).
-            source = self.modified_by.username
-            # recipients: user who made the request, event owner
-            recipients = [self.created_by.id, self.event.created_by.id, ]
-            # email forwarding: Automatic, to the user who made the request and event owner
-            email_to = [self.created_by.email, self.event.created_by.email, ]
-            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Response').first()
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=event_id)
-            body = msg_tmp.body_template.format(event_id=event_id)
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            if not msg_tmp:
+                from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                send_missing_notification_template_message_email('speciesdiagnosis_save', 'Service Request Response')
+            else:
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(event_id=event_id)
+                # source: WHISPers admin who updates the request response value (i.e. responds).
+                source = self.modified_by.username
+                # recipients: user who made the request, event owner
+                recipients = [self.created_by.id, self.event.created_by.id, ]
+                # email forwarding: Automatic, to the user who made the request and event owner
+                email_to = [self.created_by.email, self.event.created_by.email, ]
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2406,22 +2415,25 @@ class EventReadUser(PermissionsHistoryModel):
 
         # if this is a new collaborator user, create a 'Collaborator Added' notification
         if is_new:
-            user = self.created_by
-            # source: User who added another user as a collaborator.
-            source = user.username
-            # recipients: user(s) added as collaborator
-            recipients = [self.user.id, ]
-            # email forwarding: Automatic, to user that was made a collaborator.
-            email_to = [self.user.email, ]
-            event_id = self.event.id
-            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=event_id)
-            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                username=user.username, collaborator_type="Read", event_id=event_id)
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            if not msg_tmp:
+                from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                send_missing_notification_template_message_email('eventreaduser_save', 'Collaborator Added')
+            else:
+                user = self.created_by
+                event_id = self.event.id
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                    username=user.username, collaborator_type="Read", event_id=event_id)
+                # source: User who added another user as a collaborator.
+                source = user.username
+                # recipients: user(s) added as collaborator
+                recipients = [self.user.id, ]
+                # email forwarding: Automatic, to user that was made a collaborator.
+                email_to = [self.user.email, ]
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2477,22 +2489,26 @@ class EventWriteUser(PermissionsHistoryModel):
 
         # if this is a new collaborator user, create a 'Collaborator Added' notification
         if is_new:
-            user = self.created_by
-            # source: User who added another user as a collaborator.
-            source = user.username
-            # recipients: user(s) added as collaborator
-            recipients = [self.user.id, ]
-            # email forwarding: Automatic, to user that was made a collaborator.
-            email_to = [self.user.email, ]
-            event_id = self.event.id
-            # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaborator Added').first()
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=event_id)
-            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                username=user.username, collaborator_type="Write", event_id=event_id)
-            from whispersservices.immediate_tasks import generate_notification
-            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            if not msg_tmp:
+                from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                send_missing_notification_template_message_email('eventwriteuser_save', 'Collaborator Added')
+            else:
+                user = self.created_by
+                event_id = self.event.id
+                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                subject = msg_tmp.subject_template.format(event_id=event_id)
+                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                    username=user.username, collaborator_type="Write",
+                                                    event_id=event_id)
+                # source: User who added another user as a collaborator.
+                source = user.username
+                # recipients: user(s) added as collaborator
+                recipients = [self.user.id, ]
+                # email forwarding: Automatic, to user that was made a collaborator.
+                email_to = [self.user.email, ]
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
     def __str__(self):
         return str(self.id)

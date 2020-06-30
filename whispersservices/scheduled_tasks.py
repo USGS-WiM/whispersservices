@@ -3,45 +3,11 @@ from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import Count
 from whispersservices.serializers import *
 from whispersservices.models import *
-from whispersservices.immediate_tasks import generate_notification, construct_notification_email
+from whispersservices.immediate_tasks import *
 
 
 def get_yesterday():
     return datetime.strftime(datetime.now() - timedelta(days=0), '%Y-%m-%d')
-
-
-def send_notification_template_message_keyerror_email(template_name, encountered_key, expected_keys):
-    recip = EMAIL_WHISPERS
-    subject = "WHISPERS ADMIN: Notification Message Template KeyError"
-    body = "The \"" + template_name + "\" Notification Message Template encountered a KeyError"
-    body += " at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + ". Encountered " + str(encountered_key.args[0])
-    body += ", which is not in the list of expected keys:"
-    str_keys = ""
-    for key in expected_keys:
-        str_keys += ", " + str(key)
-    str_keys = str_keys.replace(", ", "", 1)
-    body += " [" + str_keys + "]."
-    notif_email = construct_notification_email(recip, subject, body, False)
-    print(notif_email.__dict__)
-
-
-def send_missing_notification_template_message_email(task_name, template_name):
-    recip = EMAIL_WHISPERS
-    subject = "WHISPERS ADMIN: Notification Message Template Not Found During " + task_name + " task"
-    body = "The \"" + template_name + "\" Notification Message Template was not found"
-    body += " at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    notif_email = construct_notification_email(recip, subject, body, False)
-    print(notif_email.__dict__)
-
-
-def send_missing_notification_cue_standard_email(user, template_name):
-    recip = EMAIL_WHISPERS
-    subject = "WHISPERS ADMIN: Standard Notification Cue Not Found During standard_notifications task"
-    body = "The \"" + template_name + "\" Standard Notification Cue was not found for user "
-    body += user.first_name + " " + user.last_name + " (username " + user.username + ", ID " + str(user.id) + ")"
-    body += " at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-    notif_email = construct_notification_email(recip, subject, body, False)
-    print(notif_email.__dict__)
 
 
 def get_change_info(history_record, model_name):

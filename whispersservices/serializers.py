@@ -405,35 +405,43 @@ class CommentSerializer(serializers.ModelSerializer):
             # email forwarding:
             #  Automatic, toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
             if comment.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
-                source = comment.created_by.username
-                recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
-                email_to = [service_request.created_by.email, service_request.event.created_by.email, ]
-                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=event_id)
-                body = msg_tmp.body_template.format(event_id=event_id)
-                from whispersservices.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
-            else:
-                evt_locs = EventLocation.objects.filter(event=event_id)
-                hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
-                hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
-                if hfs_locations and any(
-                        [evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
-                    recipients = [hfs_epi_user.id, ]
-                    email_to = [hfs_epi_user.email, ]
+                if not msg_tmp:
+                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                    send_missing_notification_template_message_email('commentserializer_create',
+                                                                     'Service Request Comment')
                 else:
-                    recipients = [madison_epi_user.id, ]
-                    email_to = [madison_epi_user.email, ]
-                source = service_request.created_by.username
-                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+                    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                    subject = msg_tmp.subject_template.format(event_id=event_id)
+                    body = msg_tmp.body_template.format(event_id=event_id)
+                    source = comment.created_by.username
+                    recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
+                    email_to = [service_request.created_by.email, service_request.event.created_by.email, ]
+                    from whispersservices.immediate_tasks import generate_notification
+                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            else:
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=event_id)
-                body = msg_tmp.body_template.format(event_id=event_id)
-                from whispersservices.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                if not msg_tmp:
+                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                    send_missing_notification_template_message_email('commentserializer_create',
+                                                                     'Service Request Comment')
+                else:
+                    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                    subject = msg_tmp.subject_template.format(event_id=event_id)
+                    body = msg_tmp.body_template.format(event_id=event_id)
+                    evt_locs = EventLocation.objects.filter(event=event_id)
+                    hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+                    hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+                    if hfs_locations and any(
+                            [evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+                        recipients = [hfs_epi_user.id, ]
+                        email_to = [hfs_epi_user.email, ]
+                    else:
+                        recipients = [madison_epi_user.id, ]
+                        email_to = [madison_epi_user.email, ]
+                    source = service_request.created_by.username
+                    from whispersservices.immediate_tasks import generate_notification
+                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return comment
 
@@ -3356,48 +3364,53 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                            comment_type=comment_type, created_by=user, modified_by=user)
 
         # Create a 'Service Request' notification
-        # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
-        event_id = service_request.event.id
-        evt_locs = EventLocation.objects.filter(event=event_id)
-        hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
-        hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
-        if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
-            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
-            epi_user = User.objects.filter(id=hfs_epi_user_id).first()
-        else:
-            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            epi_user = User.objects.filter(id=madison_epi_user_id).first()
-        # source: User making a service request.
-        source = user.username
-        # recipients: nwhc-epi@usgs.gov or HFS dropbox
-        recipients = [epi_user.id, ]
-        # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
-        email_to = [epi_user.email, ]
-        short_evt_locs = ""
-        for evt_loc in evt_locs:
-            short_evt_loc = ""
-            if evt_loc.administrative_level_two:
-                short_evt_loc += evt_loc.administrative_level_two.name + ", "
-            short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
-            short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
-        content_type = ContentType.objects.get_for_model(self.Meta.model, for_concrete_model=True)
-        comments = Comment.objects.filter(content_type=content_type, object_id=service_request.id)
-        if comments:
-            combined_comment = ""
-            for comment in comments:
-                combined_comment = combined_comment + "<br />" + comment.comment
-        else:
-            combined_comment = "None"
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
-        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-        subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name, event_id=event_id)
-        body = msg_tmp.body_template.format(
-            first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
-            service_request=service_request.request_type.name, event_id=event_id, event_location=short_evt_locs,
-            comment=combined_comment)
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('servicerequestserializer_create',
+                                                             'Service Request')
+        else:
+            # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
+            event_id = service_request.event.id
+            evt_locs = EventLocation.objects.filter(event=event_id)
+            hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
+            hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+            if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+                hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
+                epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+            else:
+                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                epi_user = User.objects.filter(id=madison_epi_user_id).first()
+            # source: User making a service request.
+            source = user.username
+            # recipients: nwhc-epi@usgs.gov or HFS dropbox
+            recipients = [epi_user.id, ]
+            # email forwarding: Automatic, to nwhc-epi@usgs.gov or email for HFS, depending on location of event.
+            email_to = [epi_user.email, ]
+            short_evt_locs = ""
+            for evt_loc in evt_locs:
+                short_evt_loc = ""
+                if evt_loc.administrative_level_two:
+                    short_evt_loc += evt_loc.administrative_level_two.name + ", "
+                short_evt_loc += evt_loc.administrative_level_one.abbreviation + ", " + evt_loc.country.abbreviation
+                short_evt_locs = short_evt_loc if len(short_evt_locs) == 0 else short_evt_locs + "; " + short_evt_loc
+            content_type = ContentType.objects.get_for_model(self.Meta.model, for_concrete_model=True)
+            comments = Comment.objects.filter(content_type=content_type, object_id=service_request.id)
+            if comments:
+                combined_comment = ""
+                for comment in comments:
+                    combined_comment = combined_comment + "<br />" + comment.comment
+            else:
+                combined_comment = "None"
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+            subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name,
+                                                      event_id=event_id)
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
+                service_request=service_request.request_type.name, event_id=event_id, event_location=short_evt_locs,
+                comment=combined_comment)
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return service_request
 
@@ -3845,19 +3858,22 @@ class UserSerializer(serializers.ModelSerializer):
         user.save()
 
         # create a 'User Created' notification
-        # source: User that requests a public account
-        source = user.username
-        # recipients: user, WHISPers admin team
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
-        # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-        email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
-        subject = msg_tmp.subject_template
-        body = msg_tmp.body_template
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('userserializer_create', 'User Created')
+        else:
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template
+            event = None
+            # source: User that requests a public account
+            source = user.username
+            # recipients: user, WHISPers admin team
+            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+            email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         if new_user_change_request is not None:
             role_requested = None
@@ -4087,56 +4103,64 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         ucr = UserChangeRequest.objects.create(**validated_data)
 
         # create a 'User Change Request' notification
-        # source: User that requests an account upgrade or requesting an account above public
-        source = ucr.created_by.username
-        # recipients: WHISPers admin team, Admins of organization requested
-        # check if the requested org has itself as its parent org,
-        #  and if so alert the admins (this situation should not be allowed)
-        if (ucr.organization_requested.parent_organization
-                and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
-            org_list = [ucr.organization_requested.id, ]
-            message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
-            message += " has itself as its parent organization, which can cause infinite recursion when"
-            message += " the parent_organizations or child_organizations properties of this organization are accessed."
-            message += " Please correct this situation before a RecursionError occurs. If this organization has no"
-            message += " parent organization, set the parent organization value to null."
-            construct_email("Infinite Recursive Organization Found", message)
-        else:
-            org_list = ucr.organization_requested.parent_organizations
-        recipients = list(User.objects.filter(
-            Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-                role=3, organization__in=org_list)
-        ).values_list('id', flat=True))
-        # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
-        email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-            role=3, organization__in=org_list)).values_list('email', flat=True))
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
-        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-        subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
-        body = msg_tmp.body_template.format(
-            first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
-            username=ucr.requester.username, current_role=ucr.requester.role.name,
-            new_role=ucr.role_requested.name, current_organization=ucr.requester.organization.name,
-            new_organization=ucr.organization_requested.name, comment=comment)
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('userchangerequestserializer_create',
+                                                             'User Change Request')
+        else:
+            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
+            subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
+            body = msg_tmp.body_template.format(
+                first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
+                username=ucr.requester.username, current_role=ucr.requester.role.name,
+                new_role=ucr.role_requested.name, current_organization=ucr.requester.organization.name,
+                new_organization=ucr.organization_requested.name, comment=comment)
+            event = None
+            # source: User that requests an account upgrade or requesting an account above public
+            source = ucr.created_by.username
+            # recipients: WHISPers admin team, Admins of organization requested
+            # check if the requested org has itself as its parent org,
+            #  and if so alert the admins (this situation should not be allowed)
+            if (ucr.organization_requested.parent_organization
+                    and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
+                org_list = [ucr.organization_requested.id, ]
+                message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
+                message += " has itself as its parent organization, which can cause infinite recursion when"
+                message += " the parent_organizations or child_organizations properties of this organization are accessed."
+                message += " Please correct this situation before a RecursionError occurs. If this organization has no"
+                message += " parent organization, set the parent organization value to null."
+                construct_email("Infinite Recursive Organization Found", message)
+            else:
+                org_list = ucr.organization_requested.parent_organizations
+            recipients = list(User.objects.filter(
+                Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
+                    role=3, organization__in=org_list)
+            ).values_list('id', flat=True))
+            # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
+            email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
+                role=3, organization__in=org_list)).values_list('email', flat=True))
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
         # also create a 'User Change Request Response Pending' notification
-        # source: User that requests the natural resource management professional account
-        source = ucr.created_by.username
-        # recipients: user
-        recipients = [ucr.created_by.id, ]
-        # email forwarding: Automatic to the user's email
-        email_to = [ucr.created_by.email, ]
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
-        subject = msg_tmp.subject_template
-        body = msg_tmp.body_template
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+        if not msg_tmp:
+            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+            send_missing_notification_template_message_email('userchangerequestserializer_create',
+                                                             'User Change Request Response Pending')
+        else:
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template
+            event = None
+            # source: User that requests the natural resource management professional account
+            source = ucr.created_by.username
+            # recipients: user
+            recipients = [ucr.created_by.id, ]
+            # email forwarding: Automatic to the user's email
+            email_to = [ucr.created_by.email, ]
+            from whispersservices.immediate_tasks import generate_notification
+            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
         return ucr
 
@@ -4185,37 +4209,45 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 requester.role = instance.role_requested
                 requester.organization = instance.organization_requested
                 requester.save()
-                # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
-                source = instance.modified_by.username
-                # recipients: user, WHISPers admin team
-                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                    instance.requester.id, ]
-                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
-                subject = msg_tmp.subject_template
-                # TODO: add protection here for when body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                body = msg_tmp.body_template.format(role=instance.role_requested.name,
-                                                    organization=instance.organization_requested.name)
-                event = None
-                from whispersservices.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+                if not msg_tmp:
+                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                    send_missing_notification_template_message_email('userchangerequestserializer_update',
+                                                                     'User Change Request Response Yes')
+                else:
+                    subject = msg_tmp.subject_template
+                    # TODO: add protection here for when body encounters a KeyError exception (see scheduled_tasks.py for examples)
+                    body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                                                        organization=instance.organization_requested.name)
+                    event = None
+                    # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
+                    source = instance.modified_by.username
+                    # recipients: user, WHISPers admin team
+                    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                        instance.requester.id, ]
+                    # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                    email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                    from whispersservices.immediate_tasks import generate_notification
+                    generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
             elif instance.request_response.name == 'No':
-                # source: WHISPer Admin or Org Admin who assigns a WHISPers role.
-                source = instance.modified_by.username
-                # recipients: user, WHISPers admin team
-                recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                    instance.requester.id, ]
-                # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-                email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
-                subject = msg_tmp.subject_template
-                body = msg_tmp.body_template
-                event = None
-                from whispersservices.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+                if not msg_tmp:
+                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
+                    send_missing_notification_template_message_email('userchangerequestserializer_update',
+                                                                     'User Change Request Response No')
+                else:
+                    subject = msg_tmp.subject_template
+                    body = msg_tmp.body_template
+                    event = None
+                    # source: WHISPer Admin or Org Admin who assigns a WHISPers role.
+                    source = instance.modified_by.username
+                    # recipients: user, WHISPers admin team
+                    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
+                        instance.requester.id, ]
+                    # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+                    email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
+                    from whispersservices.immediate_tasks import generate_notification
+                    generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         return instance
 
