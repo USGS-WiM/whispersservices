@@ -368,11 +368,23 @@ class Event(PermissionsHistoryModel):
                 self.__original_event_status = self.event_status
                 # source: system
                 source = 'system'
-                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+                if madison_epi_user_id_record:
+                    if madison_epi_user_id_record.value.isdecimal():
+                        MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+                    else:
+                        MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                        encountered_type = type(madison_epi_user_id_record.value).__name__
+                        from whispersservices.immediate_tasks import send_wrong_type_configuration_value_email
+                        send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
+                else:
+                    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                    from whispersservices.immediate_tasks import send_missing_configuration_value_email
+                    send_missing_configuration_value_email('madison_epi_user')
                 # recipients: Epi staff
-                recipients = list(User.objects.filter(id=madison_epi_user_id).values_list('id', flat=True))
+                recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
                 # email forwarding: Automatic, to nwhc-epi@usgs.gov
-                email_to = list(User.objects.filter(id=madison_epi_user_id).values_list('email', flat=True))
+                email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
 
@@ -1512,14 +1524,26 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     body = ""
                 # source: User that adds a species diagnosis that is a reportable disease
                 source = self.created_by.username
-                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
+                madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+                if madison_epi_user_id_record:
+                    if madison_epi_user_id_record.value.isdecimal():
+                        MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+                    else:
+                        MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                        encountered_type = type(madison_epi_user_id_record.value).__name__
+                        from whispersservices.immediate_tasks import send_wrong_type_configuration_value_email
+                        send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
+                else:
+                    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                    from whispersservices.immediate_tasks import send_missing_configuration_value_email
+                    send_missing_configuration_value_email('madison_epi_user')
                 # recipients: WHISPers admin team, WHISPers Epi staff, event owner
                 recipients = list(User.objects.filter(
-                    Q(role__in=[1, 2]) | Q(id=madison_epi_user_id)).values_list('id', flat=True))
+                    Q(role__in=[1, 2]) | Q(id=MADISON_EPI_USER_ID)).values_list('id', flat=True))
                 recipients += [event.created_by.id, ]
                 # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
                 email_to = list(
-                    User.objects.filter(Q(id=1) | Q(id=madison_epi_user_id)).values_list('email', flat=True))
+                    User.objects.filter(Q(id=1) | Q(id=MADISON_EPI_USER_ID)).values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)

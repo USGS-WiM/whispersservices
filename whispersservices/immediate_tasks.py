@@ -6,12 +6,6 @@ from django.core.mail import EmailMultiAlternatives
 from whispersservices.models import *
 
 
-EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address and whispers_email_address.value.count('@') == 1:
-    EMAIL_WHISPERS = whispers_email_address.value
-
-
 def jsonify_errors(data):
     if isinstance(data, list) or isinstance(data, str):
         # Errors raised as a list are non-field errors.
@@ -56,6 +50,51 @@ def send_missing_notification_cue_standard_email(user, template_name):
     body += " at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
     notif_email = construct_notification_email(recip, subject, body, False)
     print(notif_email.__dict__)
+
+
+def send_missing_configuration_value_email(record_name, message="A default value was used instead."):
+    recip = EMAIL_WHISPERS
+    subject = "WHISPERS ADMIN: Configuration Value Not Found"
+    body = "A configuration value ('" + record_name + "') was not found in the Configuration table."
+    body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + ". " + message
+    notif_email = construct_notification_email(recip, subject, body, False)
+    print(notif_email.__dict__)
+
+
+def send_wrong_type_configuration_value_email(record_name, encountered_type, expected_type,
+                                              message="A default value was used instead."):
+    recip = EMAIL_WHISPERS
+    subject = "WHISPERS ADMIN: Configuration Value Wrong Type"
+    body = "A configuration value ('" + record_name + "') in the Configuration table contained the wrong data type."
+    body += "Encountered " + encountered_type + " when " + expected_type + " was expected."
+    body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + ". " + message
+    notif_email = construct_notification_email(recip, subject, body, False)
+    print(notif_email.__dict__)
+
+
+whispers_admin_user_record = Configuration.objects.filter(name='whispers_admin_user').first()
+if whispers_admin_user_record:
+    if whispers_admin_user_record.value.isdecimal():
+        WHISPERS_ADMIN_USER_ID = int(whispers_admin_user_record.value)
+    else:
+        WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+        encountered_type = type(whispers_admin_user_record.value).__name__
+        send_wrong_type_configuration_value_email('whispers_admin_user', encountered_type, 'int')
+else:
+    WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+    send_missing_configuration_value_email('whispers_admin_user')
+
+whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+if whispers_email_address:
+    if whispers_email_address.value.count('@') == 1:
+        EMAIL_WHISPERS = whispers_email_address.value
+    else:
+        EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+        encountered_type = type(whispers_email_address.value).__name__
+        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
+else:
+    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+    send_missing_configuration_value_email('whispers_email_address')
 
 
 def construct_notification_email(recipient_email, subject, html_body, include_boilerplate=True):
@@ -136,7 +175,7 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
         notif_email = construct_notification_email(new_recip, new_subject, new_body, False)
         print(notif_email.__dict__)
     else:
-        admin = User.objects.filter(id=1).first()
+        admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
         event = Event.objects.filter(id=event_id).first()
         # ensure no duplicate notification recipients
         recipients = list(set(recipients))

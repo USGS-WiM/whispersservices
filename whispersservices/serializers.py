@@ -11,6 +11,7 @@ from django.forms.models import model_to_dict
 from rest_framework import serializers, validators
 from rest_framework.settings import api_settings
 from whispersservices.models import *
+from whispersservices.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissionsField
 
 # TODO: implement required field validations for nested objects
@@ -19,13 +20,87 @@ from dry_rest_permissions.generics import DRYPermissionsField
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
-GEONAMES_USERNAME = Configuration.objects.filter(name='geonames_username').first().value
-GEONAMES_API = Configuration.objects.filter(name='geonames_api_url').first().value
-FLYWAYS_API = Configuration.objects.filter(name='flyways_api_url').first().value
-EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+
+geonames_username_record = Configuration.objects.filter(name='geonames_username').first()
+if geonames_username_record:
+    GEONAMES_USERNAME = geonames_username_record.value
+else:
+    GEONAMES_USERNAME = settings.GEONAMES_USERNAME
+    send_missing_configuration_value_email('geonames_username')
+
+geonames_api_url_record = Configuration.objects.filter(name='geonames_api_url').first()
+if geonames_api_url_record:
+    GEONAMES_API = geonames_api_url_record.value
+else:
+    GEONAMES_API = settings.GEONAMES_API
+    send_missing_configuration_value_email('geonames_api_url')
+
+flyways_api_url_record = Configuration.objects.filter(name='flyways_api_url').first()
+if flyways_api_url_record:
+    FLYWAYS_API = flyways_api_url_record.value
+else:
+    FLYWAYS_API = settings.FLYWAYS_API
+    send_missing_configuration_value_email('flyways_api_url')
+
+whispers_admin_user_record = Configuration.objects.filter(name='whispers_admin_user').first()
+if whispers_admin_user_record:
+    if whispers_admin_user_record.value.isdecimal():
+        WHISPERS_ADMIN_USER_ID = int(whispers_admin_user_record.value)
+    else:
+        WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+        encountered_type = type(whispers_admin_user_record.value).__name__
+        send_wrong_type_configuration_value_email('whispers_admin_user', encountered_type, 'int')
+else:
+    WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+    send_missing_configuration_value_email('whispers_admin_user')
+
 whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address and whispers_email_address.value.count('@') == 1:
-    EMAIL_WHISPERS = whispers_email_address.value
+if whispers_email_address:
+    if whispers_email_address.value.count('@') == 1:
+        EMAIL_WHISPERS = whispers_email_address.value
+    else:
+        EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+        encountered_type = type(whispers_email_address.value).__name__
+        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
+else:
+    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+    send_missing_configuration_value_email('whispers_email_address')
+
+hfs_locations_record = Configuration.objects.filter(name='hfs_locations').first()
+if hfs_locations_record:
+    hfs_locations_str = hfs_locations_record.value.split(',')
+    if all(x.strip().isdecimal() for x in hfs_locations_str):
+        HFS_LOCATIONS = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+    else:
+        encountered_types = ''.join(list(set([type(x).__name__ for x in hfs_locations_str])))
+        send_wrong_type_configuration_value_email('hfs_locations', encountered_types, 'int')
+else:
+    HFS_LOCATIONS = []
+    send_missing_configuration_value_email('hfs_locations')
+
+hfs_epi_user_id_record = Configuration.objects.filter(name='hfs_epi_user').first()
+if hfs_epi_user_id_record:
+    if hfs_epi_user_id_record.value.isdecimal():
+        HFS_EPI_USER_ID = hfs_epi_user_id_record.value
+    else:
+        HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+        encountered_type = type(hfs_epi_user_id_record.value).__name__
+        send_wrong_type_configuration_value_email('hfs_epi_user', encountered_type, 'int')
+else:
+    HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+    send_missing_configuration_value_email('hfs_epi_user')
+
+madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+if madison_epi_user_id_record:
+    if madison_epi_user_id_record.value.isdecimal():
+        MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+    else:
+        MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+        encountered_type = type(madison_epi_user_id_record.value).__name__
+        send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
+else:
+    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+    send_missing_configuration_value_email('madison_epi_user')
 
 
 def jsonify_errors(data):
@@ -396,10 +471,8 @@ class CommentSerializer(serializers.ModelSerializer):
         if content_type.model == 'servicerequest':
             service_request = ServiceRequest.objects.filter(id=comment.object_id).first()
             event_id = service_request.event.id
-            hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
-            hfs_epi_user = User.objects.filter(id=hfs_epi_user_id).first()
-            madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-            madison_epi_user = User.objects.filter(id=madison_epi_user_id).first()
+            hfs_epi_user = User.objects.filter(id=HFS_EPI_USER_ID).first()
+            madison_epi_user = User.objects.filter(id=MADISON_EPI_USER_ID).first()
             # source: NWHC Epi staff/HFS staff or user with read/write privileges
             # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
             # email forwarding:
@@ -407,58 +480,48 @@ class CommentSerializer(serializers.ModelSerializer):
             if comment.created_by.id in [hfs_epi_user.id, madison_epi_user.id]:
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 if not msg_tmp:
-                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                     send_missing_notification_template_message_email('commentserializer_create',
                                                                      'Service Request Comment')
                 else:
                     try:
                         subject = msg_tmp.subject_template.format(event_id=event_id)
                     except KeyError as e:
-                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
                         body = msg_tmp.body_template.format(event_id=event_id)
                     except KeyError as e:
-                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
                     source = comment.created_by.username
                     recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
                     email_to = [service_request.created_by.email, service_request.event.created_by.email, ]
-                    from whispersservices.immediate_tasks import generate_notification
                     generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
             else:
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 if not msg_tmp:
-                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                     send_missing_notification_template_message_email('commentserializer_create',
                                                                      'Service Request Comment')
                 else:
                     try:
                         subject = msg_tmp.subject_template.format(event_id=event_id)
                     except KeyError as e:
-                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
                         body = msg_tmp.body_template.format(event_id=event_id)
                     except KeyError as e:
-                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
                     evt_locs = EventLocation.objects.filter(event=event_id)
-                    hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
-                    hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
-                    if hfs_locations and any(
-                            [evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
+                    if HFS_LOCATIONS and any(
+                            [evt_loc.administrative_level_one.id in HFS_LOCATIONS for evt_loc in evt_locs]):
                         recipients = [hfs_epi_user.id, ]
                         email_to = [hfs_epi_user.email, ]
                     else:
                         recipients = [madison_epi_user.id, ]
                         email_to = [madison_epi_user.email, ]
                     source = service_request.created_by.username
-                    from whispersservices.immediate_tasks import generate_notification
                     generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return comment
@@ -1079,7 +1142,7 @@ class EventSerializer(serializers.ModelSerializer):
                 new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
-                admin = User.objects.filter(id=1).first()
+                admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
                 service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
                                                                 request_response=request_response, response_by=admin,
                                                                 created_by=user, modified_by=user)
@@ -1363,7 +1426,7 @@ class EventSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -1727,7 +1790,7 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = EventOrganization.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -2337,7 +2400,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = EventLocation.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -2462,7 +2525,7 @@ class LandOwnershipSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
-# TODO: implement check that flyway instersects location?
+# TODO: implement check that flyway intersects location?
 class EventLocationFlywaySerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
@@ -2752,7 +2815,7 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = LocationSpecies.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -2996,7 +3059,7 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = EventDiagnosis.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -3221,7 +3284,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = SpeciesDiagnosis.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -3384,21 +3447,16 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         # Create a 'Service Request' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('servicerequestserializer_create',
                                                              'Service Request')
         else:
             # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
             event_id = service_request.event.id
             evt_locs = EventLocation.objects.filter(event=event_id)
-            hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
-            hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
-            if hfs_locations and any([evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
-                hfs_epi_user_id = Configuration.objects.filter(name='hfs_epi_user').first().value
-                epi_user = User.objects.filter(id=hfs_epi_user_id).first()
+            if HFS_LOCATIONS and any([evt_loc.administrative_level_one.id in HFS_LOCATIONS for evt_loc in evt_locs]):
+                epi_user = User.objects.filter(id=HFS_EPI_USER_ID).first()
             else:
-                madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
-                epi_user = User.objects.filter(id=madison_epi_user_id).first()
+                epi_user = User.objects.filter(id=MADISON_EPI_USER_ID).first()
             # source: User making a service request.
             source = user.username
             # recipients: nwhc-epi@usgs.gov or HFS dropbox
@@ -3424,7 +3482,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                 subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name,
                                                           event_id=event_id)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 subject = ""
             try:
@@ -3434,10 +3491,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                                                     event_id=event_id, event_location=short_evt_locs,
                 comment=combined_comment)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return service_request
@@ -3796,12 +3851,12 @@ class UserSerializer(serializers.ModelSerializer):
             if 'new_user_change_request' in data and data['new_user_change_request'] is not None:
                 ucr = data['new_user_change_request']
                 if ('role_requested' in ucr and ucr['role_requested'] is not None
-                        and str(ucr['role_requested']).isdigit()):
+                        and str(ucr['role_requested']).isdecimal()):
                     role_ids = list(Role.objects.values_list('id', flat=True))
                     if int(ucr['role_requested']) not in role_ids:
                         raise serializers.ValidationError("Requested role does not exist.")
                 if ('organization_requested' in ucr and ucr['organization_requested'] is not None
-                        and str(ucr['organization_requested']).isdigit()):
+                        and str(ucr['organization_requested']).isdecimal()):
                     org_ids = list(Organization.objects.values_list('id', flat=True))
                     if int(ucr['organization_requested']) not in org_ids:
                         raise serializers.ValidationError("Requested organization does not exist.")
@@ -3821,7 +3876,7 @@ class UserSerializer(serializers.ModelSerializer):
                 char_type_requirements_met.append('lowercase')
             if any(character.isupper() for character in password):
                 char_type_requirements_met.append('uppercase')
-            if any(character.isdigit() for character in password):
+            if any(character.isdecimal() for character in password):
                 char_type_requirements_met.append('number')
             if any(character in password for character in symbols):
                 char_type_requirements_met.append('special')
@@ -3888,7 +3943,6 @@ class UserSerializer(serializers.ModelSerializer):
         # create a 'User Created' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('userserializer_create', 'User Created')
         else:
             subject = msg_tmp.subject_template
@@ -3900,7 +3954,6 @@ class UserSerializer(serializers.ModelSerializer):
             recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
             # email forwarding: Automatic, to user's email and to whispers@usgs.gov
             email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         if new_user_change_request is not None:
@@ -3948,7 +4001,7 @@ class UserSerializer(serializers.ModelSerializer):
                         message += " for each new_notification_cue_standard_preference"
                         details.append(jsonify_errors(message))
                     if 'standard_type' in new_cue and new_cue['standard_type'] is not None:
-                        if not str(new_cue['standard_type']).isdigit():
+                        if not str(new_cue['standard_type']).isdecimal():
                             raise serializers.ValidationError("Submitted standard_type must be a valid integer.")
                         else:
                             std_type_ids = list(NotificationCueStandardType.objects.values_list('id', flat=True))
@@ -3956,7 +4009,7 @@ class UserSerializer(serializers.ModelSerializer):
                                 message = "Submitted standard_type does not exist."
                                 raise serializers.ValidationError(message)
                     elif 'id' in new_cue and new_cue['id'] is not None:
-                        if not str(new_cue['id']).isdigit():
+                        if not str(new_cue['id']).isdecimal():
                             raise serializers.ValidationError("Submitted id must be a valid integer.")
                         else:
                             cue_ids = list(NotificationCueStandard.objects.filter(
@@ -4069,7 +4122,7 @@ class UserSerializer(serializers.ModelSerializer):
                 fields = private_fields
             elif action in PK_REQUESTS and hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = User.objects.filter(id=pk).first()
                     if obj and (user.password == obj.password or
                                 ((obj.organization.id == user.organization.id
@@ -4133,15 +4186,12 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
         # create a 'User Change Request' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('userchangerequestserializer_create',
                                                              'User Change Request')
         else:
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
             try:
                 subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 subject = ""
             try:
@@ -4152,7 +4202,6 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                                                     current_organization=ucr.requester.organization.name,
                                                     new_organization=ucr.organization_requested.name, comment=comment)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
             event = None
@@ -4179,13 +4228,11 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
             email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
                 role=3, organization__in=org_list)).values_list('email', flat=True))
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
         # also create a 'User Change Request Response Pending' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('userchangerequestserializer_create',
                                                              'User Change Request Response Pending')
         else:
@@ -4198,7 +4245,6 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             recipients = [ucr.created_by.id, ]
             # email forwarding: Automatic to the user's email
             email_to = [ucr.created_by.email, ]
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
         return ucr
@@ -4250,14 +4296,16 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 requester.save()
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Yes').first()
                 if not msg_tmp:
-                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                     send_missing_notification_template_message_email('userchangerequestserializer_update',
                                                                      'User Change Request Response Yes')
                 else:
                     subject = msg_tmp.subject_template
-                    # TODO: add protection here for when body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                    body = msg_tmp.body_template.format(role=instance.role_requested.name,
-                                                        organization=instance.organization_requested.name)
+                    try:
+                        body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                                                            organization=instance.organization_requested.name)
+                    except KeyError as e:
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        body = ""
                     event = None
                     # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
                     source = instance.modified_by.username
@@ -4266,12 +4314,10 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                         instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                    from whispersservices.immediate_tasks import generate_notification
                     generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
             elif instance.request_response.name == 'No':
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
                 if not msg_tmp:
-                    from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                     send_missing_notification_template_message_email('userchangerequestserializer_update',
                                                                      'User Change Request Response No')
                 else:
@@ -4285,7 +4331,6 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                         instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                    from whispersservices.immediate_tasks import generate_notification
                     generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         return instance
@@ -4877,7 +4922,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
                 fields = admin_fields
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
@@ -5067,7 +5112,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
             return True
         elif hasattr(kwargs['context']['request'], 'parser_context'):
             pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
+            if pk is not None and pk.isdecimal():
                 obj = Event.objects.filter(id=pk).first()
                 if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                             or user.organization.id in obj.created_by.parent_organizations
@@ -5223,7 +5268,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 fields = admin_fields
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdigit():
+                if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations

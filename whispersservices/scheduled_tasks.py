@@ -6,8 +6,21 @@ from whispersservices.models import *
 from whispersservices.immediate_tasks import *
 
 
+nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
+if nwhc_org_record:
+    if nwhc_org_record.value.isdecimal():
+        NWHC_ORG_ID = int(nwhc_org_record.value)
+    else:
+        NWHC_ORG_ID = settings.NWHC_ORG_ID
+        encountered_type = type(nwhc_org_record.value).__name__
+        send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
+else:
+    NWHC_ORG_ID = settings.NWHC_ORG_ID
+    send_missing_configuration_value_email('nwhc_organization')
+
+
 def get_yesterday():
-    return datetime.strftime(datetime.now() - timedelta(days=0), '%Y-%m-%d')
+    return datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
 
 
 def get_change_info(history_record, model_name):
@@ -99,18 +112,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                     ).values_list('id', flat=True))):
                 pass
             elif model_name == 'event_group_comment':
-                nwhc_organization = Configuration.objects.filter(name='nwhc_organization').first()
-                if not nwhc_organization:
-                    recip = EMAIL_WHISPERS
-                    subject = "WHISPERS ADMIN: Configuration Value Not Found"
-                    body = "A configuration value ('nwhc_organization') was not found in the Configuration table."
-                    body += " Permissions for event group comment could not be assessed without that value,"
-                    body += " so the comment will not be included in any notification updates lists."
-                    body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-                    notif_email = construct_notification_email(recip, subject, body, False)
-                    print(notif_email.__dict__)
-                elif not (cue_user.role.is_superadmin or cue_user.role.is_admin
-                        or cue_user.organization.id == int(nwhc_organization.value)):
+                if not (cue_user.role.is_superadmin or cue_user.role.is_admin
+                          or cue_user.organization.id == NWHC_ORG_ID):
                     # Event Group comments visible only to NWHC staff
                     pass
             else:
@@ -155,18 +158,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                         # keep the loop going in case changes made by this updater are interspersed among other changes
                         continue
                     elif model_name == 'event_group_comment':
-                        nwhc_organization = Configuration.objects.filter(name='nwhc_organization').first()
-                        if not nwhc_organization:
-                            recip = EMAIL_WHISPERS
-                            subject = "WHISPERS ADMIN: Configuration Value Not Found"
-                            body = "A configuration value ('nwhc_organization') was not found in the Configuration"
-                            body += " table. Permissions for event group comment could not be assessed without that"
-                            body += " value, so the comment will not be included in any notification updates lists."
-                            body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-                            notif_email = construct_notification_email(recip, subject, body, False)
-                            print(notif_email.__dict__)
-                        elif not (cue_user.role.is_superadmin or cue_user.role.is_admin
-                                  or cue_user.organization.id == int(nwhc_organization.value)):
+                        if not (cue_user.role.is_superadmin or cue_user.role.is_admin
+                                  or cue_user.organization.id == NWHC_ORG_ID):
                             # Event Group comments visible only to NWHC staff
                             # keep loop going in case changes made by this updater are interspersed among other changes
                             continue
@@ -968,29 +961,27 @@ def stale_event_notifications():
     stale_event_periods = Configuration.objects.filter(name='stale_event_periods').first()
     if stale_event_periods:
         stale_event_periods_list = stale_event_periods.value.split(',')
-        if all(x.strip().isdigit() for x in stale_event_periods_list):
+        if all(x.strip().isdecimal() for x in stale_event_periods_list):
             stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
-            madison_epi_user = Configuration.objects.filter(name='madison_epi_user').first()
+            madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+            if madison_epi_user_id_record:
+                if madison_epi_user_id_record.value.isdecimal():
+                    MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+                else:
+                    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                    encountered_type = type(madison_epi_user_id_record.value).__name__
+                    send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
+            else:
+                MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+                send_missing_configuration_value_email('madison_epi_user')
             for period in stale_event_periods_list_ints:
                 period_date = datetime.strftime(datetime.now() - timedelta(days=period), '%Y-%m-%d')
                 all_stale_events = Event.objects.filter(complete=False, modified_date=period_date)
                 for event in all_stale_events:
                     # recipients: event owner and Epi staff
                     # email forwarding: Automatic, to event owner, nwhc-epi@usgs.gov
-                    if madison_epi_user:
-                        recipients = list(User.objects.filter(id=madison_epi_user.value).values_list('id', flat=True))
-                        email_to = list(User.objects.filter(id=madison_epi_user.value).values_list('email', flat=True))
-                    else:
-                        recipients = []
-                        email_to = []
-                        recip = EMAIL_WHISPERS
-                        subject = "WHISPERS ADMIN: Configuration Value Not Found"
-                        body = "A configuration value ('madison_epi_user') was not found in the Configuration table."
-                        body += " No notifications were created for that user, but notifications for other users"
-                        body += " may have been created."
-                        body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-                        notif_email = construct_notification_email(recip, subject, body, False)
-                        print(notif_email.__dict__)
+                    recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
+                    email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
 
                     recipients += [event.created_by.id, ]
                     email_to += [event.created_by.email, ]
@@ -1023,21 +1014,13 @@ def stale_event_notifications():
                     generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
 
         else:
-            recip = EMAIL_WHISPERS
-            subject = "WHISPERS ADMIN: Unexpected Data Type of Configuration Value"
-            body = "A configuration value ('stale_event_periods') contained a non-digit character: "
-            body += stale_event_periods.value + ". No notifications were created."
-            body += " Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-            notif_email = construct_notification_email(recip, subject, body, False)
-            print(notif_email.__dict__)
+            encountered_types = ''.join(list(set([type(x).__name__ for x in stale_event_periods_list])))
+            send_wrong_type_configuration_value_email('stale_event_periods', encountered_types, 'int',
+                                                      "No notifications were created.")
 
     else:
-        recip = EMAIL_WHISPERS
-        subject = "WHISPERS ADMIN: Configuration Value Not Found"
-        body = "A configuration value ('stale_event_periods') was not found in the Configuration table."
-        body += " No notifications were created. Problem encountered at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S")
-        notif_email = construct_notification_email(recip, subject, body, False)
-        print(notif_email.__dict__)
+        message = "No notifications were created."
+        send_missing_configuration_value_email('stale_event_periods', message=message)
 
     return True
 

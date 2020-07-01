@@ -23,6 +23,7 @@ from whispersservices.filters import *
 from whispersservices.permissions import *
 from whispersservices.pagination import *
 from whispersservices.authentication import *
+from whispersservices.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissions
 User = get_user_model()
 
@@ -57,10 +58,30 @@ class PlainTextParser(BaseParser):
 
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMITER = ','
-EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+
 whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address and whispers_email_address.value.count('@') == 1:
-    EMAIL_WHISPERS = whispers_email_address.value
+if whispers_email_address:
+    if whispers_email_address.value.count('@') == 1:
+        EMAIL_WHISPERS = whispers_email_address.value
+    else:
+        EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+        encountered_type = type(whispers_email_address.value).__name__
+        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
+else:
+    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+    send_missing_configuration_value_email('whispers_email_address')
+
+nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
+if nwhc_org_record:
+    if nwhc_org_record.value.isdecimal():
+        NWHC_ORG_ID = int(nwhc_org_record.value)
+    else:
+        NWHC_ORG_ID = settings.NWHC_ORG_ID
+        encountered_type = type(nwhc_org_record.value).__name__
+        send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
+else:
+    NWHC_ORG_ID = settings.NWHC_ORG_ID
+    send_missing_configuration_value_email('nwhc_organization')
 
 
 def update_modified_fields(obj, request):
@@ -105,13 +126,11 @@ def generate_notification_request_new(lookup_table, request):
     user = user if user else User.objects.filter(id=1).first()
     msg_tmp = NotificationMessageTemplate.objects.filter(name='New Lookup Item Request').first()
     if not msg_tmp:
-        from whispersservices.immediate_tasks import send_missing_notification_template_message_email
         send_missing_notification_template_message_email('generate_notification_request_new', 'New Lookup Item Request')
     else:
         try:
             subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
         except KeyError as e:
-            from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
             send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
             subject = ""
         try:
@@ -119,7 +138,6 @@ def generate_notification_request_new(lookup_table, request):
                                                 organization=user.organization.name, lookup_table=lookup_table,
                                                 lookup_item=request.data)
         except KeyError as e:
-            from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
             send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
             body = ""
         event = None
@@ -129,7 +147,6 @@ def generate_notification_request_new(lookup_table, request):
         recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov
         email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
-        from whispersservices.immediate_tasks import generate_notification
         generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
     return Response({"status": 'email sent'}, status=200)
 
@@ -307,13 +324,11 @@ class EventViewSet(HistoryViewSet):
         email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('eventviewset_alert_collaborator', 'Alert Collaborator')
         else:
             try:
                 subject = msg_tmp.subject_template.format(event_id=event.id)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 subject = ""
             try:
@@ -321,10 +336,8 @@ class EventViewSet(HistoryViewSet):
                                                     organization=user.organization.name, event_id=event.id,
                                                     comment=comment, recipients=recipient_names)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
 
         # Collaborator alert is also logged as an event-level comment.
@@ -350,14 +363,12 @@ class EventViewSet(HistoryViewSet):
 
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Collaboration Request').first()
         if not msg_tmp:
-            from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('eventviewset_request_collaboration',
                                                              'Collaboration Request')
         else:
             try:
                 subject = msg_tmp.subject_template.format(event_id=event.id)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 subject = ""
             # {first_name,last_name,organization,event_id,comment,email}
@@ -366,7 +377,6 @@ class EventViewSet(HistoryViewSet):
                                                     email=user.email, organization=user.organization, event_id=event.id,
                                                     comment=request.data)
             except KeyError as e:
-                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
             event_owner = event.created_by
@@ -380,7 +390,6 @@ class EventViewSet(HistoryViewSet):
                 Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
                     role__in=[3, 4], organization__in=event_owner.parent_organizations)
             ).values_list('email', flat=True))
-            from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
@@ -422,7 +431,7 @@ class EventViewSet(HistoryViewSet):
         # for all non-admins, pk requests can only return non-public data to the owner or their org or collaborators
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
+            if pk is not None and pk.isdecimal():
                 queryset = Event.objects.filter(id=pk)
                 if queryset:
                     obj = queryset[0]
@@ -492,9 +501,7 @@ class EventEventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if (user.role.is_superadmin or user.role.is_admin
-                or user.organization.id == int(
-                    Configuration.objects.filter(name='nwhc_organization').first().value)):
+        if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventEventGroup.objects.all()
         else:
             return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
@@ -530,7 +537,7 @@ class EventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if user.role.is_superadmin or user.role.is_admin:
+        if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroup.objects.all()
         else:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
@@ -566,8 +573,7 @@ class EventGroupCategoryViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
-        if (user.role.is_superadmin or user.role.is_admin
-                or user.organization.id == int(Configuration.objects.filter(name='nwhc_organization').first().value)):
+        if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroupCategory.objects.all()
         else:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
@@ -1744,7 +1750,7 @@ class NotificationViewSet(HistoryViewSet):
             message = 'action is a required field (accepted values are "delete", "set_read", "set_unread")'
             response_errors.append(message)
         if 'ids' not in item or not isinstance(item['ids'], list) or not (
-                all(isinstance(x, int) for x in item['ids']) or all(x.isdigit() for x in item['ids'])):
+                all(isinstance(x, int) for x in item['ids']) or all(x.isdecimal() for x in item['ids'])):
             # recipients_message = "A field named \"ids\" containing a list/array of notification IDs"
             # recipients_message += " is required to bulk update notifications."
             # raise serializers.ValidationError(recipients_message)
@@ -2329,7 +2335,7 @@ class OrganizationViewSet(HistoryViewSet):
         # for pk requests, unpublished data can only be returned to the owner or their org or admins
         elif self.action in PK_REQUESTS:
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
+            if pk is not None and pk.isdecimal():
                 queryset = Organization.objects.filter(id=pk)
                 if queryset:
                     obj = queryset[0]
@@ -2851,7 +2857,7 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
         # for pk requests, non-public data can only be returned to the owner or their org or collaborators or admins
         elif self.action == 'retrieve':
             pk = self.request.parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdigit():
+            if pk is not None and pk.isdecimal():
                 queryset = Event.objects.filter(id=pk)
                 if queryset:
                     obj = queryset[0]

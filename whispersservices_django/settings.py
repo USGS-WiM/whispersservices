@@ -112,6 +112,12 @@ DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
 EMAIL_WHISPERS = CONFIG.get('email', 'EMAIL_WHISPERS')
 EMAIL_NWHC_EPI = CONFIG.get('email', 'EMAIL_NWHC_EPI')
 
+WHISPERS_ADMIN_USER_ID = CONFIG.get('default', 'WHISPERS_ADMIN_USER_ID')
+NWHC_ORG_ID = CONFIG.get('default', 'NWHC_ORG_ID')
+GEONAMES_USERNAME = CONFIG.get('default', 'GEONAMES_USERNAME')
+GEONAMES_API = CONFIG.get('default', 'GEONAMES_API')
+FLYWAYS_API = CONFIG.get('default', 'FLYWAYS_API')
+
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
 
