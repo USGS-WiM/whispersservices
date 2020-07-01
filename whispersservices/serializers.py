@@ -411,9 +411,18 @@ class CommentSerializer(serializers.ModelSerializer):
                     send_missing_notification_template_message_email('commentserializer_create',
                                                                      'Service Request Comment')
                 else:
-                    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                    subject = msg_tmp.subject_template.format(event_id=event_id)
-                    body = msg_tmp.body_template.format(event_id=event_id)
+                    try:
+                        subject = msg_tmp.subject_template.format(event_id=event_id)
+                    except KeyError as e:
+                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        subject = ""
+                    try:
+                        body = msg_tmp.body_template.format(event_id=event_id)
+                    except KeyError as e:
+                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        body = ""
                     source = comment.created_by.username
                     recipients = [service_request.created_by.id, service_request.event.created_by.id, ]
                     email_to = [service_request.created_by.email, service_request.event.created_by.email, ]
@@ -426,9 +435,18 @@ class CommentSerializer(serializers.ModelSerializer):
                     send_missing_notification_template_message_email('commentserializer_create',
                                                                      'Service Request Comment')
                 else:
-                    # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                    subject = msg_tmp.subject_template.format(event_id=event_id)
-                    body = msg_tmp.body_template.format(event_id=event_id)
+                    try:
+                        subject = msg_tmp.subject_template.format(event_id=event_id)
+                    except KeyError as e:
+                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        subject = ""
+                    try:
+                        body = msg_tmp.body_template.format(event_id=event_id)
+                    except KeyError as e:
+                        from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                        body = ""
                     evt_locs = EventLocation.objects.filter(event=event_id)
                     hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
                     hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
@@ -3402,13 +3420,23 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                     combined_comment = combined_comment + "<br />" + comment.comment
             else:
                 combined_comment = "None"
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name,
-                                                      event_id=event_id)
-            body = msg_tmp.body_template.format(
-                first_name=user.first_name, last_name=user.last_name,organization=user.organization.name,
-                service_request=service_request.request_type.name, event_id=event_id, event_location=short_evt_locs,
+            try:
+                subject = msg_tmp.subject_template.format(service_request=service_request.request_type.name,
+                                                          event_id=event_id)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                subject = ""
+            try:
+                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                    organization=user.organization.name,
+                                                    service_request=service_request.request_type.name,
+                                                    event_id=event_id, event_location=short_evt_locs,
                 comment=combined_comment)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                body = ""
             from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
@@ -4110,12 +4138,23 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                                                              'User Change Request')
         else:
             # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
-            body = msg_tmp.body_template.format(
-                first_name=ucr.requester.first_name, last_name=ucr.requester.last_name,
-                username=ucr.requester.username, current_role=ucr.requester.role.name,
-                new_role=ucr.role_requested.name, current_organization=ucr.requester.organization.name,
-                new_organization=ucr.organization_requested.name, comment=comment)
+            try:
+                subject = msg_tmp.subject_template.format(new_organization=ucr.organization_requested.name)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                subject = ""
+            try:
+                body = msg_tmp.body_template.format(first_name=ucr.requester.first_name,
+                                                    last_name=ucr.requester.last_name,username=ucr.requester.username,
+                                                    current_role=ucr.requester.role.name,
+                                                    new_role=ucr.role_requested.name,
+                                                    current_organization=ucr.requester.organization.name,
+                                                    new_organization=ucr.organization_requested.name, comment=comment)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                body = ""
             event = None
             # source: User that requests an account upgrade or requesting an account above public
             source = ucr.created_by.username

@@ -353,9 +353,18 @@ class Event(PermissionsHistoryModel):
                 from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                 send_missing_notification_template_message_email('event_save', 'Quality Check')
             else:
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=self.id)
-                body = msg_tmp.body_template.format(event_id=self.id)
+                try:
+                    subject = msg_tmp.subject_template.format(event_id=self.id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(event_id=self.id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    body = ""
                 self.__original_event_status = self.event_status
                 # source: system
                 source = 'system'
@@ -1486,12 +1495,21 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                 self.__original_diagnosis = self.diagnosis
                 evt_loc = self.location_species.event_location
                 short_evt_loc = evt_loc.administrative_level_one.name + ", " + evt_loc.country.name
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(
-                    species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
-                body = msg_tmp.body_template.format(
-                    species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
-                    event_id=self.location_species.event_location.event.id)
+                try:
+                    subject = msg_tmp.subject_template.format(
+                        species_diagnosis=self.diagnosis.name, event_location=short_evt_loc)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(
+                        species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
+                        event_id=self.location_species.event_location.event.id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    body = ""
                 # source: User that adds a species diagnosis that is a reportable disease
                 source = self.created_by.username
                 madison_epi_user_id = Configuration.objects.filter(name='madison_epi_user').first().value
@@ -1727,9 +1745,18 @@ class ServiceRequest(PermissionsHistoryModel):
                 from whispersservices.immediate_tasks import send_missing_notification_template_message_email
                 send_missing_notification_template_message_email('speciesdiagnosis_save', 'Service Request Response')
             else:
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=event_id)
-                body = msg_tmp.body_template.format(event_id=event_id)
+                try:
+                    subject = msg_tmp.subject_template.format(event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    body = ""
                 # source: WHISPers admin who updates the request response value (i.e. responds).
                 source = self.modified_by.username
                 # recipients: user who made the request, event owner
@@ -2422,10 +2449,20 @@ class EventReadUser(PermissionsHistoryModel):
             else:
                 user = self.created_by
                 event_id = self.event.id
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=event_id)
-                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                    username=user.username, collaborator_type="Read", event_id=event_id)
+                try:
+                    subject = msg_tmp.subject_template.format(event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                        username=user.username, collaborator_type="Read",
+                                                        event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    body = ""
                 # source: User who added another user as a collaborator.
                 source = user.username
                 # recipients: user(s) added as collaborator
@@ -2496,11 +2533,20 @@ class EventWriteUser(PermissionsHistoryModel):
             else:
                 user = self.created_by
                 event_id = self.event.id
-                # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-                subject = msg_tmp.subject_template.format(event_id=event_id)
-                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                    username=user.username, collaborator_type="Write",
-                                                    event_id=event_id)
+                try:
+                    subject = msg_tmp.subject_template.format(event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                        username=user.username, collaborator_type="Write",
+                                                        event_id=event_id)
+                except KeyError as e:
+                    from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    body = ""
                 # source: User who added another user as a collaborator.
                 source = user.username
                 # recipients: user(s) added as collaborator

@@ -108,11 +108,20 @@ def generate_notification_request_new(lookup_table, request):
         from whispersservices.immediate_tasks import send_missing_notification_template_message_email
         send_missing_notification_template_message_email('generate_notification_request_new', 'New Lookup Item Request')
     else:
-        # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-        subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
-        body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
-                                      organization=user.organization.name, lookup_table=lookup_table,
-                                      lookup_item=request.data)
+        try:
+            subject = msg_tmp.subject_template.format(lookup_table=lookup_table, lookup_item=request.data)
+        except KeyError as e:
+            from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+            send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+            subject = ""
+        try:
+            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
+                                                organization=user.organization.name, lookup_table=lookup_table,
+                                                lookup_item=request.data)
+        except KeyError as e:
+            from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+            send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+            body = ""
         event = None
         # source: User requesting a new option.
         source = user.username
@@ -301,11 +310,20 @@ class EventViewSet(HistoryViewSet):
             from whispersservices.immediate_tasks import send_missing_notification_template_message_email
             send_missing_notification_template_message_email('eventviewset_alert_collaborator', 'Alert Collaborator')
         else:
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=event.id)
-            body = msg_tmp.body_template.format(
-                first_name=user.first_name, last_name=user.last_name, organization=user.organization.name,
-                event_id=event.id, comment=comment, recipients=recipient_names)
+            try:
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                subject = ""
+            try:
+                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                    organization=user.organization.name, event_id=event.id,
+                                                    comment=comment, recipients=recipient_names)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                body = ""
             from whispersservices.immediate_tasks import generate_notification
             generate_notification.delay(recipient_ids, source, event.id, 'event', subject, body, True, email_to)
 
@@ -336,11 +354,21 @@ class EventViewSet(HistoryViewSet):
             send_missing_notification_template_message_email('eventviewset_request_collaboration',
                                                              'Collaboration Request')
         else:
-            # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
-            subject = msg_tmp.subject_template.format(event_id=event.id)
+            try:
+                subject = msg_tmp.subject_template.format(event_id=event.id)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                subject = ""
             # {first_name,last_name,organization,event_id,comment,email}
-            body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name, email=user.email,
-                                                organization=user.organization, event_id=event.id, comment=request.data)
+            try:
+                body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
+                                                    email=user.email, organization=user.organization, event_id=event.id,
+                                                    comment=request.data)
+            except KeyError as e:
+                from whispersservices.immediate_tasks import send_notification_template_message_keyerror_email
+                send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                body = ""
             event_owner = event.created_by
             # recipients: event owner, org manager, org admin
             recipients = list(User.objects.filter(
