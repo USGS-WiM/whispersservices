@@ -4470,23 +4470,6 @@ If you did not request a WHISPers account, please disregard this email.
                                     verification_link=verification_link)
         construct_notification_email(user.email, subject, body)
 
-        # TODO: don't send user created until user email is verified
-        # # create a 'User Created' notification
-        # # source: User that requests a public account
-        # source = user.username
-        # # recipients: user, WHISPers admin team
-        # recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
-        # # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-        # email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-        # # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
-        # msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
-        # subject = msg_tmp.subject_template
-        # body = msg_tmp.body_template
-        # event = None
-        # from whispersservices.immediate_tasks import generate_notification
-        # # TODO: don't send the new user email until user is activated
-        # # TODO: or also send a User Email Verified email?
-        # generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         # TODO: also don't want to send user change request until after user is validated?
         if new_user_change_request is not None:

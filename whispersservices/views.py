@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
@@ -2268,6 +2269,7 @@ class UserViewSet(HistoryViewSet):
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
 
+    @transaction.atomic
     @action(detail=True, methods=['get'], permission_classes=[])
     def confirm_email(self, request, pk=None):
         # Bypass overridden get_queryset since user isn't authenticated but
@@ -2280,6 +2282,7 @@ class UserViewSet(HistoryViewSet):
             user.is_active = True
             # TODO: also flag email_verified to true?
             user.save()
+            self._send_user_created_email(user)
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(user, context={'request': request})
             return Response(serializer.data)
@@ -2345,6 +2348,22 @@ class UserViewSet(HistoryViewSet):
         if email is not None:
             queryset = queryset.filter(organization__exact=organization)
         return queryset
+    
+    def _send_user_created_email(self, user):
+        # create a 'User Created' notification
+        # source: User that requests a public account
+        source = user.username
+        # recipients: user, WHISPers admin team
+        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+        # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+        email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
 
 class AuthView(views.APIView):
