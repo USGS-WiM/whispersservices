@@ -2065,8 +2065,6 @@ class Comment(PermissionsHistoryModel):
                         event = Event.objects.filter(pk=int(request.data['object_id'])).first()
                     elif model_name == 'eventlocation':
                         event = EventLocation.objects.filter(pk=int(request.data['object_id'])).first().event
-                    elif model_name == 'eventgroup':
-                        event = EventEventGroup.objects.filter(eventgroup=int(request.data['object_id'])).first().event
                     if event:
                         if (request.user.id == event.created_by.id
                                 or ((event.created_by.organization.id == request.user.organization.id
@@ -2077,6 +2075,11 @@ class Comment(PermissionsHistoryModel):
                             write_collaborators = list(
                                 User.objects.filter(writeevents__in=[event.id]).values_list('id', flat=True))
                             return request.user.id in write_collaborators
+                    elif model_name == 'eventgroup':
+                        if not request or not request.user.is_authenticated:
+                            return False
+                        else:
+                            return request.user.role.is_superadmin or request.user.role.is_admin
                     else:
                         return False
                 else:
@@ -2110,8 +2113,6 @@ class Comment(PermissionsHistoryModel):
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
             event = EventLocation.objects.filter(pk=self.object_id).first().event
-        elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         if event and (not event.modified_by or not event.modified_date
                       or event.modified_by.id != self.modified_by.id or event.modified_date != self.modified_date):
             event.modified_by = self.modified_by
@@ -2126,8 +2127,6 @@ class Comment(PermissionsHistoryModel):
             event = Event.objects.filter(pk=self.object_id).first()
         elif model_name == 'eventlocation':
             event = EventLocation.objects.filter(pk=self.object_id).first().event
-        elif model_name == 'eventgroup':
-            event = EventEventGroup.objects.filter(eventgroup=self.object_id).first().event
         super(Comment, self).delete(*args, **kwargs)
 
         if event and (not event.modified_by or not event.modified_date
