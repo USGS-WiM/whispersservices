@@ -5104,22 +5104,28 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
     def get_is_privileged_user(self, obj, *args, **kwargs):
         user = None
-        if 'request' in self.context and hasattr(self.context['request'], 'user'):
-            user = self.context['request'].user
+        pk = None
+        if 'request' in self.context:
+            if hasattr(self.context['request'], 'user'):
+                user = self.context['request'].user
+            if hasattr(self.context['request'], 'parser_context'):
+                pk = self.context['request'].parser_context['kwargs'].get('pk', None)
         if not user or not user.is_authenticated or user.role.is_public:
             return False
         elif user.role.is_superadmin or user.role.is_admin:
             return True
-        elif hasattr(kwargs['context']['request'], 'parser_context'):
+        elif pk is None and 'context' in kwargs and hasattr(kwargs['context']['request'], 'parser_context'):
             pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-            if pk is not None and pk.isdecimal():
-                obj = Event.objects.filter(id=pk).first()
-                if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                            Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
-                        ).values_list('id', flat=True))):
-                    return True
+        if pk is not None and pk.isdecimal():
+            obj = Event.objects.filter(id=pk).first()
+            if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                        or user.organization.id in obj.created_by.parent_organizations
+                        or user.id in list(User.objects.filter(
+                        Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+                    ).values_list('id', flat=True))):
+                return True
+            else:
+                return False
         else:
             return False
 
