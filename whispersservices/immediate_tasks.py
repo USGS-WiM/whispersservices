@@ -96,14 +96,19 @@ else:
     EMAIL_WHISPERS = settings.EMAIL_WHISPERS
     send_missing_configuration_value_email('whispers_email_address')
 
+email_boilerplate_record = Configuration.objects.filter(name='email_boilerplate').first()
+if email_boilerplate_record:
+    EMAIL_BOILERPLATE = email_boilerplate_record.value
+else:
+    EMAIL_BOILERPLATE = settings.EMAIL_BOILERPLATE
+    send_missing_configuration_value_email('email_boilerplate')
+
 
 def construct_notification_email(recipient_email, subject, html_body, include_boilerplate=True):
 
     # append the boilerplate text to the end of the email body
     if include_boilerplate:
-        boilerplate = Configuration.objects.filter(name='email_boilerplate').first()
-        if boilerplate:
-            html_body += boilerplate.value
+        html_body += EMAIL_BOILERPLATE
 
     # create a plain text body by remove HTML tags from the html_body
     body = html_body

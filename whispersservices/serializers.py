@@ -75,7 +75,7 @@ if hfs_locations_record:
         encountered_types = ''.join(list(set([type(x).__name__ for x in hfs_locations_str])))
         send_wrong_type_configuration_value_email('hfs_locations', encountered_types, 'int')
 else:
-    HFS_LOCATIONS = []
+    HFS_LOCATIONS = settings.HFS_LOCATIONS
     send_missing_configuration_value_email('hfs_locations')
 
 hfs_epi_user_id_record = Configuration.objects.filter(name='hfs_epi_user').first()

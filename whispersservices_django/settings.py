@@ -30,7 +30,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = CONFIG.get('security', 'SECRET_KEY')
+SECRET_KEY = CONFIG.get('general', 'SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = CONFIG.get('general', 'DEBUG')
@@ -39,8 +39,7 @@ ADMIN_ENABLED = False
 # ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
-ENVIRONMENT = CONFIG.get('general', 'ENVIRONMENT')
-SSL_CERT = SETTINGS_DIR + '/ca-bundle.crt'
+CORS_ORIGIN_ALLOW_ALL = CONFIG.get('general', 'CORS_ORIGIN_ALLOW_ALL')
 
 # Application definition
 
@@ -109,14 +108,6 @@ EMAIL_PORT = CONFIG.get('email', 'EMAIL_PORT')
 EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
 EMAIL_TIMEOUT = CONFIG.get('email', 'EMAIL_TIMEOUT')
 DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
-EMAIL_WHISPERS = CONFIG.get('email', 'EMAIL_WHISPERS')
-EMAIL_NWHC_EPI = CONFIG.get('email', 'EMAIL_NWHC_EPI')
-
-WHISPERS_ADMIN_USER_ID = CONFIG.get('default', 'WHISPERS_ADMIN_USER_ID')
-NWHC_ORG_ID = CONFIG.get('default', 'NWHC_ORG_ID')
-GEONAMES_USERNAME = CONFIG.get('default', 'GEONAMES_USERNAME')
-GEONAMES_API = CONFIG.get('default', 'GEONAMES_API')
-FLYWAYS_API = CONFIG.get('default', 'FLYWAYS_API')
 
 # Database
 # https://docs.djangoproject.com/en/2.0/ref/settings/#databases
@@ -159,13 +150,13 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'America/Chicago'
+TIME_ZONE = CONFIG.get('general', 'TIME_ZONE')
 
 USE_I18N = True
 
 USE_L10N = True
 
-USE_TZ = False
+USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
@@ -182,9 +173,22 @@ STATICFILES_DIRS = (
 MEDIA_ROOT = os.path.join(PROJECT_PATH, 'media')
 MEDIA_URL = '/media/'
 
-CORS_ORIGIN_ALLOW_ALL = True
-
 CELERY_IMPORTS = ['whispersservices.immediate_tasks', 'whispersservices.scheduled_tasks']
 CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# WHISPers-specific settings (here as backup in case these variables are not in the Configuration database table)
+ENVIRONMENT = CONFIG.get('whispers', 'ENVIRONMENT')
+SSL_CERT = SETTINGS_DIR + CONFIG.get('whispers', 'SSL_CERT')
+STALE_EVENT_PERIODS = CONFIG.get('whispers', 'STALE_EVENT_PERIODS')
+APP_WHISPERS_URL = CONFIG.get('whispers', 'APP_WHISPERS_URL')
+EMAIL_WHISPERS = CONFIG.get('whispers', 'EMAIL_WHISPERS')
+EMAIL_NWHC_EPI = CONFIG.get('whispers', 'EMAIL_NWHC_EPI')
+EMAIL_BOILERPLATE = CONFIG.get('whispers', 'EMAIL_BOILERPLATE')
+WHISPERS_ADMIN_USER_ID = CONFIG.get('whispers', 'WHISPERS_ADMIN_USER_ID')
+NWHC_ORG_ID = CONFIG.get('whispers', 'NWHC_ORG_ID')
+HFS_LOCATIONS = CONFIG.get('whispers', 'HFS_LOCATIONS')
+GEONAMES_USERNAME = CONFIG.get('whispers', 'GEONAMES_USERNAME')
+GEONAMES_API = CONFIG.get('whispers', 'GEONAMES_API')
+FLYWAYS_API = CONFIG.get('whispers', 'FLYWAYS_API')

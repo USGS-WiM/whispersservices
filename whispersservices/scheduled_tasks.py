@@ -958,69 +958,70 @@ def stale_event_notifications():
         send_missing_notification_template_message_email('standard_notifications', 'Stale Events')
         return True
 
-    stale_event_periods = Configuration.objects.filter(name='stale_event_periods').first()
-    if stale_event_periods:
-        stale_event_periods_list = stale_event_periods.value.split(',')
-        if all(x.strip().isdecimal() for x in stale_event_periods_list):
-            stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
-            madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
-            if madison_epi_user_id_record:
-                if madison_epi_user_id_record.value.isdecimal():
-                    MADISON_EPI_USER_ID = madison_epi_user_id_record.value
-                else:
-                    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-                    encountered_type = type(madison_epi_user_id_record.value).__name__
-                    send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
+    stale_event_periods_record = Configuration.objects.filter(name='stale_event_periods').first()
+    if stale_event_periods_record:
+        STALE_EVENT_PERIODS = stale_event_periods_record.value
+    else:
+        STALE_EVENT_PERIODS = settings.STALE_EVENT_PERIODS
+        message = "Default periods were used (" + ', '.join([str(x) for x in STALE_EVENT_PERIODS]) + ")."
+        send_missing_configuration_value_email('stale_event_periods', message=message)
+    stale_event_periods_list = STALE_EVENT_PERIODS.value.split(',')
+    if all(x.strip().isdecimal() for x in stale_event_periods_list):
+        stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
+        madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+        if madison_epi_user_id_record:
+            if madison_epi_user_id_record.value.isdecimal():
+                MADISON_EPI_USER_ID = madison_epi_user_id_record.value
             else:
                 MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-                send_missing_configuration_value_email('madison_epi_user')
-            for period in stale_event_periods_list_ints:
-                period_date = datetime.strftime(datetime.now() - timedelta(days=period), '%Y-%m-%d')
-                all_stale_events = Event.objects.filter(complete=False, modified_date=period_date)
-                for event in all_stale_events:
-                    # recipients: event owner and Epi staff
-                    # email forwarding: Automatic, to event owner, nwhc-epi@usgs.gov
-                    recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
-                    email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
-
-                    recipients += [event.created_by.id, ]
-                    email_to += [event.created_by.email, ]
-
-                    eventlocations = EventLocation.objects.filter(event=event.id)
-                    all_evt_locs = ""
-                    for evtloc in eventlocations:
-                        evt_loc_name = ""
-                        if evtloc.administrative_level_two:
-                            evt_loc_name += evtloc.administrative_level_two.name
-                        evt_loc_name += ", " + evtloc.administrative_level_one.abbreviation
-                        evt_loc_name += ", " + evtloc.country.abbreviation
-                        all_evt_locs = evt_loc_name if len(all_evt_locs) == 0 else all_evt_locs + "; " + evt_loc_name
-
-                    try:
-                        subject = msg_tmp.subject_template.format(event_id=event.id)
-                    except KeyError as e:
-                        send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
-                        subject = ""
-                    try:
-                        body = msg_tmp.body_template.format(
-                            event_id=event.id, event_location=all_evt_locs, event_date=event.created_date,
-                            stale_period=str(period))
-                    except KeyError as e:
-                        send_notification_template_message_keyerror_email(msg_tmp.name, e,
-                                                                          msg_tmp.message_variables)
-                        body = ""
-                    # source: system
-                    source = 'system'
-                    generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
-
+                encountered_type = type(madison_epi_user_id_record.value).__name__
+                send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
         else:
-            encountered_types = ''.join(list(set([type(x).__name__ for x in stale_event_periods_list])))
-            send_wrong_type_configuration_value_email('stale_event_periods', encountered_types, 'int',
-                                                      "No notifications were created.")
+            MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+            send_missing_configuration_value_email('madison_epi_user')
+        for period in stale_event_periods_list_ints:
+            period_date = datetime.strftime(datetime.now() - timedelta(days=period), '%Y-%m-%d')
+            all_stale_events = Event.objects.filter(complete=False, modified_date=period_date)
+            for event in all_stale_events:
+                # recipients: event owner and Epi staff
+                # email forwarding: Automatic, to event owner, nwhc-epi@usgs.gov
+                recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
+                email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
+
+                recipients += [event.created_by.id, ]
+                email_to += [event.created_by.email, ]
+
+                eventlocations = EventLocation.objects.filter(event=event.id)
+                all_evt_locs = ""
+                for evtloc in eventlocations:
+                    evt_loc_name = ""
+                    if evtloc.administrative_level_two:
+                        evt_loc_name += evtloc.administrative_level_two.name
+                    evt_loc_name += ", " + evtloc.administrative_level_one.abbreviation
+                    evt_loc_name += ", " + evtloc.country.abbreviation
+                    all_evt_locs = evt_loc_name if len(all_evt_locs) == 0 else all_evt_locs + "; " + evt_loc_name
+
+                try:
+                    subject = msg_tmp.subject_template.format(event_id=event.id)
+                except KeyError as e:
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
+                    subject = ""
+                try:
+                    body = msg_tmp.body_template.format(
+                        event_id=event.id, event_location=all_evt_locs, event_date=event.created_date,
+                        stale_period=str(period))
+                except KeyError as e:
+                    send_notification_template_message_keyerror_email(msg_tmp.name, e,
+                                                                      msg_tmp.message_variables)
+                    body = ""
+                # source: system
+                source = 'system'
+                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
 
     else:
-        message = "No notifications were created."
-        send_missing_configuration_value_email('stale_event_periods', message=message)
+        encountered_types = ''.join(list(set([type(x).__name__ for x in stale_event_periods_list])))
+        send_wrong_type_configuration_value_email('stale_event_periods', encountered_types, 'int',
+                                                  "No notifications were created.")
 
     return True
 
