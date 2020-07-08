@@ -10,7 +10,6 @@ from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
 from rest_framework import serializers, validators
 from rest_framework.settings import api_settings
-from rest_framework.fields import CurrentUserDefault
 from whispersservices.models import *
 from whispersservices.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissionsField
@@ -4570,7 +4569,7 @@ class SearchSerializer(serializers.ModelSerializer):
             user = kwargs['context']['request'].user
 
         if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('data', 'use_count',)
+            fields = ('data',)
         else:
             fields = ('id', 'name', 'data', 'created_date', 'created_by', 'created_by_string',
                       'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
@@ -4587,7 +4586,6 @@ class SearchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Search
         fields = '__all__'
-        extra_kwargs = {'count': {'read_only': True}}
 
 
 ######
@@ -5219,7 +5217,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
             user = kwargs['context']['request'].user
         elif 'request' in self.context and hasattr(self.context['request'], 'user'):
             user = self.context['request'].user
-        if user and (user.role.is_superadmin or user.role.is_admin):
+        if user and user.is_authenticated and (user.role.is_superadmin or user.role.is_admin):
             pub_groups = []
             if obj.eventgroups is not None:
                 evtgrp_ids = list(set(list(EventEventGroup.objects.filter(

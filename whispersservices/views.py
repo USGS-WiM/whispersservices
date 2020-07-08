@@ -2553,9 +2553,10 @@ class SearchViewSet(HistoryViewSet):
     def top_ten(self, request):
         # return top ten most popular searches
         queryset = Search.objects.all().values('data').annotate(use_count=Sum('count')).order_by('-use_count')[:10]
-        serializer = self.serializer_class(queryset, many=True, context={'request': request})
-
-        return Response(serializer.data, status=200)
+        resp = []
+        for item in queryset:
+            resp.append({"data": item['data'], "use_count": item['use_count']})
+        return Response(resp, status=200)
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
