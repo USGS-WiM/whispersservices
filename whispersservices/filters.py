@@ -182,7 +182,7 @@ class EventSummaryFilter(FilterSet):
         user = getattr(self.request, 'user', None)
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
+                value = ','.join([str(x) for x in value if x is not None])
             permission_source_list = value.split(',')
             if ('own' in permission_source_list and 'organization' in permission_source_list
                     and 'collaboration' in permission_source_list):
@@ -218,7 +218,7 @@ class EventSummaryFilter(FilterSet):
     def filter_diagnosis(self, queryset, name, value):
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
+                value = ','.join([str(x) for x in value if x is not None])
             if LIST_DELIMITER in value:
                 diagnosis_list = value.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses').filter(
@@ -246,7 +246,7 @@ class EventSummaryFilter(FilterSet):
     def filter_diagnosis_type(self, queryset, name, value):
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
+                value = ','.join([str(x) for x in value if x is not None])
             if LIST_DELIMITER in value:
                 diagnosis_type_list = value.split(',')
                 queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
@@ -274,7 +274,7 @@ class EventSummaryFilter(FilterSet):
     def filter_species(self, queryset, name, value):
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
+                value = ','.join([str(x) for x in value if x is not None])
             if LIST_DELIMITER in value:
                 species_list = value.split(',')
                 queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
@@ -302,9 +302,9 @@ class EventSummaryFilter(FilterSet):
     def filter_administrative_level_one(self, queryset, name, value):
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
-            if isinstance(value, list):
-                admin_level_one_list = value
+                value = ','.join([str(x) for x in value if x is not None])
+            if LIST_DELIMITER in value:
+                admin_level_one_list = value.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
@@ -335,7 +335,7 @@ class EventSummaryFilter(FilterSet):
     def filter_administrative_level_two(self, queryset, name, value):
         if value is not None and value != '':
             if isinstance(value, list):
-                value = ','.join([str(x) for x in value])
+                value = ','.join([str(x) for x in value if x is not None])
             if LIST_DELIMITER in value:
                 admin_level_two_list = value.split(',')
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
