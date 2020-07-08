@@ -39,7 +39,8 @@ ADMIN_ENABLED = False
 # ALLOWED_HOSTS = CONFIG.get('general', 'ALLOWED_HOSTS')
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
-CORS_ORIGIN_ALLOW_ALL = CONFIG.get('general', 'CORS_ORIGIN_ALLOW_ALL')
+# CORS_ORIGIN_ALLOW_ALL = CONFIG.get('general', 'CORS_ORIGIN_ALLOW_ALL')
+CORS_ORIGIN_ALLOW_ALL = True
 
 # Application definition
 
