@@ -4424,52 +4424,30 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        recipients = [user.id]
-        email_to = [user.email]
-        from whispersservices.immediate_tasks import construct_notification_email
+        # Create email verification link
         token = email_verification_token.make_token(user)
         request = self.context['request']
         verification_link = (settings.APP_WHISPERS_URL +
                              "?" +
                              urlencode({'user-id': user.id, 'email-token': token}))
-        subject = "Please verify the email address of your WHISPers account"
-        body_template = """
-<p>
-Hello {first_name} {last_name},
-</p>
 
-<p>
-Thank you very much for your interest in the Wildlife Health Information
-Sharing Partnership (WHISPers). You (or someone entering your email address)
-requested a WHISPers account. You must verify your email address before your
-account can be activated. Please verify your email address by clicking the
-link below:
-</p>
-
-<p>
-<a href="{verification_link}">Verification Link</a>
-</p>
-
-<p>
-or if that link isn't clickable, copy and paste the following URL into a web
-browser:
-</p>
-
-<p>
-{verification_link}
-</p>
-
-<p>
-If you did not request a WHISPers account, please disregard this email.
-</p>
-
-<p>Thanks again!</p>
-"""
-        body = body_template.format(first_name=user.first_name,
-                                    last_name=user.last_name,
-                                    verification_link=verification_link)
-        construct_notification_email(user.email, subject, body)
-
+        # create a 'User Email Verification' notification
+        # source: User that requests a public account
+        source = user.username
+        # recipients: user
+        recipients = [user.id]
+        # email forwarding: Automatic, to user's email
+        email_to = [user.email]
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template.format(
+            first_name=user.first_name,
+            last_name=user.last_name,
+            verification_link=verification_link)
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
         if new_user_change_request is not None:
             role_requested = None
