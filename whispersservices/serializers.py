@@ -4471,7 +4471,6 @@ If you did not request a WHISPers account, please disregard this email.
         construct_notification_email(user.email, subject, body)
 
 
-        # TODO: also don't want to send user change request until after user is validated?
         if new_user_change_request is not None:
             role_requested = None
             organization_requested = None
@@ -4660,7 +4659,20 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
 
         ucr = UserChangeRequest.objects.create(**validated_data)
+        # store comment as a Comment object associated with UserChangeRequest
+        cmt_type = CommentType.objects.filter(name='Other').first()
+        Comment.objects.create(content_object=ucr, comment=comment,
+                               comment_type=cmt_type, created_by=user, modified_by=user)
+        return ucr
 
+    @staticmethod
+    def send_user_change_request_email(ucr):
+        # Email is sent only after user verifies their email address
+
+        # Get user's comment from the user change request
+        content_type = ContentType.objects.get_for_model(UserChangeRequest)
+        comment_object = Comment.objects.filter(object_id=ucr.id, content_type=content_type).first()
+        comment = comment_object.comment if comment_object else None
         # create a 'User Change Request' notification
         # source: User that requests an account upgrade or requesting an account above public
         source = ucr.created_by.username

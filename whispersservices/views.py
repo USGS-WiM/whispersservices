@@ -2282,6 +2282,11 @@ class UserViewSet(HistoryViewSet):
             user.is_active = True
             # TODO: also flag email_verified to true?
             user.save()
+            # If the user requested a role/organization when registering, send
+            # those notification emails now
+            ucr = UserChangeRequest.objects.filter(created_by=user).first()
+            if ucr:
+                UserChangeRequestSerializer.send_user_change_request_email(ucr)
             self._send_user_created_email(user)
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(user, context={'request': request})
