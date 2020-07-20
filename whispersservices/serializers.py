@@ -4424,30 +4424,7 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # Create email verification link
-        token = email_verification_token.make_token(user)
-        request = self.context['request']
-        verification_link = (settings.APP_WHISPERS_URL +
-                             "?" +
-                             urlencode({'user-id': user.id, 'email-token': token}))
-
-        # create a 'User Email Verification' notification
-        # source: User that requests a public account
-        source = user.username
-        # recipients: user
-        recipients = [user.id]
-        # email forwarding: Automatic, to user's email
-        email_to = [user.email]
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
-        subject = msg_tmp.subject_template
-        body = msg_tmp.body_template.format(
-            first_name=user.first_name,
-            last_name=user.last_name,
-            verification_link=verification_link)
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        UserSerializer.send_email_verification_message(user)
 
         if new_user_change_request is not None:
             role_requested = None
@@ -4476,6 +4453,33 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
         return user
+
+    @staticmethod
+    def send_email_verification_message(user):
+        """Send email to user with link to verify their email address."""
+        # Create email verification link
+        token = email_verification_token.make_token(user)
+        verification_link = (settings.APP_WHISPERS_URL +
+                             "?" +
+                             urlencode({'user-id': user.id, 'email-token': token}))
+
+        # create a 'User Email Verification' notification
+        # source: User that requests a public account
+        source = user.username
+        # recipients: user
+        recipients = [user.id]
+        # email forwarding: Automatic, to user's email
+        email_to = [user.email]
+        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
+        subject = msg_tmp.subject_template
+        body = msg_tmp.body_template.format(
+            first_name=user.first_name,
+            last_name=user.last_name,
+            verification_link=verification_link)
+        event = None
+        from whispersservices.immediate_tasks import generate_notification
+        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)

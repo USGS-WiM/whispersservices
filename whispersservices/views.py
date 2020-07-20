@@ -2293,6 +2293,10 @@ class UserViewSet(HistoryViewSet):
             serializer_class = self.get_serializer_class()
             serializer = serializer_class(user, context={'request': request})
             return Response(serializer.data)
+        elif user:
+            # Checking token failed, possibly because it expired. Send to user again.
+            UserSerializer.send_email_verification_message(user)
+            return Response({"status": "Email verification failed, resending verification email. Please check your inbox and try again."}, status=400)
         else:
             return Response({"status": "Failed to confirm email address."}, status=400)
 
