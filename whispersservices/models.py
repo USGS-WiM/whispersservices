@@ -2213,6 +2213,7 @@ class User(AbstractUser):
         return self.organization.child_organizations
 
     email = models.EmailField(unique=True, blank=True, max_length=254, verbose_name='email address')
+    email_verified = models.BooleanField(default=False, help_text='A boolean value indicating if the user has verified their email address or not')
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
     circles = models.ManyToManyField(

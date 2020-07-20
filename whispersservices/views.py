@@ -2276,11 +2276,13 @@ class UserViewSet(HistoryViewSet):
         # needs to be able to confirm email address
         user = get_object_or_404(User, id=pk)
         token = request.GET['token']
-        # TODO: don't check token if user email is already verified - let user
-        # know email is already verified
-        if user and email_verification_token.check_token(user, token):
+        if user and user.email_verified:
+            # don't check token if user email is already verified - let user
+            # know email is already verified
+            return Response({"status": "Email address has already been verified."}, status=200)
+        elif user and email_verification_token.check_token(user, token):
             user.is_active = True
-            # TODO: also flag email_verified to true?
+            user.email_verified = True
             user.save()
             # If the user requested a role/organization when registering, send
             # those notification emails now
