@@ -19,15 +19,28 @@ class CustomBasicAuthentication(authentication.BasicAuthentication):
         user = authenticate(request=request, **credentials)
 
         if user is None:
-            raise AuthenticationFailed(_('Invalid username/password.'))
-
-        if not user.is_active:
-            raise AuthenticationFailed(_('User inactive or deleted.'))
+            try:
+                # fetch user by username and manually check password
+                user = get_user_model().objects.get(**{
+                    get_user_model().USERNAME_FIELD: userid
+                })
+                if user.check_password(password):
+                    if not user.email_verified:
+                        raise AuthenticationFailed({
+                            'type': 'unverified_email',
+                            'detail': _('User email address has not been verified.')
+                        })
+                    if not user.is_active:
+                        raise AuthenticationFailed({'type': 'user_inactive', 'detail': _('User inactive or deleted.')})
+                else:
+                    raise AuthenticationFailed({'type': 'invalid_password', 'detail': _('Invalid username/password.')})
+            except get_user_model().DoesNotExist:
+                raise AuthenticationFailed({'type': 'invalid_password', 'detail': _('Invalid username/password.')})
 
         return (user, None)
 
 
 class AuthenticationFailed(exceptions.APIException):
     status_code = status.HTTP_403_FORBIDDEN
-    default_detail = _('Incorrect authentication credentials.')
+    default_detail = {'type': 'invalid_password', 'detail': _('Incorrect authentication credentials.')}
     default_code = 'authentication_failed'
