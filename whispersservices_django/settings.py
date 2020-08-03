@@ -181,3 +181,5 @@ CELERY_IMPORTS = ['whispersservices.immediate_tasks', 'whispersservices.schedule
 CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+DRF_RECAPTCHA_SECRET_KEY = CONFIG.get('security', 'DRF_RECAPTCHA_SECRET_KEY')
