@@ -182,4 +182,14 @@ CELERY_BROKER_URL = 'amqp://localhost'
 CELERY_RESULT_BACKEND = 'rpc://'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# How to generate a reCAPTCHA secret key for local development:
+# 1. Register for an API key pair: http://www.google.com/recaptcha/admin
+# 2. When you register for the API key pair:
+#    - select the reCAPTCHA type as v2, "I am not a robot" checkbox
+#    - add the domains "localhost" and "127.0.0.1"
+#    - for the rest of the form the defaults are fine
+# 3. Put the secret key portion into settings.cfg as the value of
+#    DRF_RECAPTCHA_SECRET_KEY under section [security]
+# 4. Use the site id in the environment.ts file on the client as the value of
+#    "recaptcha_site_key"
 DRF_RECAPTCHA_SECRET_KEY = CONFIG.get('security', 'DRF_RECAPTCHA_SECRET_KEY')
