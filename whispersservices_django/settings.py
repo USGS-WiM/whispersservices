@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'dry_rest_permissions',
     'django_celery_beat',
     'whispersservices',
+    'drf_recaptcha',
 ]
 
 MIDDLEWARE = [
