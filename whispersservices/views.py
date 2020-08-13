@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -2299,13 +2300,62 @@ class UserViewSet(HistoryViewSet):
             return Response({"status": "Email verification failed, resending verification email. Please check your inbox and try again."}, status=400)
         else:
             return Response({"status": "Failed to confirm email address."}, status=400)
+    
+    @action(detail=False, methods=['post'], permission_classes=[])
+    def request_password_reset(self, request):
+        if 'username' in request.data:
+            username = request.data['username']
+            user = get_object_or_404(User, username=username)
+            # If user is inactive, don't send email but do return the same
+            # successful response to prevent leaking who has accounts.
+            if user.is_active:
+                token = PasswordResetTokenGenerator().make_token(user)
+                password_reset_link = (settings.APP_WHISPERS_URL + "?" + urlencode(
+                    {'user-id': user.id, 'password-reset-token': token}))
+                # create a 'Password Reset' notification
+                # source: User that requests a public account
+                source = user.username
+                # recipients: user
+                recipients = [user.id]
+                # email forwarding: Automatic, to user's email
+                email_to = [user.email]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Password Reset').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template.format(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    password_reset_link=password_reset_link)
+                event = None
+                from whispersservices.immediate_tasks import generate_notification
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+            return Response({"status": "Password reset request processed."})
+        else:
+            raise serializers.ValidationError("Request must include an username.")
+
+    @action(detail=False, methods=['post'], permission_classes=[], serializer_class=None)
+    def reset_password(self, request):
+        user_id = request.data['id']
+        token = request.data['token']
+        user = get_object_or_404(User, id=user_id)
+        # verify that password follows business rules by using UserSerializer
+        data = dict(password=request.data['password'])
+        serializer = self.get_serializer_class()(user, data=data, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        token_generator = PasswordResetTokenGenerator()
+        if token_generator.check_token(user, token):
+            # update the password
+            user.set_password(serializer.validated_data['password'])
+            return Response({"status": "Password was successfully updated."})
+        else:
+            return Response({"status": "Password change failed. Please try again with a new password reset request."}, status=400)
 
     # override the default serializer_class to ensure the requester sees only permitted data
     def get_serializer_class(self):
         user = get_request_user(self.request)
         # all requests from anonymous or public users must use the public serializer
         if not user or not user.is_authenticated or user.role.is_public:
-            return UserSerializer if self.action == 'create' else UserPublicSerializer
+            return UserSerializer if self.action == 'create' or self.action == 'reset_password' else UserPublicSerializer
         # creators and admins have access to all fields
         elif self.action == 'create' or user.role.is_superadmin or user.role.is_admin:
             return UserSerializer
