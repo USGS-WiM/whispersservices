@@ -415,17 +415,37 @@ class CommentSerializer(serializers.ModelSerializer):
                 from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
             else:
+                # determine which epi user to notify, based on location
                 evt_locs = EventLocation.objects.filter(event=event_id)
                 hfs_locations_str = Configuration.objects.filter(name='hfs_locations').first().value.split(',')
                 hfs_locations = [int(hfs_loc) for hfs_loc in hfs_locations_str]
                 if hfs_locations and any(
                         [evt_loc.administrative_level_one.id in hfs_locations for evt_loc in evt_locs]):
-                    recipients = [hfs_epi_user.id, ]
-                    email_to = [hfs_epi_user.email, ]
+                    epi_user = hfs_epi_user
                 else:
-                    recipients = [madison_epi_user.id, ]
-                    email_to = [madison_epi_user.email, ]
-                source = service_request.created_by.username
+                    epi_user = madison_epi_user
+                # comment created by service request creator and service request event's creator
+                if (comment.created_by.id == service_request.event.created_by.id
+                        and comment.created_by.id == service_request.created_by.id):
+                    recipients = [epi_user.id, ]
+                    email_to = [epi_user.email, ]
+                # comment service request event's creator but not created by service request creator
+                elif (comment.created_by.id == service_request.event.created_by.id
+                      and comment.created_by.id != service_request.created_by.id):
+                    recipients = [epi_user.id, service_request.created_by.id, ]
+                    email_to = [epi_user.email, service_request.created_by.email, ]
+                # comment created by service request creator but not service request event's creator
+                elif (comment.created_by.id != service_request.event.created_by.id
+                      and comment.created_by.id == service_request.created_by.id):
+                    recipients = [epi_user.id, service_request.event.created_by.id, ]
+                    email_to = [epi_user.email, service_request.event.created_by.email, ]
+                # comment created by by neither service request creator nor service request event's creator
+                else:
+                    recipients = list({[epi_user.id, service_request.created_by.id,
+                                        service_request.event.created_by.id, ]})
+                    email_to = list({[epi_user.email, service_request.created_by.email,
+                                      service_request.event.created_by.email, ]})
+                source = comment.created_by.username
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
                 # TODO: add protection here for when subject or body encounters a KeyError exception (see scheduled_tasks.py for examples)
