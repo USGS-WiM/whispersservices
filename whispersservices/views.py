@@ -1792,7 +1792,7 @@ class UserViewSet(HistoryViewSet):
                     # check if this item is a well-formed email address
                     if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
                         # check if there is a matching user (email addresses are unique across all users)
-                        user = User.objects.filter(email=item).first()
+                        user = User.objects.filter(email__iexact=item).first()
                         if user:
                             found.append(user)
                         else:
@@ -1861,12 +1861,12 @@ class UserViewSet(HistoryViewSet):
             queryset = queryset.filter(username__exact=username)
         email = self.request.query_params.get('email', None)
         if email is not None:
-            queryset = queryset.filter(email__exact=email)
+            queryset = queryset.filter(email__iexact=email)
         role = self.request.query_params.get('role', None)
         if role is not None:
             queryset = queryset.filter(role__exact=role)
         organization = self.request.query_params.get('organization', None)
-        if email is not None:
+        if organization is not None:
             queryset = queryset.filter(organization__exact=organization)
         return queryset
 
