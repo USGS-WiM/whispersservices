@@ -2346,7 +2346,8 @@ class UserViewSet(HistoryViewSet):
         if token_generator.check_token(user, token):
             # update the password
             user.set_password(serializer.validated_data['password'])
-            return Response({"status": "Password was successfully updated."})
+            user.save()
+            return Response(serializer.data)
         else:
             return Response({"status": "Password change failed. Please try again with a new password reset request."}, status=400)
 
