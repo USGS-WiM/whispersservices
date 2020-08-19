@@ -441,10 +441,10 @@ class CommentSerializer(serializers.ModelSerializer):
                     email_to = [epi_user.email, service_request.event.created_by.email, ]
                 # comment created by by neither service request creator nor service request event's creator
                 else:
-                    recipients = list({[epi_user.id, service_request.created_by.id,
-                                        service_request.event.created_by.id, ]})
-                    email_to = list({[epi_user.email, service_request.created_by.email,
-                                      service_request.event.created_by.email, ]})
+                    recipients = [epi_user.id, service_request.created_by.id,
+                                  service_request.event.created_by.id, ]
+                    email_to = [epi_user.email, service_request.created_by.email,
+                                service_request.event.created_by.email, ]
                 source = comment.created_by.username
                 # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='Service Request Comment').first()
