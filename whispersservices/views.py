@@ -2081,7 +2081,7 @@ class UserViewSet(HistoryViewSet):
                     # check if this item is a well-formed email address
                     if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
                         # check if there is a matching user (email addresses are unique across all users)
-                        user = User.objects.filter(email=item).first()
+                        user = User.objects.filter(email__iexact=item).first()
                         if user:
                             found.append(user)
                         else:

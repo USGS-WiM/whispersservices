@@ -516,12 +516,31 @@ class CommentSerializer(serializers.ModelSerializer):
                     evt_locs = EventLocation.objects.filter(event=event_id)
                     if HFS_LOCATIONS and any(
                             [evt_loc.administrative_level_one.id in HFS_LOCATIONS for evt_loc in evt_locs]):
-                        recipients = [hfs_epi_user.id, ]
-                        email_to = [hfs_epi_user.email, ]
+                        epi_user = hfs_epi_user
                     else:
-                        recipients = [madison_epi_user.id, ]
-                        email_to = [madison_epi_user.email, ]
-                    source = service_request.created_by.username
+                        epi_user = madison_epi_user
+                    # comment created by service request creator and service request event's creator
+                    if (comment.created_by.id == service_request.event.created_by.id
+                            and comment.created_by.id == service_request.created_by.id):
+                        recipients = [epi_user.id, ]
+                        email_to = [epi_user.email, ]
+                    # comment service request event's creator but not created by service request creator
+                    elif (comment.created_by.id == service_request.event.created_by.id
+                          and comment.created_by.id != service_request.created_by.id):
+                        recipients = [epi_user.id, service_request.created_by.id, ]
+                        email_to = [epi_user.email, service_request.created_by.email, ]
+                    # comment created by service request creator but not service request event's creator
+                    elif (comment.created_by.id != service_request.event.created_by.id
+                          and comment.created_by.id == service_request.created_by.id):
+                        recipients = [epi_user.id, service_request.event.created_by.id, ]
+                        email_to = [epi_user.email, service_request.event.created_by.email, ]
+                    # comment created by by neither service request creator nor service request event's creator
+                    else:
+                        recipients = list({[epi_user.id, service_request.created_by.id,
+                                            service_request.event.created_by.id, ]})
+                        email_to = list({[epi_user.email, service_request.created_by.email,
+                                          service_request.event.created_by.email, ]})
+                    source = comment.created_by.username
                     generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
         return comment

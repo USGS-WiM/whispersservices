@@ -124,7 +124,7 @@ class CommentFilter(FilterSet):
 
 class UserFilter(FilterSet):
     username = CharFilter(field_name='username', lookup_expr='exact', label='Filter by username, exact match')
-    email = CharFilter(field_name='email', lookup_expr='exact', label='Filter by email, exact match')
+    email = CharFilter(field_name='email', lookup_expr='iexact', label='Filter by email, exact match')
     role = NumberInFilter(field_name='role', lookup_expr='in', label='Filter by role ID (or a list of role IDs)')
     organization = NumberInFilter(field_name='organization', lookup_expr='in', label='Filter by organization ID (or a list of organization IDs)')
 
