@@ -536,10 +536,10 @@ class CommentSerializer(serializers.ModelSerializer):
                         email_to = [epi_user.email, service_request.event.created_by.email, ]
                     # comment created by by neither service request creator nor service request event's creator
                     else:
-                        recipients = list({[epi_user.id, service_request.created_by.id,
-                                            service_request.event.created_by.id, ]})
-                        email_to = list({[epi_user.email, service_request.created_by.email,
-                                          service_request.event.created_by.email, ]})
+                        recipients = [epi_user.id, service_request.created_by.id,
+                                      service_request.event.created_by.id, ]
+                        email_to = [epi_user.email, service_request.created_by.email,
+                                    service_request.event.created_by.email, ]
                     source = comment.created_by.username
                     generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
 
