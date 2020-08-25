@@ -1083,28 +1083,49 @@ class EventSerializer(serializers.ModelSerializer):
         if new_service_request is not None:
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
-                new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 admin = User.objects.filter(id=1).first()
-                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                request_response=request_response, response_by=admin,
-                                                                created_by=user, modified_by=user)
-                # service_request_comments = []
-
-                # create the child comments for this service request
-                if new_comments is not None:
-                    for comment in new_comments:
-                        if comment is not None:
-                            if 'comment_type' in comment and comment['comment_type'] is not None:
-                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                if not comment_type:
-                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            else:
-                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-                            # service_request_comments.append(comment['comment'])
+                # use event to populate event field on new_service_request
+                new_service_request['event'] = event.id
+                new_service_request['request_type'] = request_type.id
+                new_service_request['request_response'] = request_response.id
+                new_service_request['response_by'] = admin.id
+                new_service_request['created_by'] = event.created_by.id
+                new_service_request['modified_by'] = event.modified_by.id
+                new_service_request['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
+                service_request_serializer = ServiceRequestSerializer(data=new_service_request)
+                if service_request_serializer.is_valid():
+                    service_request_serializer.save()
+                else:
+                    # delete this event (related collaborators, organizations, eventgroups, service requests,
+                    # contacts, and comments will be cascade deleted automatically if any exist)
+                    event.delete()
+                    raise serializers.ValidationError(jsonify_errors(service_request_serializer.errors))
+            # if ('request_type' in new_service_request and new_service_request['request_type'] is not None
+            #         and new_service_request['request_type'] in [1, 2]):
+            #     new_comments = new_service_request.pop('new_comments', None)
+            #     request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+            #     request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+            #     admin = User.objects.filter(id=1).first()
+            #     service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+            #                                                     request_response=request_response, response_by=admin,
+            #                                                     created_by=user, modified_by=user)
+            #     # service_request_comments = []
+            #
+            #     # create the child comments for this service request
+            #     if new_comments is not None:
+            #         for comment in new_comments:
+            #             if comment is not None:
+            #                 if 'comment_type' in comment and comment['comment_type'] is not None:
+            #                     comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+            #                     if not comment_type:
+            #                         comment_type = CommentType.objects.filter(name='Diagnostic').first()
+            #                 else:
+            #                     comment_type = CommentType.objects.filter(name='Diagnostic').first()
+            #                 Comment.objects.create(content_object=service_request, comment=comment['comment'],
+            #                                        comment_type=comment_type, created_by=user, modified_by=user)
+            #                 # service_request_comments.append(comment['comment'])
 
         return event
 
@@ -1883,28 +1904,48 @@ class EventAdminSerializer(serializers.ModelSerializer):
         if new_service_request is not None:
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
-                new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 admin = User.objects.filter(id=1).first()
-                service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
-                                                                request_response=request_response, response_by=admin,
-                                                                created_by=user, modified_by=user)
-                # service_request_comments = []
+                # use event to populate event field on new_service_request
+                new_service_request['event'] = event.id
+                new_service_request['request_type'] = request_type.id
+                new_service_request['request_response'] = request_response.id
+                new_service_request['response_by'] = admin.id
+                new_service_request['created_by'] = event.created_by.id
+                new_service_request['modified_by'] = event.modified_by.id
+                new_service_request['FULL_EVENT_CHAIN_CREATE'] = FULL_EVENT_CHAIN_CREATE
+                service_request_serializer = ServiceRequestSerializer(data=new_service_request)
+                if service_request_serializer.is_valid():
+                    service_request_serializer.save()
+                else:
+                    # delete this event (related collaborators, organizations, eventgroups, service requests,
+                    # contacts, and comments will be cascade deleted automatically if any exist)
+                    event.delete()
+                    raise serializers.ValidationError(jsonify_errors(service_request_serializer.errors))
 
-                # create the child comments for this service request
-                if new_comments is not None:
-                    for comment in new_comments:
-                        if comment is not None:
-                            if 'comment_type' in comment and comment['comment_type'] is not None:
-                                comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
-                                if not comment_type:
-                                    comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            else:
-                                comment_type = CommentType.objects.filter(name='Diagnostic').first()
-                            Comment.objects.create(content_object=service_request, comment=comment['comment'],
-                                                   comment_type=comment_type, created_by=user, modified_by=user)
-                            # service_request_comments.append(comment['comment'])
+                # new_comments = new_service_request.pop('new_comments', None)
+                # request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
+                # request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                # admin = User.objects.filter(id=1).first()
+                # service_request = ServiceRequest.objects.create(event=event, request_type=request_type,
+                #                                                 request_response=request_response, response_by=admin,
+                #                                                 created_by=user, modified_by=user)
+                # # service_request_comments = []
+                #
+                # # create the child comments for this service request
+                # if new_comments is not None:
+                #     for comment in new_comments:
+                #         if comment is not None:
+                #             if 'comment_type' in comment and comment['comment_type'] is not None:
+                #                 comment_type = CommentType.objects.filter(id=comment['comment_type']).first()
+                #                 if not comment_type:
+                #                     comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                #             else:
+                #                 comment_type = CommentType.objects.filter(name='Diagnostic').first()
+                #             Comment.objects.create(content_object=service_request, comment=comment['comment'],
+                #                                    comment_type=comment_type, created_by=user, modified_by=user)
+                #             # service_request_comments.append(comment['comment'])
 
         return event
 
