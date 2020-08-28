@@ -847,6 +847,13 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
             # do not create notifications for private events for users who are not the event owner
             #  or not in their org or are not event collaborators
             all_events_public = Event.objects.filter(created_date=yesterday, public=True).distinct()
+            # Exclude events that were made public yesterday
+            exlude_ids = []
+            for event_public in all_events_public:
+                # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
+                    exlude_ids.append(event_public.id)
+            all_events_public = all_events_public.exclude(id__in=exlude_ids)
             all_events_personal = Event.objects.filter(created_date=yesterday).filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
                 | Q(created_by__organization__in=user.organization.child_organizations)
@@ -879,6 +886,13 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
             # do not create notifications for private events for users who are not the event owner
             #  or not in their org or are not event collaborators
             all_events_public = Event.objects.filter(modified_date=yesterday, public=True).distinct()
+            # Exclude events that were made public yesterday
+            exlude_ids = []
+            for event_public in all_events_public:
+                # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
+                    exlude_ids.append(event_public.id)
+            all_events_public = all_events_public.exclude(id__in=exlude_ids)
             all_events_personal = Event.objects.filter(modified_date=yesterday).filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
                 | Q(created_by__organization__in=user.organization.child_organizations)
@@ -1221,12 +1235,17 @@ def custom_notifications_by_user(yesterday, user_id):
 
                 if queryset:
                     for event in queryset:
+                        # Exclude events that were made public yesterday
+                        include = True
+                        # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                        if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
+                            include = False
                         # do not create notifications for private events for users who are not the event owner
                         #  or not in their org or are not event collaborators
-                        if event.public or (user.id == event.created_by.id
-                                            or user.organization.id == event.created_by.organization.id
-                                            or user.organization.id in event.created_by.parent_organizations
-                                            or user.id in list(User.objects.filter(
+                        if include and event.public or (user.id == event.created_by.id
+                                                        or user.organization.id == event.created_by.organization.id
+                                                        or user.organization.id in event.created_by.parent_organizations
+                                                        or user.id in list(User.objects.filter(
                                     Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                                 ).values_list('id', flat=True))):
                             send_email = cue.notification_cue_preference.send_email
@@ -1264,12 +1283,17 @@ def custom_notifications_by_user(yesterday, user_id):
 
                 if queryset:
                     for event in queryset:
+                        # Exclude events that were made public yesterday
+                        include = True
+                        # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                        if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
+                            include = False
                         # do not create notifications for private events for users who are not the event owner
                         #  or not in their org or are not event collaborators
-                        if event.public or (user.id == event.created_by.id
-                                            or user.organization.id == event.created_by.organization.id
-                                            or user.organization.id in event.created_by.parent_organizations
-                                            or user.id in list(User.objects.filter(
+                        if include and event.public or (user.id == event.created_by.id
+                                                        or user.organization.id == event.created_by.organization.id
+                                                        or user.organization.id in event.created_by.parent_organizations
+                                                        or user.id in list(User.objects.filter(
                                     Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
                                 ).values_list('id', flat=True))):
                             # Create one notification per distinct updater (not including the creator)
