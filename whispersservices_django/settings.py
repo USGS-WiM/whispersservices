@@ -20,7 +20,7 @@ PROJECT_PATH = os.path.abspath(PROJECT_PATH)
 TEMPLATE_PATH = os.path.join(PROJECT_PATH, 'templates')
 
 CONFIG = moves.configparser.RawConfigParser(allow_no_value=True)
-CONFIG.read('%s\settings.cfg' % SETTINGS_DIR)
+CONFIG.read(os.path.join(SETTINGS_DIR, 'settings.cfg'))
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
