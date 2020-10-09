@@ -1,9 +1,9 @@
 [
   {
-    "name": "whispersservices_django",
+    "name": "whispersservices",
     "organization": "U.S. Geological Survey",
     "description": "Web services for WHISPers (Wildlife Health Information Sharing Partnership event reporting system)",
-    "version": "v1.5.0",
+    "version": "v1.6.0",
     "status": "Production",
 
     "permissions": {
@@ -11,15 +11,15 @@
       "licenses": [
         {
           "name": "Public Domain",
-          "URL": "https://github.com/USGS-WiM/whispersservices_django/blob/master/LICENSE.md"
+          "URL": "https://github.com/USGS-WiM/whispersservices/blob/master/LICENSE.md"
         }
       ]
     },
 
     "homepageURL": "https://wim.usgs.gov",
-    "downloadURL": "https://github.com/USGS-WiM/whispersservices_django/archive/master.zip",
-    "disclaimerURL": "https://github.com/USGS-WiM/whispersservices_django/blob/master/DISCLAIMER.md",
-    "repositoryUrl": "https://github.com/USGS-WiM/whispersservices_django",
+    "downloadURL": "https://github.com/USGS-WiM/whispersservices/archive/master.zip",
+    "disclaimerURL": "https://github.com/USGS-WiM/whispersservices/blob/master/DISCLAIMER.md",
+    "repositoryUrl": "https://github.com/USGS-WiM/whispersservices",
     "vcs": "git",
 
     "laborHours": null,
@@ -45,7 +45,7 @@
     },
 
     "date": {
-      "metadataLastUpdated": "2020-03-30"
+      "metadataLastUpdated": "2020-10-08"
     }
   }
 ]

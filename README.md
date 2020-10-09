@@ -16,8 +16,8 @@ This project was built with Django, Django REST Framework, and Psycopg2.
 *Prerequisite*: Please install Celery and RabbitMQ by following [these instructions](https://docs.celeryproject.org/en/latest/getting-started/first-steps-with-celery.html).
 
 ```bash
-git clone https://github.com/USGS-WiM/whispersservices_django.git
-cd whispersservices_django
+git clone https://github.com/USGS-WiM/whispersservices.git
+cd whispersservices
 
 # install virtualenv
 pip3 install virtualenv
@@ -46,11 +46,11 @@ The web services are designed to work very slightly differently between dev, tes
 
 Note that on Windows, the default arrangement of a settings.py file reading a settings.cfg file (to keep sensitive information out of code repositories) seems to  work fine, but in Linux this does not seem to work, and so all the `CONFIG.get()` calls should be replaced by simple values.
 
-To use Celery in development, run `celery -A whispersservices_django worker -l info` (note that this no longer seems to work on Windows, and so the `--pool=solo` option should be appeneded to the preceding command).
+To use Celery in development, run `celery -A whispersservices worker -l info` (note that this no longer seems to work on Windows, and so the `--pool=solo` option should be appeneded to the preceding command).
 
 ## Development server
 
-Run `python3 manage.py runserver` for a dev server with live reload. Navigate to `http://localhost:8000/whispersservices/`. The web services will automatically reload if you change any of the source files. This will use the development environment configuration.
+Run `python3 manage.py runserver` for a dev server with live reload. Navigate to `http://localhost:8000/api/`. The web services will automatically reload if you change any of the source files. This will use the development environment configuration.
 
 ## Production server
 
