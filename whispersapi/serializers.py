@@ -1158,7 +1158,6 @@ class EventSerializer(serializers.ModelSerializer):
         if new_service_request is not None:
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
-                new_comments = new_service_request.pop('new_comments', None)
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
@@ -3423,7 +3422,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
                 if 'comment' not in item or not item['comment']:
                     raise serializers.ValidationError("A comment must have comment text.")
                 elif 'comment_type' not in item or not item['comment_type']:
-                    raise serializers.ValidationError("A comment must have a comment type.")
+                    item["comment_type"] = CommentType.objects.filter(name='Diagnostic').first().id
 
         return data
 
