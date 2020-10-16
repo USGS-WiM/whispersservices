@@ -1517,6 +1517,7 @@ class EventEventGroupSerializer(serializers.ModelSerializer):
 class EventGroupSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
+    name = serializers.CharField(read_only=True)
     comments = CommentSerializer(many=True, read_only=True)
     new_comment = serializers.CharField(write_only=True, required=True, allow_blank=False)
     new_events = serializers.ListField(write_only=True, required=True)
