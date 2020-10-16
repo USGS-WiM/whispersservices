@@ -178,7 +178,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     permission_classes = (DRYPermissions,)
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend]  # (DjangoFilterBackend, filters.OrderingFilter,)
+    filter_backends = [DjangoFilterBackend]
 
     def perform_create(self, serializer):
         if self.basename != 'users':
@@ -207,7 +207,7 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
 
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend]  # (DjangoFilterBackend, filters.OrderingFilter,)
+    filter_backends = [DjangoFilterBackend]
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
@@ -2376,21 +2376,16 @@ class ContactViewSet(HistoryViewSet):
     Deletes a contact.
     """
 
+    filter_backends = (DjangoFilterBackend, filters.OrderingFilter,)
+    filterset_class = ContactFilter
+
     @action(detail=False)
     def user_contacts(self, request):
         # limit data to what the user owns and what the user's org owns
         query_params = self.request.query_params if request is not None else None
         queryset = self.build_queryset(query_params, get_user_contacts=True)
         ordering_param = query_params.get('ordering', None) if query_params is not None else None
-        if ordering_param is not None:
-            fields = [field.strip() for field in ordering_param.split(',')]
-            ordering = filters.OrderingFilter.remove_invalid_fields(
-                filters.OrderingFilter(), queryset, fields, self, request)
-            if ordering:
-                queryset = queryset.order_by(*ordering)
-            else:
-                queryset = queryset.order_by('id')
-        else:
+        if ordering_param is None:
             queryset = queryset.order_by('id')
 
         if not request:
@@ -2511,7 +2506,7 @@ class SearchViewSet(HistoryViewSet):
     """
 
     serializer_class = SearchSerializer
-    filter_backends = (DjangoFilterBackend,)
+    filter_backends = (DjangoFilterBackend,filters.OrderingFilter,)
     filterset_class = SearchFilter
 
     @action(detail=False)
@@ -2520,15 +2515,7 @@ class SearchViewSet(HistoryViewSet):
         query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_searches=True)
         ordering_param = query_params.get('ordering', None) if query_params else None
-        if ordering_param is not None:
-            fields = [field.strip() for field in ordering_param.split(',')]
-            ordering = filters.OrderingFilter.remove_invalid_fields(
-                filters.OrderingFilter(), queryset, fields, self, request)
-            if ordering:
-                queryset = queryset.order_by(*ordering)
-            else:
-                queryset = queryset.order_by('id')
-        else:
+        if ordering_param is None:
             queryset = queryset.order_by('id')
 
         if not self.request:
@@ -2634,7 +2621,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     queryset = Event.objects.all()
     schema = AutoSchema(operation_id_base="EventSummary")
-    filter_backends = (DjangoFilterBackend,)
+    filter_backends = (DjangoFilterBackend,filters.OrderingFilter,)
     filterset_class = EventSummaryFilter
 
     @action(detail=False)
@@ -2657,15 +2644,7 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         query_params = self.request.query_params if self.request else None
         queryset = self.build_queryset(query_params, get_user_events=True)
         ordering_param = query_params.get('ordering', None) if query_params else None
-        if ordering_param is not None:
-            fields = [field.strip() for field in ordering_param.split(',')]
-            ordering = filters.OrderingFilter.remove_invalid_fields(
-                filters.OrderingFilter(), queryset, fields, self, request)
-            if ordering:
-                queryset = queryset.order_by(*ordering)
-            else:
-                queryset = queryset.order_by('-id')
-        else:
+        if ordering_param is None:
             queryset = queryset.order_by('-id')
 
         frmt = self.request.query_params.get('format', '') if self.request else ''
