@@ -178,7 +178,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     permission_classes = (DRYPermissions,)
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter,]
 
     def perform_create(self, serializer):
         if self.basename != 'users':
@@ -207,7 +207,7 @@ class ReadOnlyHistoryViewSet(AuthLastLoginMixin, viewsets.ReadOnlyModelViewSet):
     """
 
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter,]
 
     # override the default pagination to allow disabling of pagination
     def paginate_queryset(self, *args, **kwargs):
@@ -2376,7 +2376,6 @@ class ContactViewSet(HistoryViewSet):
     Deletes a contact.
     """
 
-    filter_backends = (DjangoFilterBackend, filters.OrderingFilter,)
     filterset_class = ContactFilter
 
     @action(detail=False)
@@ -2506,7 +2505,6 @@ class SearchViewSet(HistoryViewSet):
     """
 
     serializer_class = SearchSerializer
-    filter_backends = (DjangoFilterBackend,filters.OrderingFilter,)
     filterset_class = SearchFilter
 
     @action(detail=False)
@@ -2621,7 +2619,6 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
 
     queryset = Event.objects.all()
     schema = AutoSchema(operation_id_base="EventSummary")
-    filter_backends = (DjangoFilterBackend,filters.OrderingFilter,)
     filterset_class = EventSummaryFilter
 
     @action(detail=False)
