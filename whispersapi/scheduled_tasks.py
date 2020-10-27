@@ -20,7 +20,7 @@ else:
 
 
 def get_yesterday():
-    return datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
+    return datetime.strftime(datetime.now() - timedelta(days=5), '%Y-%m-%d')
 
 
 def get_change_info(history_record, model_name):
@@ -566,6 +566,9 @@ def get_event_notifications_own_updated(events_updated_yesterday, yesterday, use
 
     elif cue.notification_cue_preference.create_when_modified:
         for event in events_updated_yesterday:
+            if event.id == 170903:
+                print("get_event_notifications_organization_updated for 170902")
+                print(event.id, cue.id, cue.created_by.id)
             # Create one notification per distinct updater (not including the creator)
             # django_simple_history.history_type: + for create, ~ for update, and - for delete
             event_updater_ids = list(set(
@@ -613,6 +616,9 @@ def get_event_notifications_organization_updated(events_updated_yesterday, yeste
 
     elif cue.notification_cue_preference.create_when_modified:
         for event in events_updated_yesterday:
+            if event.id == 170902:
+                print("get_event_notifications_organization_updated for 170902")
+                print(event.id, cue.id, cue.created_by.id)
             # Create one notification per distinct updater (not including the creator)
             # django_simple_history.history_type: + for create, ~ for update, and - for delete
             event_updater_ids = list(set(
@@ -899,6 +905,8 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])
             ).distinct()
             all_events = all_events_public | all_events_personal
+            # Calling distinct on the joined queryset should not be necessary, but doing it just in case
+            all_events = all_events.distinct()
             all_notifs = get_event_notifications_all_updated(all_events, yesterday, user) if all_events else []
 
             if own_notifs or org_notifs or collab_notifs or all_notifs:
@@ -979,7 +987,7 @@ def stale_event_notifications():
         STALE_EVENT_PERIODS = settings.STALE_EVENT_PERIODS
         message = "Default periods were used (" + ', '.join([str(x) for x in STALE_EVENT_PERIODS]) + ")."
         send_missing_configuration_value_email('stale_event_periods', message=message)
-    stale_event_periods_list = STALE_EVENT_PERIODS.value.split(',')
+    stale_event_periods_list = STALE_EVENT_PERIODS.split(',')
     if all(x.strip().isdecimal() for x in stale_event_periods_list):
         stale_event_periods_list_ints = [int(x) for x in stale_event_periods_list]
         madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
@@ -1213,6 +1221,9 @@ def build_custom_notifications_query(cue, base_queryset):
     criteria_string = ''
     for criterion in criteria:
         criteria_string += criterion[0] + ": " + criterion[1] + "<br />"
+
+    if queryset is not None:
+        queryset = queryset.distinct()
 
     return queryset, criteria_string
 
