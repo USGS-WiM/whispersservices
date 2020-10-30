@@ -20,7 +20,7 @@ else:
 
 
 def get_yesterday():
-    return datetime.strftime(datetime.now() - timedelta(days=5), '%Y-%m-%d')
+    return datetime.strftime(datetime.now() - timedelta(days=1), '%Y-%m-%d')
 
 
 def get_change_info(history_record, model_name):
