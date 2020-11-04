@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 def populate_email_verified_for_existing_users(apps, schema_editor):
     """For all existing users, default email_verified to True."""
-    User = apps.get_model("whispersservices", "User")
+    User = apps.get_model("whispersapi", "User")
     db_alias = schema_editor.connection.alias
     all_users = User.objects.using(db_alias).all()
     for user in all_users:
@@ -16,7 +16,7 @@ def populate_email_verified_for_existing_users(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('whispersservices', '0054_auto_20200719_1537'),
+        ('whispersapi', '0054_auto_20200719_1537'),
     ]
 
     operations = [
@@ -30,5 +30,5 @@ class Migration(migrations.Migration):
             name='email_verified',
             field=models.BooleanField(default=False, help_text='A boolean value indicating if the user has verified their email address or not'),
         ),
-        migrations.RunPython(populate_email_verified_for_existing_users)
+        migrations.RunPython(populate_email_verified_for_existing_users, migrations.RunPython.noop)
     ]

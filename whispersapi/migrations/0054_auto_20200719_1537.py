@@ -17,7 +17,7 @@ def reset_sequence(apps, schema_editor):
 
 
 def add_user_email_verification_notif_msg_template(apps, schema_editor):
-    NotificationMessageTemplate = apps.get_model("whispersservices", "NotificationMessageTemplate")
+    NotificationMessageTemplate = apps.get_model("whispersapi", "NotificationMessageTemplate")
     db_alias = schema_editor.connection.alias
     NotificationMessageTemplate.objects.using(db_alias).create(
         name="User Email Verification",
@@ -63,10 +63,10 @@ If you did not request a WHISPers account, please disregard this email.
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('whispersservices', '0053_merge_20200521_1119'),
+        ('whispersapi', '0053_merge_20200521_1119'),
     ]
 
     operations = [
-        migrations.RunPython(reset_sequence),
-        migrations.RunPython(add_user_email_verification_notif_msg_template)
+        migrations.RunPython(reset_sequence, migrations.RunPython.noop),
+        migrations.RunPython(add_user_email_verification_notif_msg_template, migrations.RunPython.noop)
     ]
