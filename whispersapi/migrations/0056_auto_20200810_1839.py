@@ -4,7 +4,7 @@ from django.db import migrations
 
 
 def add_password_reset_notif_msg_template(apps, schema_editor):
-    NotificationMessageTemplate = apps.get_model("whispersservices", "NotificationMessageTemplate")
+    NotificationMessageTemplate = apps.get_model("whispersapi", "NotificationMessageTemplate")
     db_alias = schema_editor.connection.alias
     NotificationMessageTemplate.objects.using(db_alias).create(
         name="Password Reset",
@@ -45,9 +45,9 @@ If you did not request a password reset, please disregard this email.
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('whispersservices', '0055_auto_20200720_1258'),
+        ('whispersapi', '0055_auto_20200720_1258'),
     ]
 
     operations = [
-        migrations.RunPython(add_password_reset_notif_msg_template)
+        migrations.RunPython(add_password_reset_notif_msg_template, migrations.RunPython.noop)
     ]
