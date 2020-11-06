@@ -4588,8 +4588,10 @@ class SearchSerializer(serializers.ModelSerializer):
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
             user = kwargs['context']['request'].user
 
-        if not user or not user.is_authenticated or user.role.is_public:
+        if not user or not user.is_authenticated:
             fields = ('data',)
+        elif user.role.is_public:
+            fields = ('name', 'data',)
         else:
             fields = ('id', 'name', 'data', 'created_date', 'created_by', 'created_by_string',
                       'modified_date', 'modified_by', 'modified_by_string', 'permissions', 'permission_source',)
@@ -4982,7 +4984,9 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
                           'suspect_count', 'pooled', 'organizations', 'organizations_string',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5023,7 +5027,9 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
                           'age_bias', 'sex_bias', 'speciesdiagnoses',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5080,8 +5086,8 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
     administrative_level_two_points = serializers.CharField(source='administrative_level_two.points', default='')
     country_string = serializers.StringRelatedField(source='country')
     # locationspecies = LocationSpeciesDetailSerializer(many=True)
-    comments = CommentSerializer(many=True)
-    eventlocationcontacts = EventLocationContactDetailSerializer(source='eventlocationcontact_set', many=True)
+    # comments = CommentSerializer(many=True)
+    # eventlocationcontacts = EventLocationContactDetailSerializer(source='eventlocationcontact_set', many=True)
     flyways = serializers.SerializerMethodField()
 
     def get_flyways(self, obj):
@@ -5101,9 +5107,12 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                           'administrative_level_two_string', 'administrative_level_two_points', 'county_multiple',
                           'county_unknown', 'latitude', 'longitude', 'priority', 'land_ownership', 'gnis_name',
                           'gnis_id', 'flyways', 'eventlocationcontacts', 'locationspecies', 'comments',)
+        use_private_fields = False
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                use_private_fields = True
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5112,10 +5121,11 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
-                        fields = private_fields
+                        use_private_fields = True
 
         super(EventLocationDetailSerializer, self).__init__(*args, **kwargs)
 
+        fields = private_fields if use_private_fields else fields
         if fields is not None:
             # Drop any fields that are not specified in the `fields` argument.
             allowed = set(fields)
@@ -5124,6 +5134,10 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                 self.fields.pop(field_name)
 
         self.fields['locationspecies'] = LocationSpeciesDetailSerializer(many=True, context=self.context)
+        if use_private_fields:
+            self.fields['comments'] = CommentSerializer(many=True, context=self.context)
+            self.fields['eventlocationcontacts'] = EventLocationContactDetailSerializer(
+                source='eventlocationcontact_set', many=True, context=self.context)
 
     class Meta:
         model = EventLocation
