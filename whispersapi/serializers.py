@@ -4984,7 +4984,9 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
                           'suspect_count', 'pooled', 'organizations', 'organizations_string',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5025,7 +5027,9 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
                           'age_bias', 'sex_bias', 'speciesdiagnoses',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5106,7 +5110,9 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
         use_private_fields = False
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                use_private_fields = True
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
