@@ -4005,22 +4005,24 @@ class UserSerializer(serializers.ModelSerializer):
                              urlencode({'user-id': user.id, 'email-token': token}))
 
         # create a 'User Email Verification' notification
-        # source: User that requests a public account
-        source = user.username
-        # recipients: user
-        recipients = [user.id]
-        # email forwarding: Automatic, to user's email
-        email_to = [user.email]
-        # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
-        subject = msg_tmp.subject_template
-        body = msg_tmp.body_template.format(
-            first_name=user.first_name,
-            last_name=user.last_name,
-            verification_link=verification_link)
-        event = None
-        from whispersservices.immediate_tasks import generate_notification
-        generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        if not msg_tmp:
+            send_missing_notification_template_message_email('userserializer_send_email_verification_message',
+                                                             'User Email Verification')
+        else:
+            # source: User that requests a public account
+            source = user.username
+            # recipients: user
+            recipients = [user.id]
+            # email forwarding: Automatic, to user's email
+            email_to = [user.email]
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                verification_link=verification_link)
+            event = None
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
