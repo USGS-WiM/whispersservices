@@ -2927,7 +2927,7 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 class EventDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
@@ -3104,7 +3104,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_species_diagnosis_organizations = serializers.ListField(write_only=True, required=False)
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     basis_string = serializers.StringRelatedField(source='basis')
     cause_string = serializers.StringRelatedField(source='cause')
 
@@ -3322,7 +3322,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             existing = set(self.fields)
             for field_name in existing - allowed:
                 self.fields.pop(field_name)
-
 
     class Meta:
         model = SpeciesDiagnosis
@@ -4968,7 +4967,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
     organizations_string = serializers.StringRelatedField(many=True, source='organizations')
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     basis_string = serializers.StringRelatedField(source='basis')
     cause_string = serializers.StringRelatedField(source='cause')
 
