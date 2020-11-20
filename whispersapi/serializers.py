@@ -1159,12 +1159,12 @@ class EventSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
-                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                # request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
                 # use event to populate event field on new_service_request
                 new_service_request['event'] = event.id
                 new_service_request['request_type'] = request_type.id
-                new_service_request['request_response'] = request_response.id
+                # new_service_request['request_response'] = request_response.id
                 new_service_request['response_by'] = admin.id
                 new_service_request['created_by'] = event.created_by.id
                 new_service_request['modified_by'] = event.modified_by.id
