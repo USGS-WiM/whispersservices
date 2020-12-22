@@ -1827,7 +1827,7 @@ class ServiceRequest(PermissionsHistoryModel):
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                     body = ""
                 # source: WHISPers admin who updates the request response value (i.e. responds).
-                source = self.modified_by.username
+                source = self.response_by.username
                 # recipients: user who made the request, event owner
                 recipients = [self.created_by.id, self.event.created_by.id, ]
                 # email forwarding: Automatic, to the user who made the request and event owner
