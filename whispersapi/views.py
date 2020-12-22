@@ -178,7 +178,7 @@ class HistoryViewSet(AuthLastLoginMixin, viewsets.ModelViewSet):
 
     permission_classes = (DRYPermissions,)
     pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter,]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, ]
 
     def perform_create(self, serializer):
         if self.basename != 'users':
@@ -417,8 +417,8 @@ class EventViewSet(HistoryViewSet):
     def get_queryset(self):
         if not self.request:
             return Event.objects.none()
-
-        queryset = self.filter_queryset(self.queryset) if self.request.query_params else self.queryset
+        else:
+            queryset = self.queryset
 
         user = get_request_user(self.request)
 
@@ -718,7 +718,6 @@ class EventAbstractViewSet(HistoryViewSet):
 
     serializer_class = EventAbstractSerializer
     queryset = EventAbstract.objects.all()
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = EventAbstractFilter
 
     def destroy(self, request, *args, **kwargs):
@@ -1045,7 +1044,6 @@ class AdministrativeLevelOneViewSet(HistoryViewSet):
     """
 
     queryset = AdministrativeLevelOne.objects.all()
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = AdministrativeLevelOneFilter
 
     def get_serializer_class(self):
@@ -1080,7 +1078,6 @@ class AdministrativeLevelTwoViewSet(HistoryViewSet):
     """
 
     queryset = AdministrativeLevelTwo.objects.all()
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = AdministrativeLevelTwoFilter
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -1378,7 +1375,6 @@ class DiagnosisViewSet(HistoryViewSet):
 
     serializer_class = DiagnosisSerializer
     queryset = Diagnosis.objects.all()
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = DiagnosisFilter
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -1732,7 +1728,6 @@ class NotificationViewSet(HistoryViewSet):
     Updates multiple notifications.
     """
     serializer_class = NotificationSerializer
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = NotificationFilter
 
     def get_queryset(self):
@@ -1944,7 +1939,6 @@ class CommentViewSet(HistoryViewSet):
     """
 
     serializer_class = CommentSerializer
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = CommentFilter
 
     # override the default queryset to allow filtering by URL arguments
@@ -2067,7 +2061,6 @@ class UserViewSet(HistoryViewSet):
     """
 
     serializer_class = UserSerializer
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = UserFilter
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
@@ -2302,7 +2295,6 @@ class OrganizationViewSet(HistoryViewSet):
     """
 
     queryset = Organization.objects.all()
-    filter_backends = (DjangoFilterBackend,)
     filterset_class = OrganizationFilter
 
     @action(detail=False, methods=['post'], parser_classes=(PlainTextParser,))
@@ -2442,6 +2434,13 @@ class ContactViewSet(HistoryViewSet):
         # otherwise return nothing
         else:
             return Contact.objects.none()
+
+        queryset = self.filter_queryset(queryset)
+
+        # ensure that only active contacts are returned unless the user requests inactive
+        active = query_params.get('active', None)
+        if active is None or active not in ['False', 'false']:
+            queryset = queryset.filter(active=True)
 
         return queryset
 
