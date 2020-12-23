@@ -1039,13 +1039,23 @@ class EventSerializer(serializers.ModelSerializer):
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
                 read_user = User.objects.filter(id=read_user_id).first()
-                if read_user is not None:
+                if read_user is not None and not read_user.id == event.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not read_user.id == event.created_by.id
+                    #         and not read_user.organization.id == event.created_by.organization.id
+                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
                 write_user = User.objects.filter(id=write_user_id).first()
-                if write_user is not None:
+                if write_user is not None and not write_user.id == event.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not write_user.id == event.created_by.id
+                    #         and not write_user.organization.id == event.created_by.organization.id
+                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
@@ -1344,7 +1354,14 @@ class EventSerializer(serializers.ModelSerializer):
             # identify and create relates where user IDs are present in new read list but not old read list
             add_read_users = list(set(new_read_users) - set(old_read_users))
             for user_id in add_read_users:
-                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+                read_user = User.objects.filter(id=user_id).first()
+                if read_user is not None and not read_user.id == event.created_by.id:
+                    # only create collaborator if not the event owne
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not read_user.id == event.created_by.id
+                    #         and not read_user.organization.id == event.created_by.organization.id
+                    #         and read_user.organization.id not in event.created_by.parent_organizations):
+                    EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
 
         # update the write_collaborators list if new_write_user_ids submitted
         if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
@@ -1362,7 +1379,14 @@ class EventSerializer(serializers.ModelSerializer):
             # identify and create relates where user IDs are present in new write list but not old write list
             add_write_users = list(set(new_write_users) - set(old_write_users))
             for user_id in add_write_users:
-                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+                write_user = User.objects.filter(id=user_id).first()
+                if write_user is not None and not write_user.id == event.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not write_user.id == event.created_by.id
+                    #         and not write_user.organization.id == event.created_by.organization.id
+                    #         and write_user.organization.id not in event.created_by.parent_organizations):
+                    EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
