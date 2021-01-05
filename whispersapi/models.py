@@ -2888,6 +2888,18 @@ class Search(PermissionsHistoryModel):
         else:
             return True
 
+    def has_object_write_permission(self, request):
+        # Anyone can write (this is just a pass-through method, specific object action permissions are handled below)
+        return True
+
+    def has_object_create_permission(self, request):
+        # anyone with an account can create
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
+
     def has_object_update_permission(self, request):
         # Only admins or the creator or the creator's org admin can update
         if not request or not request.user or not request.user.is_authenticated:
