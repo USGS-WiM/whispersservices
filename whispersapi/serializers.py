@@ -4476,9 +4476,11 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         if self.instance:
-            if 'parent_organization' in data and data['parent_organization'].id is not None and (
-                    data['parent_organization'].id == data['id'] or data['parent_organization'].id == self.instance.id):
-                raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+            if 'parent_organization' in data and data['parent_organization'] is not None:
+                if 'id' in data and data['id'] is not None and data['parent_organization'].id == data['id']:
+                    raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+                elif data['parent_organization'].id == self.instance.id:
+                    raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
         return data
 
     def __init__(self, *args, **kwargs):
