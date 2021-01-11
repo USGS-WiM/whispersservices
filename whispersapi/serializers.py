@@ -1041,10 +1041,6 @@ class EventSerializer(serializers.ModelSerializer):
                 read_user = User.objects.filter(id=read_user_id).first()
                 if read_user is not None and not read_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not read_user.id == event.created_by.id
-                    #         and not read_user.organization.id == event.created_by.organization.id
-                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
@@ -1052,10 +1048,6 @@ class EventSerializer(serializers.ModelSerializer):
                 write_user = User.objects.filter(id=write_user_id).first()
                 if write_user is not None and not write_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not write_user.id == event.created_by.id
-                    #         and not write_user.organization.id == event.created_by.organization.id
-                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
@@ -1359,10 +1351,6 @@ class EventSerializer(serializers.ModelSerializer):
             for read_user in add_read_users:
                 if not read_user.id == instance.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not read_user.id == event.created_by.id
-                    #         and not read_user.organization.id == event.created_by.organization.id
-                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=instance, created_by=user, modified_by=user)
 
         # update the write_collaborators list if new_write_user_ids submitted
@@ -1383,10 +1371,6 @@ class EventSerializer(serializers.ModelSerializer):
             for write_user in add_write_users:
                 if not write_user.id == instance.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not write_user.id == event.created_by.id
-                    #         and not write_user.organization.id == event.created_by.organization.id
-                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
