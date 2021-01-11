@@ -850,22 +850,29 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
             ).distinct()
             collab_notifs = get_event_notifications_collaborator_new(collab_events, user) if collab_events else []
 
-            # do not create notifications for private events for users who are not the event owner
-            #  or not in their org or are not event collaborators
-            all_events_public = Event.objects.filter(created_date=yesterday, public=True).distinct()
-            # Exclude events that were made public yesterday
-            exlude_ids = []
-            for event_public in all_events_public:
-                # check if this event was not public yesterday, and if so exclude it, otherwise move on
-                if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
-                    exlude_ids.append(event_public.id)
-            all_events_public = all_events_public.exclude(id__in=exlude_ids)
-            all_events_personal = Event.objects.filter(created_date=yesterday).filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
-                | Q(created_by__organization__in=user.organization.child_organizations)
-                | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])
-            ).distinct()
-            all_events = all_events_public | all_events_personal
+            # admin users can see all events regardless of public status or owner/org/collaborator status
+            if user.role.is_admin or user.role.is_superadmin:
+                all_events = Event.objects.filter(created_date=yesterday).distinct()
+
+            # for everyone else...
+            else:
+                # do not create notifications for private events for users who are not the event owner
+                #  or not in their org or are not event collaborators
+                all_events_public = Event.objects.filter(created_date=yesterday, public=True).distinct()
+                # Exclude events that were made public yesterday
+                exlude_ids = []
+                for event_public in all_events_public:
+                    # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                    if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
+                        exlude_ids.append(event_public.id)
+                all_events_public = all_events_public.exclude(id__in=exlude_ids)
+                all_events_personal = Event.objects.filter(created_date=yesterday).filter(
+                    Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                    | Q(created_by__organization__in=user.organization.child_organizations)
+                    | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])
+                ).distinct()
+                all_events = all_events_public | all_events_personal
+
             all_notifs = get_event_notifications_all_new(all_events, user) if all_events else []
 
             if own_notifs or org_notifs or collab_notifs or all_notifs:
@@ -889,24 +896,31 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
             collab_notifs = get_event_notifications_collaborator_updated(
                 collab_events, yesterday, user) if collab_events else []
 
-            # do not create notifications for private events for users who are not the event owner
-            #  or not in their org or are not event collaborators
-            all_events_public = Event.objects.filter(modified_date=yesterday, public=True).distinct()
-            # Exclude events that were made public yesterday
-            exlude_ids = []
-            for event_public in all_events_public:
-                # check if this event was not public yesterday, and if so exclude it, otherwise move on
-                if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
-                    exlude_ids.append(event_public.id)
-            all_events_public = all_events_public.exclude(id__in=exlude_ids)
-            all_events_personal = Event.objects.filter(modified_date=yesterday).filter(
-                Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
-                | Q(created_by__organization__in=user.organization.child_organizations)
-                | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])
-            ).distinct()
-            all_events = all_events_public | all_events_personal
-            # Calling distinct on the joined queryset should not be necessary, but doing it just in case
-            all_events = all_events.distinct()
+            # admin users can see all events regardless of public status or owner/org/collaborator status
+            if user.role.is_admin or user.role.is_superadmin:
+                all_events = Event.objects.filter(created_date=yesterday).distinct()
+
+            # for everyone else...
+            else:
+                # do not create notifications for private events for users who are not the event owner
+                #  or not in their org or are not event collaborators
+                all_events_public = Event.objects.filter(modified_date=yesterday, public=True).distinct()
+                # Exclude events that were made public yesterday
+                exlude_ids = []
+                for event_public in all_events_public:
+                    # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                    if Event.history.filter(public=False, id=event_public.id, history_date__date=yesterday):
+                        exlude_ids.append(event_public.id)
+                all_events_public = all_events_public.exclude(id__in=exlude_ids)
+                all_events_personal = Event.objects.filter(modified_date=yesterday).filter(
+                    Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
+                    | Q(created_by__organization__in=user.organization.child_organizations)
+                    | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])
+                ).distinct()
+                all_events = all_events_public | all_events_personal
+                # Calling distinct on the joined queryset should not be necessary, but doing it just in case
+                all_events = all_events.distinct()
+
             all_notifs = get_event_notifications_all_updated(all_events, yesterday, user) if all_events else []
 
             if own_notifs or org_notifs or collab_notifs or all_notifs:
@@ -1246,19 +1260,31 @@ def custom_notifications_by_user(yesterday, user_id):
 
                 if queryset:
                     for event in queryset:
-                        # Exclude events that were made public yesterday
-                        include = True
-                        # check if this event was not public yesterday, and if so exclude it, otherwise move on
-                        if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
-                            include = False
-                        # do not create notifications for private events for users who are not the event owner
-                        #  or not in their org or are not event collaborators
-                        if include and event.public or (user.id == event.created_by.id
-                                                        or user.organization.id == event.created_by.organization.id
-                                                        or user.organization.id in event.created_by.parent_organizations
-                                                        or user.id in list(User.objects.filter(
-                                    Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
-                                ).values_list('id', flat=True))):
+                        create_notif = False
+
+                        # admin users can see all events regardless of public status or owner/org/collaborator status
+                        if user.role.is_admin or user.role.is_superadmin:
+                            create_notif = True
+
+                        # for everyone else...
+                        else:
+                            # Exclude events that were made public yesterday
+                            include = True
+                            # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                            if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
+                                include = False
+                            # do not create notifications for private events for users who are not the event owner
+                            #  or not in their org or are not event collaborators
+                            if include and event.public or (
+                                    user.id == event.created_by.id
+                                    or user.organization.id == event.created_by.organization.id
+                                    or user.organization.id in event.created_by.parent_organizations
+                                    or user.id in list(User.objects.filter(
+                                        Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
+                                    ).values_list('id', flat=True))):
+                                create_notif = True
+
+                        if create_notif:
                             send_email = cue.notification_cue_preference.send_email
                             # recipients: users with this notification configured
                             recipients = [cue.created_by.id, ]
@@ -1294,19 +1320,31 @@ def custom_notifications_by_user(yesterday, user_id):
 
                 if queryset:
                     for event in queryset:
-                        # Exclude events that were made public yesterday
-                        include = True
-                        # check if this event was not public yesterday, and if so exclude it, otherwise move on
-                        if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
-                            include = False
-                        # do not create notifications for private events for users who are not the event owner
-                        #  or not in their org or are not event collaborators
-                        if include and event.public or (user.id == event.created_by.id
-                                                        or user.organization.id == event.created_by.organization.id
-                                                        or user.organization.id in event.created_by.parent_organizations
-                                                        or user.id in list(User.objects.filter(
-                                    Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
-                                ).values_list('id', flat=True))):
+                        create_notif = False
+
+                        # admin users can see all events regardless of public status or owner/org/collaborator status
+                        if user.role.is_admin or user.role.is_superadmin:
+                            create_notif = True
+
+                        # for everyone else...
+                        else:
+                            # Exclude events that were made public yesterday
+                            include = True
+                            # check if this event was not public yesterday, and if so exclude it, otherwise move on
+                            if Event.history.filter(public=False, id=event.id, history_date__date=yesterday):
+                                include = False
+                            # do not create notifications for private events for users who are not the event owner
+                            #  or not in their org or are not event collaborators
+                            if include and event.public or (
+                                    user.id == event.created_by.id
+                                    or user.organization.id == event.created_by.organization.id
+                                    or user.organization.id in event.created_by.parent_organizations
+                                    or user.id in list(User.objects.filter(
+                                        Q(writeevents__in=[event.id]) | Q(readevents__in=[event.id])
+                                    ).values_list('id', flat=True))):
+                                create_notif = True
+
+                        if create_notif:
                             # Create one notification per distinct updater (not including the creator)
                             # django_simple_history.history_type: + for create, ~ for update, and - for delete
                             event_updaters = list(set(

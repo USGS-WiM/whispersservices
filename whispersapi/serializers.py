@@ -1210,19 +1210,22 @@ class EventSerializer(serializers.ModelSerializer):
                     return instance
                 # if the event is complete and the complete field is not included or True, the event cannot be changed
                 if new_complete is None or new_complete:
-                    message = "Complete events may only be changed by the event owner or an administrator"
-                    message += " if the 'complete' field is set to False in the request."
+                    message = "Complete events may not be changed"
+                    message += " unless the event owner or an administrator first re-opens the event"
+                    message += " OR the event owner or an administrator also re-opens the event in the same request"
+                    message += "  (by including the 'complete' field in the request and setting it to False)."
                     raise serializers.ValidationError(jsonify_errors(message))
             else:
                 # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
                 # but if the complete field is not included or set to True, the event cannot be changed
                 if new_complete is None or (new_complete and (
-                        user.role.is_superadmin or user.role.is_admin
-                        or user.id == instance.created_by.id or (
+                        user.id == instance.created_by.id or (
                         user.organization.id == instance.created_by.organization.id and (
                         user.role.is_partneradmin or user.role.is_partnermanager)))):
-                    message = "Complete events may only be changed by the event owner or an administrator"
-                    message += " if the 'complete' field is set to False."
+                    message = "Complete events may not be changed"
+                    message += " unless the event owner or an administrator first re-opens the event"
+                    message += " OR the event owner or an administrator also re-opens the event in the same request"
+                    message += "  (by including the 'complete' field in the request and setting it to False)."
                     raise serializers.ValidationError(jsonify_errors(message))
                 elif (user != instance.created_by
                       or (user.organization.id != instance.created_by.organization.id
