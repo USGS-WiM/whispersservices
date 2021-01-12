@@ -1,6 +1,7 @@
 import re
 import requests
 import json
+from urllib.parse import urlencode
 from operator import itemgetter
 from datetime import datetime, timedelta
 from django.apps import apps
@@ -8,8 +9,10 @@ from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
+from django.urls import reverse
 from rest_framework import serializers, validators
 from rest_framework.settings import api_settings
+from whispersapi.tokens import email_verification_token
 from whispersapi.models import *
 from whispersapi.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissionsField
@@ -3945,11 +3948,13 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
-        # only SuperAdmins and Admins can edit is_staff and is_active fields
+        # only SuperAdmins and Admins can edit is_staff
         if (requesting_user.is_authenticated
                 and not (requesting_user.role.is_superadmin or requesting_user.role.is_admin)):
             validated_data['is_staff'] = False
-            validated_data['is_active'] = True
+        
+        # is_active is false for new users until email address is verified
+        validated_data['is_active'] = False
 
         # only SuperAdmins can edit is_superuser field
         if (requesting_user.is_authenticated
@@ -3960,21 +3965,7 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # create a 'User Created' notification
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
-        if not msg_tmp:
-            send_missing_notification_template_message_email('userserializer_create', 'User Created')
-        else:
-            subject = msg_tmp.subject_template
-            body = msg_tmp.body_template
-            event = None
-            # source: User that requests a public account
-            source = user.username
-            # recipients: user, WHISPers admin team
-            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
-            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-            email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        UserSerializer.send_email_verification_message(user)
 
         if new_user_change_request is not None:
             role_requested = None
@@ -4003,6 +3994,35 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
         return user
+
+    @staticmethod
+    def send_email_verification_message(user):
+        """Send email to user with link to verify their email address."""
+        # Create email verification link
+        token = email_verification_token.make_token(user)
+        verification_link = (settings.APP_WHISPERS_URL +
+                             "?" +
+                             urlencode({'user-id': user.id, 'email-token': token}))
+
+        # create a 'User Email Verification' notification
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
+        if not msg_tmp:
+            send_missing_notification_template_message_email('userserializer_send_email_verification_message',
+                                                             'User Email Verification')
+        else:
+            # source: User that requests a public account
+            source = user.username
+            # recipients: user
+            recipients = [user.id]
+            # email forwarding: Automatic, to user's email
+            email_to = [user.email]
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                verification_link=verification_link)
+            event = None
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
@@ -4202,7 +4222,20 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
 
         ucr = UserChangeRequest.objects.create(**validated_data)
+        # store comment as a Comment object associated with UserChangeRequest
+        cmt_type = CommentType.objects.filter(name='Other').first()
+        Comment.objects.create(content_object=ucr, comment=comment,
+                               comment_type=cmt_type, created_by=user, modified_by=user)
+        return ucr
 
+    @staticmethod
+    def send_user_change_request_email(ucr):
+        # Email is sent only after user verifies their email address
+
+        # Get user's comment from the user change request
+        content_type = ContentType.objects.get_for_model(UserChangeRequest)
+        comment_object = Comment.objects.filter(object_id=ucr.id, content_type=content_type).first()
+        comment = comment_object.comment if comment_object else None
         # create a 'User Change Request' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         if not msg_tmp:
