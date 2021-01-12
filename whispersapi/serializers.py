@@ -1042,13 +1042,23 @@ class EventSerializer(serializers.ModelSerializer):
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
                 read_user = User.objects.filter(id=read_user_id).first()
-                if read_user is not None:
+                if read_user is not None and not read_user.id == event.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not read_user.id == event.created_by.id
+                    #         and not read_user.organization.id == event.created_by.organization.id
+                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
                 write_user = User.objects.filter(id=write_user_id).first()
-                if write_user is not None:
+                if write_user is not None and not write_user.id == event.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not write_user.id == event.created_by.id
+                    #         and not write_user.organization.id == event.created_by.organization.id
+                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
@@ -1162,12 +1172,12 @@ class EventSerializer(serializers.ModelSerializer):
             if ('request_type' in new_service_request and new_service_request['request_type'] is not None
                     and new_service_request['request_type'] in [1, 2]):
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
-                request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
+                # request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
                 admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
                 # use event to populate event field on new_service_request
                 new_service_request['event'] = event.id
                 new_service_request['request_type'] = request_type.id
-                new_service_request['request_response'] = request_response.id
+                # new_service_request['request_response'] = request_response.id
                 new_service_request['response_by'] = admin.id
                 new_service_request['created_by'] = event.created_by.id
                 new_service_request['modified_by'] = event.modified_by.id
@@ -1203,19 +1213,22 @@ class EventSerializer(serializers.ModelSerializer):
                     return instance
                 # if the event is complete and the complete field is not included or True, the event cannot be changed
                 if new_complete is None or new_complete:
-                    message = "Complete events may only be changed by the event owner or an administrator"
-                    message += " if the 'complete' field is set to False in the request."
+                    message = "Complete events may not be changed"
+                    message += " unless the event owner or an administrator first re-opens the event"
+                    message += " OR the event owner or an administrator also re-opens the event in the same request"
+                    message += "  (by including the 'complete' field in the request and setting it to False)."
                     raise serializers.ValidationError(jsonify_errors(message))
             else:
                 # only event owner or higher roles can re-open ('un-complete') a closed ('completed') event
                 # but if the complete field is not included or set to True, the event cannot be changed
                 if new_complete is None or (new_complete and (
-                        user.role.is_superadmin or user.role.is_admin
-                        or user.id == instance.created_by.id or (
+                        user.id == instance.created_by.id or (
                         user.organization.id == instance.created_by.organization.id and (
                         user.role.is_partneradmin or user.role.is_partnermanager)))):
-                    message = "Complete events may only be changed by the event owner or an administrator"
-                    message += " if the 'complete' field is set to False."
+                    message = "Complete events may not be changed"
+                    message += " unless the event owner or an administrator first re-opens the event"
+                    message += " OR the event owner or an administrator also re-opens the event in the same request"
+                    message += "  (by including the 'complete' field in the request and setting it to False)."
                     raise serializers.ValidationError(jsonify_errors(message))
                 elif (user != instance.created_by
                       or (user.organization.id != instance.created_by.organization.id
@@ -1346,8 +1359,14 @@ class EventSerializer(serializers.ModelSerializer):
 
             # identify and create relates where user IDs are present in new read list but not old read list
             add_read_users = list(set(new_read_users) - set(old_read_users))
-            for user_id in add_read_users:
-                EventReadUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+            for read_user in add_read_users:
+                if not read_user.id == instance.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not read_user.id == event.created_by.id
+                    #         and not read_user.organization.id == event.created_by.organization.id
+                    #         and read_user.organization.id not in event.created_by.parent_organizations):
+                    EventReadUser.objects.create(user=read_user, event=instance, created_by=user, modified_by=user)
 
         # update the write_collaborators list if new_write_user_ids submitted
         if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
@@ -1364,8 +1383,14 @@ class EventSerializer(serializers.ModelSerializer):
 
             # identify and create relates where user IDs are present in new write list but not old write list
             add_write_users = list(set(new_write_users) - set(old_write_users))
-            for user_id in add_write_users:
-                EventWriteUser.objects.create(user=user_id, event=instance, created_by=user, modified_by=user)
+            for write_user in add_write_users:
+                if not write_user.id == instance.created_by.id:
+                    # only create collaborator if not the event owner
+                    # # only create collaborator if not the event owner or in event owner org
+                    # if (not write_user.id == event.created_by.id
+                    #         and not write_user.organization.id == event.created_by.organization.id
+                    #         and write_user.organization.id not in event.created_by.parent_organizations):
+                    EventWriteUser.objects.create(user=write_user, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
         instance.event_type = validated_data.get('event_type', instance.event_type)
@@ -2930,7 +2955,7 @@ class DiagnosisTypeSerializer(serializers.ModelSerializer):
 class EventDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     diagnosis_type = serializers.PrimaryKeyRelatedField(source='diagnosis.diagnosis_type', read_only=True)
     diagnosis_type_string = serializers.StringRelatedField(source='diagnosis.diagnosis_type')
 
@@ -3107,7 +3132,7 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
     created_by_string = serializers.StringRelatedField(source='created_by')
     modified_by_string = serializers.StringRelatedField(source='modified_by')
     new_species_diagnosis_organizations = serializers.ListField(write_only=True, required=False)
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     basis_string = serializers.StringRelatedField(source='basis')
     cause_string = serializers.StringRelatedField(source='cause')
 
@@ -3325,7 +3350,6 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
             existing = set(self.fields)
             for field_name in existing - allowed:
                 self.fields.pop(field_name)
-
 
     class Meta:
         model = SpeciesDiagnosis
@@ -4486,9 +4510,11 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         if self.instance:
-            if 'parent_organization' in data and data['parent_organization'].id is not None and (
-                    data['parent_organization'].id == data['id'] or data['parent_organization'].id == self.instance.id):
-                raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+            if 'parent_organization' in data and data['parent_organization'] is not None:
+                if 'id' in data and data['id'] is not None and data['parent_organization'].id == data['id']:
+                    raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
+                elif data['parent_organization'].id == self.instance.id:
+                    raise serializers.ValidationError("parent_organization cannot be the ID of the object itself.")
         return data
 
     def __init__(self, *args, **kwargs):
@@ -5001,7 +5027,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
 
 class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
     organizations_string = serializers.StringRelatedField(many=True, source='organizations')
-    diagnosis_string = serializers.StringRelatedField(source='diagnosis')
+    diagnosis_string = serializers.CharField(read_only=True)
     basis_string = serializers.StringRelatedField(source='basis')
     cause_string = serializers.StringRelatedField(source='cause')
 
@@ -5017,7 +5043,9 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
                           'suspect_count', 'pooled', 'organizations', 'organizations_string',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5058,7 +5086,9 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
                           'age_bias', 'sex_bias', 'speciesdiagnoses',)
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                fields = private_fields
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
@@ -5139,7 +5169,9 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
         use_private_fields = False
 
         if user and user.is_authenticated:
-            if hasattr(kwargs['context']['request'], 'parser_context'):
+            if user.role.is_superadmin or user.role.is_admin:
+                use_private_fields = True
+            elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()

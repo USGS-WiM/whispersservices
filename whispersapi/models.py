@@ -1827,7 +1827,7 @@ class ServiceRequest(PermissionsHistoryModel):
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                     body = ""
                 # source: WHISPers admin who updates the request response value (i.e. responds).
-                source = self.modified_by.username
+                source = self.response_by.username
                 # recipients: user who made the request, event owner
                 recipients = [self.created_by.id, self.event.created_by.id, ]
                 # email forwarding: Automatic, to the user who made the request and event owner
@@ -2882,6 +2882,18 @@ class Search(PermissionsHistoryModel):
 
     @staticmethod
     def has_write_permission(request):
+        # anyone with an account can create
+        # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        else:
+            return True
+
+    def has_object_write_permission(self, request):
+        # Anyone can write (this is just a pass-through method, specific object action permissions are handled below)
+        return True
+
+    def has_object_create_permission(self, request):
         # anyone with an account can create
         # (note that update and destroy are handled explicitly below, so 'write' now only pertains to create)
         if not request or not request.user or not request.user.is_authenticated:
