@@ -4,6 +4,7 @@ from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
@@ -17,6 +18,7 @@ from rest_framework.settings import api_settings
 from rest_framework.schemas.openapi import AutoSchema
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_csv import renderers as csv_renderers
+from whispersapi.tokens import email_verification_token
 from whispersapi.serializers import *
 from whispersapi.models import *
 from whispersapi.filters import *
@@ -25,6 +27,7 @@ from whispersapi.pagination import *
 from whispersapi.authentication import *
 from whispersapi.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissions
+from django.shortcuts import get_object_or_404
 User = get_user_model()
 
 # TODO: implement type checking on custom actions to prevent internal server error (HTTP 500)
@@ -2093,6 +2096,37 @@ class UserViewSet(HistoryViewSet):
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
 
+    @transaction.atomic
+    @action(detail=True, methods=['get'], permission_classes=[])
+    def confirm_email(self, request, pk=None):
+        # Bypass overridden get_queryset since user isn't authenticated but
+        # needs to be able to confirm email address
+        user = get_object_or_404(User, id=pk)
+        token = request.GET['token']
+        if user and user.email_verified:
+            # don't check token if user email is already verified - let user
+            # know email is already verified
+            return Response({"status": "Email address has already been verified."}, status=200)
+        elif user and email_verification_token.check_token(user, token):
+            user.is_active = True
+            user.email_verified = True
+            user.save()
+            # If the user requested a role/organization when registering, send
+            # those notification emails now
+            ucr = UserChangeRequest.objects.filter(created_by=user).first()
+            if ucr:
+                UserChangeRequestSerializer.send_user_change_request_email(ucr)
+            self._send_user_created_email(user)
+            serializer_class = self.get_serializer_class()
+            serializer = serializer_class(user, context={'request': request})
+            return Response(serializer.data)
+        elif user:
+            # Checking token failed, possibly because it expired. Send to user again.
+            UserSerializer.send_email_verification_message(user)
+            return Response({"status": "Email verification failed, resending verification email. Please check your inbox and try again."}, status=400)
+        else:
+            return Response({"status": "Failed to confirm email address."}, status=400)
+
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
         user = get_request_user(self.request)
@@ -2115,6 +2149,23 @@ class UserViewSet(HistoryViewSet):
             return User.objects.none()
 
         return self.filter_queryset(queryset)
+    
+    def _send_user_created_email(self, user):
+        # create a 'User Created' notification
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
+        if not msg_tmp:
+            send_missing_notification_template_message_email('userserializer_create', 'User Created')
+        else:
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template
+            event = None
+            # source: User that requests a public account
+            source = user.username
+            # recipients: user, WHISPers admin team
+            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+            email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
 
 class AuthView(views.APIView):
