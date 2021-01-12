@@ -403,6 +403,7 @@ class EventSummaryFilter(FilterSet):
     affected_count__lte = NumberFilter(field_name='affected_count', lookup_expr='lte')
     start_date = DateFilter(method='filter_start_end_date')
     end_date = DateFilter(method='filter_start_end_date')
+    id = NumberInFilter(lookup_expr='in')
 
     class Meta:
         model = Event
