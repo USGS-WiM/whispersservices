@@ -4179,7 +4179,7 @@ class UserSerializer(serializers.ModelSerializer):
                           'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        if action == 'create' or view_name == 'auth':
+        if action == 'create' or view_name == 'auth' or action == 'reset_password':
             fields = private_fields
         elif user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
