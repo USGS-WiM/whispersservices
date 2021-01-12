@@ -44,7 +44,7 @@ sudo apt-get install rabbitmq-server
 ## Environments
 The web services are designed to work very slightly differently between dev, test, and production environments. Environment settings are defined in the settings.py file, the most important of which are `ENVIRONMENT`, `APP_WHISPERS_URL`, `SSL_CERT`, and the various email and database settings, among others.
 
-Note that on Windows, the default arrangement of a settings.py file reading a settings.cfg file (to keep sensitive information out of code repositories) seems to  work fine, but in Linux this does not seem to work, and so all the `CONFIG.get()` calls should be replaced by simple values.
+The settings.py file reads from settings.cfg (to keep sensitive information out of code repositories) so all values should be specified in settings.cfg.
 
 To use Celery in development, run `celery -A whispersservices worker -l info` (note that this no longer seems to work on Windows, and so the `--pool=solo` option should be appeneded to the preceding command).
 
