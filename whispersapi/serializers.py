@@ -9,6 +9,7 @@ from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
+from drf_recaptcha.fields import ReCaptchaV2Field
 from django.urls import reverse
 from rest_framework import serializers, validators
 from rest_framework.settings import api_settings
@@ -3869,6 +3870,7 @@ class UserSerializer(serializers.ModelSerializer):
     notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
     new_user_change_request = serializers.JSONField(write_only=True, required=False)
     new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
+    recaptcha = ReCaptchaV2Field()
 
     def validate(self, data):
 
@@ -3931,6 +3933,9 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data.pop('new_notification_cue_standard_preferences', None)
 
         password = validated_data.pop('password', None)
+
+        # remove the recaptcha response
+        recaptcha = validated_data.pop('recaptcha', None)
 
         # pull out child service request from the request
         new_user_change_request = validated_data.pop('new_user_change_request', None)
@@ -4163,7 +4168,7 @@ class UserSerializer(serializers.ModelSerializer):
                           'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        if action == 'create' or view_name == 'auth':
+        if action == 'create' or view_name == 'auth' or action == 'reset_password':
             fields = private_fields
         elif user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
