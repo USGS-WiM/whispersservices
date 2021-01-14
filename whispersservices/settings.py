@@ -20,7 +20,7 @@ PROJECT_PATH = os.path.abspath(PROJECT_PATH)
 TEMPLATE_PATH = os.path.join(PROJECT_PATH, 'templates')
 
 CONFIG = moves.configparser.RawConfigParser(allow_no_value=True)
-CONFIG.read('%s\settings.cfg' % SETTINGS_DIR)
+CONFIG.read(os.path.join(SETTINGS_DIR, 'settings.cfg'))
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'dry_rest_permissions',
     'django_celery_beat',
+    'drf_recaptcha',
     'django_filters',
     'whispersapi',
 ]
@@ -193,3 +194,15 @@ HFS_LOCATIONS = CONFIG.get('whispers', 'HFS_LOCATIONS')
 GEONAMES_USERNAME = CONFIG.get('whispers', 'GEONAMES_USERNAME')
 GEONAMES_API = CONFIG.get('whispers', 'GEONAMES_API')
 FLYWAYS_API = CONFIG.get('whispers', 'FLYWAYS_API')
+
+# How to generate a reCAPTCHA secret key for local development:
+# 1. Register for an API key pair: http://www.google.com/recaptcha/admin
+# 2. When you register for the API key pair:
+#    - select the reCAPTCHA type as v2, "I am not a robot" checkbox
+#    - add the domains "localhost" and "127.0.0.1"
+#    - for the rest of the form the defaults are fine
+# 3. Put the secret key portion into settings.cfg as the value of
+#    DRF_RECAPTCHA_SECRET_KEY under section [security]
+# 4. Use the site id in the environment.ts file on the client as the value of
+#    "recaptcha_site_key"
+DRF_RECAPTCHA_SECRET_KEY = CONFIG.get('security', 'DRF_RECAPTCHA_SECRET_KEY')

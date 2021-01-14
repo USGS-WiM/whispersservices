@@ -10,10 +10,12 @@ django-celery-beat==2.0.0
 django-cors-headers==3.5.0
 django-dry-rest-permissions==1.1.0
 django-filter==2.4.0
+django-ipware==2.1.0
 django-simple-history==2.11.0
 django-timezone-field==4.0
 djangorestframework==3.12.1
 djangorestframework-csv==2.1.0
+drf-recaptcha==2.0.2
 future==0.18.2
 idna==2.10
 importlib-metadata==1.7.0
