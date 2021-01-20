@@ -50,14 +50,17 @@ def determine_object_update_permission(self, request, event_id):
     # Only admins or the creator or a manager/admin member of the creator's org or a write_collaborator can update
     if not request or not request.user or not request.user.is_authenticated or request.user.role.is_public:
         return False
-    elif (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == self.created_by.id
-          or ((self.created_by.organization.id == request.user.organization.id
-               or self.created_by.organization.id in request.user.child_organizations)
-              and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
-        return True
     else:
-        write_collaborators = list(User.objects.filter(writeevents__in=[event_id]).values_list('id', flat=True))
-        return request.user.id in write_collaborators
+        # check ownership of parent event, not the object itself)
+        event = Event.objects.get(id=event_id)
+        if (request.user.role.is_superadmin or request.user.role.is_admin or request.user.id == event.created_by.id
+              or ((event.created_by.organization.id == request.user.organization.id
+                   or event.created_by.organization.id in request.user.child_organizations)
+                  and (request.user.role.is_partneradmin or request.user.role.is_partnermanager))):
+            return True
+        else:
+            write_collaborators = list(User.objects.filter(writeevents__in=[event_id]).values_list('id', flat=True))
+            return request.user.id in write_collaborators
 
 
 ######
