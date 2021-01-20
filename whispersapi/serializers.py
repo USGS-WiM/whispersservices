@@ -286,6 +286,9 @@ def calculate_priority_event_location(instance):
     ).annotate(
         affected_count=(Coalesce(F('sick_ct'), 0) + Coalesce(F('sick_ct_est'), 0) + Coalesce(F('dead_ct'), 0)
                         + Coalesce(F('dead_ct_est'), 0) + Coalesce(F('positive_ct'), 0))
+    ).values(
+        # use values function to avoid 'must appear in the GROUP BY clause or be used in an aggregate function' errors
+        'id', 'administrative_level_two__name', 'affected_count'
     ).order_by('administrative_level_two__name', '-affected_count')
     if not evtlocs:
         instance.priority = priority
@@ -306,19 +309,21 @@ def calculate_priority_event_location(instance):
             # and self affected count is greater than or equal to this evtloc affected count
             # first update self priority then update this evtloc priority
             if (not self_priority_updated
-                    and instance.administrative_level_two.name <= evtloc.administrative_level_two.name):
+                    and instance.administrative_level_two.name <= evtloc['administrative_level_two__name']):
                 if instance.event.event_type.id == 1:
-                    if self_sick_dead_count >= (evtloc.affected_count or 0):
+                    if self_sick_dead_count >= (evtloc['affected_count'] or 0):
                         instance.priority = priority
                         priority += 1
                         self_priority_updated = True
                 elif instance.event.event_type.id == 2:
-                    if self_positive_count >= (evtloc.affected_count or 0):
+                    if self_positive_count >= (evtloc['affected_count'] or 0):
                         instance.priority = priority
                         priority += 1
                         self_priority_updated = True
-            evtloc.priority = priority
-            evtloc.save()
+            # update the evtloc (must retrieve object since we're using dicts in previous lines)
+            el = EventLocation.objects.get(id=evtloc['id'])
+            el.priority = priority
+            el.save()
             priority += 1
 
     return instance.priority if self_priority_updated else priority
@@ -344,6 +349,9 @@ def calculate_priority_location_species(instance):
         positive_ct=Sum('speciesdiagnoses__positive_count', filter=Q(event_location__event__event_type__exact=2))
     ).annotate(
         affected_count=Coalesce(F('sick_dead_ct'), 0) + Coalesce(F('positive_ct'), 0)
+    ).values(
+        # use values function to avoid 'must appear in the GROUP BY clause or be used in an aggregate function' errors
+        'id', 'affected_count'
     ).order_by('-affected_count', 'species__name')
     if not locspecs:
         instance.priority = priority
@@ -360,17 +368,19 @@ def calculate_priority_location_species(instance):
             # first update self priority then update this locspec priority
             if not self_priority_updated:
                 if instance.event_location.event.event_type.id == 1:
-                    if self_sick_dead_count >= (locspec.affected_count or 0):
+                    if self_sick_dead_count >= (locspec['affected_count'] or 0):
                         instance.priority = priority
                         priority += 1
                         self_priority_updated = True
                 elif instance.event_location.event.event_type.id == 2:
-                    if self_positive_count >= (locspec.affected_count or 0):
+                    if self_positive_count >= (locspec['affected_count'] or 0):
                         instance.priority = priority
                         priority += 1
                         self_priority_updated = True
-            locspec.priority = priority
-            locspec.save()
+            # update the locspec (must retrieve object since we're using dicts in previous lines)
+            ls = LocationSpecies.objects.get(id=locspec['id'])
+            ls.priority = priority
+            ls.save()
             priority += 1
 
     return instance.priority if self_priority_updated else priority
@@ -1822,8 +1832,11 @@ class EventOrganizationSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = EventOrganization.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
@@ -2432,8 +2445,11 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = EventLocation.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
@@ -2847,8 +2863,11 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = LocationSpecies.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.event_location.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.event_location.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.event_location.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.event_location.event.id]) | Q(
                                     readevents__in=[obj.event_location.event.id])
@@ -3092,8 +3111,11 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = EventDiagnosis.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
@@ -3319,8 +3341,11 @@ class SpeciesDiagnosisSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = SpeciesDiagnosis.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.location_species.event_location.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.location_species.event_location.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.location_species.event_location.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
                                     readevents__in=[obj.location_species.event_location.event.id])
@@ -5038,10 +5063,14 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.location_species.event_location.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.location_species.event_location.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.location_species.event_location.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+                                Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
+                                    readevents__in=[obj.location_species.event_location.event.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -5081,11 +5110,16 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id in obj.created_by.parent_organizations
-                                or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
-                            ).values_list('id', flat=True))):
+                    if obj and (
+                            user.id == obj.created_by.id or user.id == obj.event_location.event.created_by.id
+                            or user.organization.id == obj.created_by.organization.id
+                            or user.organization.id == obj.event_location.event.created_by.organization.id
+                            or user.organization.id in obj.created_by.parent_organizations
+                            or user.organization.id in obj.event_location.event.created_by.parent_organizations
+                            or user.id in list(User.objects.filter(
+                        Q(writeevents__in=[obj.event_location.event.id]) | Q(
+                            readevents__in=[obj.event_location.event.id])
+                    ).values_list('id', flat=True))):
                         fields = private_fields
 
         super(LocationSpeciesDetailSerializer, self).__init__(*args, **kwargs)
@@ -5164,10 +5198,13 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                    if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id == obj.event.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
+                                or user.organization.id in obj.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
                         use_private_fields = True
 
