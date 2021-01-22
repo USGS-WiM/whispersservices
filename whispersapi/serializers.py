@@ -5040,7 +5040,7 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = Event.objects.filter(id=pk).first()
+                    obj = SpeciesDiagnosis.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.id == obj.location_species.event_location.event.created_by.id
                                 or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id == obj.location_species.event_location.event.created_by.organization.id
@@ -5087,7 +5087,7 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = Event.objects.filter(id=pk).first()
+                    obj = LocationSpecies.objects.filter(id=pk).first()
                     if obj and (
                             user.id == obj.created_by.id or user.id == obj.event_location.event.created_by.id
                             or user.organization.id == obj.created_by.organization.id
@@ -5175,7 +5175,7 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = Event.objects.filter(id=pk).first()
+                    obj = EventLocation.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
                                 or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id == obj.event.created_by.organization.id
