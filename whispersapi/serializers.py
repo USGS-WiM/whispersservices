@@ -5040,15 +5040,11 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = SpeciesDiagnosis.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.id == obj.location_species.event_location.event.created_by.id
-                                or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id == obj.location_species.event_location.event.created_by.organization.id
+                    obj = Event.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
-                                or user.organization.id in obj.location_species.event_location.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.location_species.event_location.event.id]) | Q(
-                                    readevents__in=[obj.location_species.event_location.event.id])
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -5087,17 +5083,12 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = LocationSpecies.objects.filter(id=pk).first()
-                    if obj and (
-                            user.id == obj.created_by.id or user.id == obj.event_location.event.created_by.id
-                            or user.organization.id == obj.created_by.organization.id
-                            or user.organization.id == obj.event_location.event.created_by.organization.id
-                            or user.organization.id in obj.created_by.parent_organizations
-                            or user.organization.id in obj.event_location.event.created_by.parent_organizations
-                            or user.id in list(User.objects.filter(
-                        Q(writeevents__in=[obj.event_location.event.id]) | Q(
-                            readevents__in=[obj.event_location.event.id])
-                    ).values_list('id', flat=True))):
+                    obj = Event.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in list(User.objects.filter(
+                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                            ).values_list('id', flat=True))):
                         fields = private_fields
 
         super(LocationSpeciesDetailSerializer, self).__init__(*args, **kwargs)
@@ -5175,12 +5166,9 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
             elif hasattr(kwargs['context']['request'], 'parser_context'):
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
-                    obj = EventLocation.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.id == obj.event.created_by.id
-                                or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id == obj.event.created_by.organization.id
+                    obj = Event.objects.filter(id=pk).first()
+                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
-                                or user.organization.id in obj.event.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
                                 Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
                             ).values_list('id', flat=True))):
