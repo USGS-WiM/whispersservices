@@ -5038,13 +5038,14 @@ class SpeciesDiagnosisDetailSerializer(serializers.ModelSerializer):
             if user.role.is_superadmin or user.role.is_admin:
                 fields = private_fields
             elif hasattr(kwargs['context']['request'], 'parser_context'):
+                # pk is for the parent event
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -5081,13 +5082,14 @@ class LocationSpeciesDetailSerializer(serializers.ModelSerializer):
             if user.role.is_superadmin or user.role.is_admin:
                 fields = private_fields
             elif hasattr(kwargs['context']['request'], 'parser_context'):
+                # pk is for the parent event
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         fields = private_fields
 
@@ -5164,13 +5166,14 @@ class EventLocationDetailSerializer(serializers.ModelSerializer):
             if user.role.is_superadmin or user.role.is_admin:
                 use_private_fields = True
             elif hasattr(kwargs['context']['request'], 'parser_context'):
+                # pk is for the parent event
                 pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
                 if pk is not None and pk.isdecimal():
                     obj = Event.objects.filter(id=pk).first()
                     if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
                                 or user.organization.id in obj.created_by.parent_organizations
                                 or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.event.id]) | Q(readevents__in=[obj.event.id])
+                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
                             ).values_list('id', flat=True))):
                         use_private_fields = True
 
