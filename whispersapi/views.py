@@ -63,29 +63,32 @@ class PlainTextParser(BaseParser):
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMITER = ','
 
-whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address:
-    if whispers_email_address.value.count('@') == 1:
-        EMAIL_WHISPERS = whispers_email_address.value
+def get_whispers_email_address():
+    whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+    if whispers_email_address:
+        if whispers_email_address.value.count('@') == 1:
+            EMAIL_WHISPERS = whispers_email_address.value
+        else:
+            EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+            encountered_type = type(whispers_email_address.value).__name__
+            send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
     else:
         EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-        encountered_type = type(whispers_email_address.value).__name__
-        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
-else:
-    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-    send_missing_configuration_value_email('whispers_email_address')
+        send_missing_configuration_value_email('whispers_email_address')
 
-nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
-if nwhc_org_record:
-    if nwhc_org_record.value.isdecimal():
-        NWHC_ORG_ID = int(nwhc_org_record.value)
+def get_nhwc_org_id():
+    nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
+    if nwhc_org_record:
+        if nwhc_org_record.value.isdecimal():
+            NWHC_ORG_ID = int(nwhc_org_record.value)
+        else:
+            NWHC_ORG_ID = settings.NWHC_ORG_ID
+            encountered_type = type(nwhc_org_record.value).__name__
+            send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
     else:
         NWHC_ORG_ID = settings.NWHC_ORG_ID
-        encountered_type = type(nwhc_org_record.value).__name__
-        send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
-else:
-    NWHC_ORG_ID = settings.NWHC_ORG_ID
-    send_missing_configuration_value_email('nwhc_organization')
+        send_missing_configuration_value_email('nwhc_organization')
+    return NWHC_ORG_ID
 
 
 def update_modified_fields(obj, request):
@@ -109,6 +112,7 @@ def construct_email(request_data, requester_email, message):
     body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
     body += message + "\r\n\r\n"
     body += request_data
+    EMAIL_WHISPERS = get_whispers_email_address()
     from_address = EMAIL_WHISPERS
     to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
@@ -505,6 +509,7 @@ class EventEventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventEventGroup.objects.all()
         else:
@@ -541,6 +546,7 @@ class EventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroup.objects.all()
         else:
@@ -577,6 +583,7 @@ class EventGroupCategoryViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroupCategory.objects.all()
         else:
