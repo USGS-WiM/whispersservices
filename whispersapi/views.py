@@ -2085,8 +2085,10 @@ class UserViewSet(HistoryViewSet):
                     # check if this item is a well-formed email address
                     if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
                         # check if there is a matching user (email addresses are unique across all users)
+                        # and that user is affiliate or above (no public users can be collaborators)
                         user = User.objects.filter(email__iexact=item).first()
-                        if user:
+                        if user and (user.role.is_superadmin or user.role.is_admin or user.role.is_partneradmin
+                                     or user.role.is_partnermanager or user.role.is_partner or user.role.is_affiliate):
                             found.append(user)
                         else:
                             not_found.append(item)
