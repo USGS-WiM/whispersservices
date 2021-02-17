@@ -2154,7 +2154,6 @@ class UserViewSet(HistoryViewSet):
                     last_name=user.last_name,
                     password_reset_link=password_reset_link)
                 event = None
-                from whispersservices.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
             return Response({"status": "Password reset request processed."})
         else:
