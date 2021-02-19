@@ -843,7 +843,10 @@ class EventSerializer(serializers.ModelSerializer):
                                      specdiag['new_species_diagnosis_organizations']]
                                     if not specdiag['suspect']:
                                         if specdiag['basis'] in [1, 2, 4]:
-                                            specdiag_nonsuspect_basis_is_valid = False
+                                            undetermined = list(Diagnosis.objects.filter(
+                                                name='Undetermined').values_list('id', flat=True))[0]
+                                            if specdiag['diagnosis'] != undetermined:
+                                                specdiag_nonsuspect_basis_is_valid = False
                                         elif specdiag['basis'] == 3:
                                             if ('new_species_diagnosis_organizations' in specdiag
                                                     and specdiag['new_species_diagnosis_organizations'] is not None):
@@ -2132,7 +2135,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                  specdiag['new_species_diagnosis_organizations']]
                                 if not specdiag['suspect']:
                                     if specdiag['basis'] in [1, 2, 4]:
-                                        specdiag_nonsuspect_basis_is_valid = False
+                                        undetermined = list(Diagnosis.objects.filter(
+                                            name='Undetermined').values_list('id', flat=True))[0]
+                                        if specdiag['diagnosis'] != undetermined:
+                                            specdiag_nonsuspect_basis_is_valid = False
                                     elif specdiag['basis'] == 3:
                                         if ('new_species_diagnosis_organizations' in specdiag
                                                 and specdiag['new_species_diagnosis_organizations'] is not None):
