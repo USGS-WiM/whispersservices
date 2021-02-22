@@ -1266,75 +1266,84 @@ class EventSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
-        if not instance.complete and new_complete and (user.id == instance.created_by.id or (
-                user.organization.id == instance.created_by.organization.id and (
-                user.role.is_partneradmin or user.role.is_partnermanager))):
-            # only let the status be changed to 'complete=True' if
-            # 1. All child locations have an end date and each location's end date is later than its start date
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 3. All child species diagnoses must have a basis and a cause
-            locations = EventLocation.objects.filter(event=instance.id)
-            location_message = "The event may not be marked complete until all of its locations have an end date"
-            location_message += " and each location's end date is after that location's start date."
-            if locations is not None:
-                species_count_is_valid = []
-                est_count_gt_known_count = True
-                species_diagnosis_basis_is_valid = []
-                species_diagnosis_cause_is_valid = []
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for location in locations:
-                    if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(jsonify_errors(location_message))
-                    if instance.event_type.id == mortality_morbidity.id:
-                        location_species = LocationSpecies.objects.filter(event_location=location.id)
-                        for spec in location_species:
-                            if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.dead_count is not None and spec.dead_count > 0
-                                        and not spec.dead_count_estimated > spec.dead_count):
-                                    est_count_gt_known_count = False
-                            elif spec.dead_count is not None and spec.dead_count > 0:
-                                species_count_is_valid.append(True)
-                            elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.sick_count or 0) > 0 and spec.sick_count_estimated <= (spec.sick_count or 0):
-                                    est_count_gt_known_count = False
-                            elif spec.sick_count is not None and spec.sick_count > 0:
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                            species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
-                            for specdiag in species_diagnoses:
-                                if specdiag.basis:
-                                    species_diagnosis_basis_is_valid.append(True)
+        if not instance.complete and new_complete:
+            if (user.id == instance.created_by.id
+                    or (user.organization.id == instance.created_by.organization.id
+                        and (user.role.is_partneradmin or user.role.is_partnermanager))
+                    or user.id in list(User.objects.filter(
+                        Q(writeevents__in=[instance.id]) | Q(readevents__in=[instance.id])
+                    ).values_list('id', flat=True))):
+                # only let the status be changed to 'complete=True' if
+                # 1. All child locations have an end date and each location's end date is later than its start date
+                # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
+                #   estimated_sick, and estimated_dead per species at the time of event completion.
+                #   (sick + dead + estimated_sick + estimated_dead >= 1)
+                # 3. All child species diagnoses must have a basis and a cause
+                locations = EventLocation.objects.filter(event=instance.id)
+                location_message = "The event may not be marked complete until all of its locations have an end date"
+                location_message += " and each location's end date is after that location's start date."
+                if locations is not None:
+                    species_count_is_valid = []
+                    est_count_gt_known_count = True
+                    species_diagnosis_basis_is_valid = []
+                    species_diagnosis_cause_is_valid = []
+                    details = []
+                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                    for location in locations:
+                        if (not location.end_date or not location.start_date
+                                or not location.end_date >= location.start_date):
+                            raise serializers.ValidationError(jsonify_errors(location_message))
+                        if instance.event_type.id == mortality_morbidity.id:
+                            location_species = LocationSpecies.objects.filter(event_location=location.id)
+                            for spec in location_species:
+                                if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
+                                    species_count_is_valid.append(True)
+                                    if (spec.dead_count is not None and spec.dead_count > 0
+                                            and not spec.dead_count_estimated > spec.dead_count):
+                                        est_count_gt_known_count = False
+                                elif spec.dead_count is not None and spec.dead_count > 0:
+                                    species_count_is_valid.append(True)
+                                elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
+                                    species_count_is_valid.append(True)
+                                    if ((spec.sick_count or 0) > 0
+                                            and spec.sick_count_estimated <= (spec.sick_count or 0)):
+                                        est_count_gt_known_count = False
+                                elif spec.sick_count is not None and spec.sick_count > 0:
+                                    species_count_is_valid.append(True)
                                 else:
-                                    species_diagnosis_basis_is_valid.append(False)
-                                if specdiag.cause:
-                                    species_diagnosis_cause_is_valid.append(True)
-                                else:
-                                    species_diagnosis_cause_is_valid.append(False)
-                if False in species_count_is_valid:
-                    message = "Each location_species requires at least one species count in any of the following"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_count_gt_known_count:
-                    message = "Estimated sick or dead counts must always be more than known sick or dead counts."
-                    details.append(message)
-                if False in species_diagnosis_basis_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a basis of diagnosis."
-                    details.append(message)
-                if False in species_diagnosis_cause_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a cause."
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(jsonify_errors(details))
+                                    species_count_is_valid.append(False)
+                                species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
+                                for specdiag in species_diagnoses:
+                                    if specdiag.basis:
+                                        species_diagnosis_basis_is_valid.append(True)
+                                    else:
+                                        species_diagnosis_basis_is_valid.append(False)
+                                    if specdiag.cause:
+                                        species_diagnosis_cause_is_valid.append(True)
+                                    else:
+                                        species_diagnosis_cause_is_valid.append(False)
+                    if False in species_count_is_valid:
+                        message = "Each location_species requires at least one species count in any of the following"
+                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                        details.append(message)
+                    if not est_count_gt_known_count:
+                        message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                        details.append(message)
+                    if False in species_diagnosis_basis_is_valid:
+                        message = "The event may not be marked complete until all of its location species diagnoses"
+                        message += " have a basis of diagnosis."
+                        details.append(message)
+                    if False in species_diagnosis_cause_is_valid:
+                        message = "The event may not be marked complete until all of its location species diagnoses"
+                        message += " have a cause."
+                        details.append(message)
+                    if details:
+                        raise serializers.ValidationError(jsonify_errors(details))
+                else:
+                    raise serializers.ValidationError(jsonify_errors(location_message))
             else:
-                raise serializers.ValidationError(jsonify_errors(location_message))
+                message = "You do not have sufficient permission to set the event status to complete."
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
