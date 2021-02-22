@@ -1271,8 +1271,7 @@ class EventSerializer(serializers.ModelSerializer):
                     or (user.organization.id == instance.created_by.organization.id
                         and (user.role.is_partneradmin or user.role.is_partnermanager))
                     or user.id in list(User.objects.filter(
-                        Q(writeevents__in=[instance.id]) | Q(readevents__in=[instance.id])
-                    ).values_list('id', flat=True))):
+                        writeevents__in=[instance.id]).values_list('id', flat=True))):
                 # only let the status be changed to 'complete=True' if
                 # 1. All child locations have an end date and each location's end date is later than its start date
                 # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
