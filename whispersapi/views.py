@@ -2149,8 +2149,7 @@ class UserViewSet(HistoryViewSet):
                 password_reset_link = (settings.APP_WHISPERS_URL + "?" + urlencode(
                     {'user-id': user.id, 'password-reset-token': token}))
                 # create a 'Password Reset' notification
-                # source: User that requests a public account
-                source = user.username
+                source = 'system'
                 # recipients: user
                 recipients = [user.id]
                 # email forwarding: Automatic, to user's email
