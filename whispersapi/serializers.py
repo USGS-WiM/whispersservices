@@ -4089,8 +4089,7 @@ class UserSerializer(serializers.ModelSerializer):
             send_missing_notification_template_message_email('userserializer_send_email_verification_message',
                                                              'User Email Verification')
         else:
-            # source: User that requests a public account
-            source = user.username
+            source = 'system'
             # recipients: user
             recipients = [user.id]
             # email forwarding: Automatic, to user's email
