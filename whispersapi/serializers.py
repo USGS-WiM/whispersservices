@@ -748,13 +748,14 @@ class EventSerializer(serializers.ModelSerializer):
                                   and item['administrative_level_one'] is not None):
                                 admin_l1 = AdministrativeLevelOne.objects.filter(
                                     name=address['adminName1']).first()
-                                if int(item['administrative_level_one']) != admin_l1.id:
+                                if not admin_l1 or int(item['administrative_level_one']) != admin_l1.id:
                                     latlng_matches_admin_l1 = False
                                 elif ('administrative_level_two' in item
                                       and item['administrative_level_two'] is not None):
-                                    a2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                    admin_l2 = AdministrativeLevelTwo.objects.filter(name=a2).first()
-                                    if int(item['administrative_level_two']) != admin_l2.id:
+                                    admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
+                                    admin_l2 = AdministrativeLevelTwo.objects.filter(
+                                        name=admin_name2, administrative_level_one__id=admin_l1.id).first()
+                                    if not admin_l2 or int(item['administrative_level_two']) != admin_l2.id:
                                         latlng_matches_admin_21 = False
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
@@ -2081,13 +2082,14 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         elif ('administrative_level_one' in data
                               and data['administrative_level_one'] is not None):
                             admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
-                            if data['administrative_level_one'].id != admin_l1.id:
+                            if not admin_l1 or data['administrative_level_one'].id != admin_l1.id:
                                 latlng_matches_admin_l1 = False
                             elif ('administrative_level_two' in data
                                   and data['administrative_level_two'] is not None):
-                                admin2 = address['adminName2'] if 'adminName2' in address else address['name']
-                                admin_l2 = AdministrativeLevelTwo.objects.filter(name=admin2).first()
-                                if data['administrative_level_two'].id != admin_l2.id:
+                                admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
+                                admin_l2 = AdministrativeLevelTwo.objects.filter(
+                                    name=admin_name2, administrative_level_one__id=admin_l1.id).first()
+                                if not admin_l2 or data['administrative_level_two'].id != admin_l2.id:
                                     latlng_matches_admin_21 = False
                 if 'new_location_species' in data:
                     for spec in data['new_location_species']:
