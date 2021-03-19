@@ -32,10 +32,14 @@ source /env/bin/activate
 pip3 install -r requirements.txt
 
 # migrate the database
+# NOTE: if there is no admin user, this step will create one and print it's password to the console. You can also change the admin user's password with 'python manage.py changepassword admin'.
 python3 manage.py migrate
 
 # install the custom SQL views in the database
 psql -U webapp_whispers -d whispers -f whispers_views.sql
+
+# install the notification message templates
+psql -U webapp_whispers -d whispers -f whispers_notificationmessagetemplate.sql
 
 # install RabbitMQ, the message broker used by Celery (which is itself was installed by the prior pip command)
 sudo apt-get install rabbitmq-server
