@@ -2167,14 +2167,14 @@ class UserViewSet(HistoryViewSet):
         else:
             raise serializers.ValidationError("Request must include an username.")
 
-    @action(detail=False, methods=['post'], permission_classes=[], serializer_class=None)
+    @action(detail=False, methods=['post'], permission_classes=[])
     def reset_password(self, request):
         user_id = request.data['id']
         token = request.data['token']
         user = get_object_or_404(User, id=user_id)
         # verify that password follows business rules by using UserSerializer
         data = dict(password=request.data['password'])
-        serializer = self.get_serializer_class()(user, data=data, partial=True, context={'request': request})
+        serializer = self.get_serializer(user, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         token_generator = PasswordResetTokenGenerator()
         if token_generator.check_token(user, token):

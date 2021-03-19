@@ -18,6 +18,16 @@ def jsonify_errors(data):
         return data
 
 
+def send_third_party_service_exception_email(third_party_service, endpoint, exception):
+    recip = EMAIL_WHISPERS
+    subject = "WHISPERS ADMIN: Third Party Service Exception"
+    body = "A request to the \"" + third_party_service + "\" third party service at \"" + endpoint + "\" raised"
+    body += " an exception at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + "."
+    body += " Exception details: \r\n" + exception
+    notif_email = construct_notification_email(recip, subject, body, False)
+    print(notif_email.__dict__)
+
+
 def send_notification_template_message_keyerror_email(template_name, encountered_key, expected_keys):
     recip = get_whispers_email_address()
     subject = "WHISPERS ADMIN: Notification Message Template KeyError"
