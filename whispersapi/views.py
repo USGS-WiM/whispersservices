@@ -4,9 +4,11 @@ from datetime import datetime as dt
 from collections import OrderedDict
 from django.core.mail import EmailMessage
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Now
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from rest_framework import views, viewsets, authentication, filters
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -17,6 +19,7 @@ from rest_framework.settings import api_settings
 from rest_framework.schemas.openapi import AutoSchema
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework_csv import renderers as csv_renderers
+from whispersapi.tokens import email_verification_token
 from whispersapi.serializers import *
 from whispersapi.models import *
 from whispersapi.filters import *
@@ -25,6 +28,7 @@ from whispersapi.pagination import *
 from whispersapi.authentication import *
 from whispersapi.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissions
+from django.shortcuts import get_object_or_404
 User = get_user_model()
 
 # TODO: implement type checking on custom actions to prevent internal server error (HTTP 500)
@@ -59,29 +63,32 @@ class PlainTextParser(BaseParser):
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 LIST_DELIMITER = ','
 
-whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address:
-    if whispers_email_address.value.count('@') == 1:
-        EMAIL_WHISPERS = whispers_email_address.value
+def get_whispers_email_address():
+    whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+    if whispers_email_address:
+        if whispers_email_address.value.count('@') == 1:
+            EMAIL_WHISPERS = whispers_email_address.value
+        else:
+            EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+            encountered_type = type(whispers_email_address.value).__name__
+            send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
     else:
         EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-        encountered_type = type(whispers_email_address.value).__name__
-        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
-else:
-    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-    send_missing_configuration_value_email('whispers_email_address')
+        send_missing_configuration_value_email('whispers_email_address')
 
-nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
-if nwhc_org_record:
-    if nwhc_org_record.value.isdecimal():
-        NWHC_ORG_ID = int(nwhc_org_record.value)
+def get_nhwc_org_id():
+    nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
+    if nwhc_org_record:
+        if nwhc_org_record.value.isdecimal():
+            NWHC_ORG_ID = int(nwhc_org_record.value)
+        else:
+            NWHC_ORG_ID = settings.NWHC_ORG_ID
+            encountered_type = type(nwhc_org_record.value).__name__
+            send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
     else:
         NWHC_ORG_ID = settings.NWHC_ORG_ID
-        encountered_type = type(nwhc_org_record.value).__name__
-        send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
-else:
-    NWHC_ORG_ID = settings.NWHC_ORG_ID
-    send_missing_configuration_value_email('nwhc_organization')
+        send_missing_configuration_value_email('nwhc_organization')
+    return NWHC_ORG_ID
 
 
 def update_modified_fields(obj, request):
@@ -105,6 +112,7 @@ def construct_email(request_data, requester_email, message):
     body = "A person (" + requester_email + ") has requested assistance:\r\n\r\n"
     body += message + "\r\n\r\n"
     body += request_data
+    EMAIL_WHISPERS = get_whispers_email_address()
     from_address = EMAIL_WHISPERS
     to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
@@ -501,6 +509,7 @@ class EventEventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventEventGroup.objects.filter(eventgroup__category__name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventEventGroup.objects.all()
         else:
@@ -537,6 +546,7 @@ class EventGroupViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroup.objects.filter(category__name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroup.objects.all()
         else:
@@ -573,6 +583,7 @@ class EventGroupCategoryViewSet(HistoryViewSet):
         if not user or not user.is_authenticated:
             return EventGroupCategory.objects.filter(name='Biologically Equivalent (Public)')
         # admins have access to all records
+        NWHC_ORG_ID = get_nhwc_org_id()
         if user.role.is_superadmin or user.role.is_admin or user.organization.id == NWHC_ORG_ID:
             return EventGroupCategory.objects.all()
         else:
@@ -2074,8 +2085,10 @@ class UserViewSet(HistoryViewSet):
                     # check if this item is a well-formed email address
                     if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
                         # check if there is a matching user (email addresses are unique across all users)
+                        # and that user is affiliate or above (no public users can be collaborators)
                         user = User.objects.filter(email__iexact=item).first()
-                        if user:
+                        if user and (user.role.is_superadmin or user.role.is_admin or user.role.is_partneradmin
+                                     or user.role.is_partnermanager or user.role.is_partner or user.role.is_affiliate):
                             found.append(user)
                         else:
                             not_found.append(item)
@@ -2092,6 +2105,85 @@ class UserViewSet(HistoryViewSet):
                 return Response(resp, status=200)
         else:
             raise serializers.ValidationError("You may only submit a list (array)")
+
+    @transaction.atomic
+    @action(detail=True, methods=['get'], permission_classes=[])
+    def confirm_email(self, request, pk=None):
+        # Bypass overridden get_queryset since user isn't authenticated but
+        # needs to be able to confirm email address
+        user = get_object_or_404(User, id=pk)
+        token = request.GET['token']
+        if user and user.email_verified:
+            # don't check token if user email is already verified - let user
+            # know email is already verified
+            return Response({"status": "Email address has already been verified."}, status=200)
+        elif user and email_verification_token.check_token(user, token):
+            user.is_active = True
+            user.email_verified = True
+            user.save()
+            # If the user requested a role/organization when registering, send
+            # those notification emails now
+            ucr = UserChangeRequest.objects.filter(created_by=user).first()
+            if ucr:
+                UserChangeRequestSerializer.send_user_change_request_email(ucr)
+            self._send_user_created_email(user)
+            serializer_class = self.get_serializer_class()
+            serializer = serializer_class(user, context={'request': request})
+            return Response(serializer.data)
+        elif user:
+            # Checking token failed, possibly because it expired. Send to user again.
+            UserSerializer.send_email_verification_message(user)
+            return Response({"status": "Email verification failed, resending verification email. Please check your inbox and try again."}, status=400)
+        else:
+            return Response({"status": "Failed to confirm email address."}, status=400)
+    
+    @action(detail=False, methods=['post'], permission_classes=[])
+    def request_password_reset(self, request):
+        if 'username' in request.data:
+            username = request.data['username']
+            user = get_object_or_404(User, username=username)
+            # If user is inactive, don't send email but do return the same
+            # successful response to prevent leaking who has accounts.
+            if user.is_active:
+                token = PasswordResetTokenGenerator().make_token(user)
+                password_reset_link = (settings.APP_WHISPERS_URL + "?" + urlencode(
+                    {'user-id': user.id, 'password-reset-token': token}))
+                # create a 'Password Reset' notification
+                source = 'system'
+                # recipients: user
+                recipients = [user.id]
+                # email forwarding: Automatic, to user's email
+                email_to = [user.email]
+                # TODO: add protection here for when the msg_tmp is not found (see scheduled_tasks.py for examples)
+                msg_tmp = NotificationMessageTemplate.objects.filter(name='Password Reset').first()
+                subject = msg_tmp.subject_template
+                body = msg_tmp.body_template.format(
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    password_reset_link=password_reset_link)
+                event = None
+                generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+            return Response({"status": "Password reset request processed."})
+        else:
+            raise serializers.ValidationError("Request must include an username.")
+
+    @action(detail=False, methods=['post'], permission_classes=[])
+    def reset_password(self, request):
+        user_id = request.data['id']
+        token = request.data['token']
+        user = get_object_or_404(User, id=user_id)
+        # verify that password follows business rules by using UserSerializer
+        data = dict(password=request.data['password'])
+        serializer = self.get_serializer(user, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        token_generator = PasswordResetTokenGenerator()
+        if token_generator.check_token(user, token):
+            # update the password
+            user.set_password(serializer.validated_data['password'])
+            user.save()
+            return Response(serializer.data)
+        else:
+            return Response({"status": "Password change failed. Please try again with a new password reset request."}, status=400)
 
     # override the default queryset to allow filtering by URL arguments
     def get_queryset(self):
@@ -2115,6 +2207,23 @@ class UserViewSet(HistoryViewSet):
             return User.objects.none()
 
         return self.filter_queryset(queryset)
+    
+    def _send_user_created_email(self, user):
+        # create a 'User Created' notification
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
+        if not msg_tmp:
+            send_missing_notification_template_message_email('userserializer_create', 'User Created')
+        else:
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template
+            event = None
+            # source: User that requests a public account
+            source = user.username
+            # recipients: user, WHISPers admin team
+            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
+            email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
 
 class AuthView(views.APIView):

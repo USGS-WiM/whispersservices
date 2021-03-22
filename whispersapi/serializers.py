@@ -1,6 +1,7 @@
 import re
 import requests
 import json
+from urllib.parse import urlencode
 from operator import itemgetter
 from datetime import datetime, timedelta
 from django.apps import apps
@@ -8,8 +9,11 @@ from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.db.models import F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms.models import model_to_dict
+from drf_recaptcha.fields import ReCaptchaV2Field
+from django.urls import reverse
 from rest_framework import serializers, validators
 from rest_framework.settings import api_settings
+from whispersapi.tokens import email_verification_token
 from whispersapi.models import *
 from whispersapi.immediate_tasks import *
 from dry_rest_permissions.generics import DRYPermissionsField
@@ -21,86 +25,102 @@ from dry_rest_permissions.generics import DRYPermissionsField
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 
-geonames_username_record = Configuration.objects.filter(name='geonames_username').first()
-if geonames_username_record:
-    GEONAMES_USERNAME = geonames_username_record.value
-else:
-    GEONAMES_USERNAME = settings.GEONAMES_USERNAME
-    send_missing_configuration_value_email('geonames_username')
+def get_geonames_username():
+    geonames_username_record = Configuration.objects.filter(name='geonames_username').first()
+    if geonames_username_record:
+        GEONAMES_USERNAME = geonames_username_record.value
+    else:
+        GEONAMES_USERNAME = settings.GEONAMES_USERNAME
+        send_missing_configuration_value_email('geonames_username')
+    return GEONAMES_USERNAME
 
-geonames_api_url_record = Configuration.objects.filter(name='geonames_api_url').first()
-if geonames_api_url_record:
-    GEONAMES_API = geonames_api_url_record.value
-else:
-    GEONAMES_API = settings.GEONAMES_API
-    send_missing_configuration_value_email('geonames_api_url')
+def get_geonames_api():
+    geonames_api_url_record = Configuration.objects.filter(name='geonames_api_url').first()
+    if geonames_api_url_record:
+        GEONAMES_API = geonames_api_url_record.value
+    else:
+        GEONAMES_API = settings.GEONAMES_API
+        send_missing_configuration_value_email('geonames_api_url')
+    return GEONAMES_API
 
-flyways_api_url_record = Configuration.objects.filter(name='flyways_api_url').first()
-if flyways_api_url_record:
-    FLYWAYS_API = flyways_api_url_record.value
-else:
-    FLYWAYS_API = settings.FLYWAYS_API
-    send_missing_configuration_value_email('flyways_api_url')
+def get_flyways_api():
+    flyways_api_url_record = Configuration.objects.filter(name='flyways_api_url').first()
+    if flyways_api_url_record:
+        FLYWAYS_API = flyways_api_url_record.value
+    else:
+        FLYWAYS_API = settings.FLYWAYS_API
+        send_missing_configuration_value_email('flyways_api_url')
+    return FLYWAYS_API
 
-whispers_admin_user_record = Configuration.objects.filter(name='whispers_admin_user').first()
-if whispers_admin_user_record:
-    if whispers_admin_user_record.value.isdecimal():
-        WHISPERS_ADMIN_USER_ID = int(whispers_admin_user_record.value)
+def get_whispers_admin_user_id():
+    whispers_admin_user_record = Configuration.objects.filter(name='whispers_admin_user').first()
+    if whispers_admin_user_record:
+        if whispers_admin_user_record.value.isdecimal():
+            WHISPERS_ADMIN_USER_ID = int(whispers_admin_user_record.value)
+        else:
+            WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+            encountered_type = type(whispers_admin_user_record.value).__name__
+            send_wrong_type_configuration_value_email('whispers_admin_user', encountered_type, 'int')
     else:
         WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-        encountered_type = type(whispers_admin_user_record.value).__name__
-        send_wrong_type_configuration_value_email('whispers_admin_user', encountered_type, 'int')
-else:
-    WHISPERS_ADMIN_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-    send_missing_configuration_value_email('whispers_admin_user')
+        send_missing_configuration_value_email('whispers_admin_user')
+    return WHISPERS_ADMIN_USER_ID
 
-whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
-if whispers_email_address:
-    if whispers_email_address.value.count('@') == 1:
-        EMAIL_WHISPERS = whispers_email_address.value
+def get_whispers_email_address():
+    whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
+    if whispers_email_address:
+        if whispers_email_address.value.count('@') == 1:
+            EMAIL_WHISPERS = whispers_email_address.value
+        else:
+            EMAIL_WHISPERS = settings.EMAIL_WHISPERS
+            encountered_type = type(whispers_email_address.value).__name__
+            send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
     else:
         EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-        encountered_type = type(whispers_email_address.value).__name__
-        send_wrong_type_configuration_value_email('whispers_email_address', encountered_type, 'email_address')
-else:
-    EMAIL_WHISPERS = settings.EMAIL_WHISPERS
-    send_missing_configuration_value_email('whispers_email_address')
+        send_missing_configuration_value_email('whispers_email_address')
+    return EMAIL_WHISPERS
 
-hfs_locations_record = Configuration.objects.filter(name='hfs_locations').first()
-if hfs_locations_record:
-    hfs_locations_str = hfs_locations_record.value.split(',')
-    if all(x.strip().isdecimal() for x in hfs_locations_str):
-        HFS_LOCATIONS = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+def get_hfs_locations():
+    hfs_locations_record = Configuration.objects.filter(name='hfs_locations').first()
+    if hfs_locations_record:
+        hfs_locations_str = hfs_locations_record.value.split(',')
+        if all(x.strip().isdecimal() for x in hfs_locations_str):
+            HFS_LOCATIONS = [int(hfs_loc) for hfs_loc in hfs_locations_str]
+        else:
+            encountered_types = ''.join(list(set([type(x).__name__ for x in hfs_locations_str])))
+            send_wrong_type_configuration_value_email('hfs_locations', encountered_types, 'int')
     else:
-        encountered_types = ''.join(list(set([type(x).__name__ for x in hfs_locations_str])))
-        send_wrong_type_configuration_value_email('hfs_locations', encountered_types, 'int')
-else:
-    HFS_LOCATIONS = settings.HFS_LOCATIONS
-    send_missing_configuration_value_email('hfs_locations')
+        HFS_LOCATIONS = settings.HFS_LOCATIONS
+        send_missing_configuration_value_email('hfs_locations')
+    return HFS_LOCATIONS
 
-hfs_epi_user_id_record = Configuration.objects.filter(name='hfs_epi_user').first()
-if hfs_epi_user_id_record:
-    if hfs_epi_user_id_record.value.isdecimal():
-        HFS_EPI_USER_ID = hfs_epi_user_id_record.value
+def get_hfs_epi_user_id():
+    hfs_epi_user_id_record = Configuration.objects.filter(name='hfs_epi_user').first()
+    if hfs_epi_user_id_record:
+        if hfs_epi_user_id_record.value.isdecimal():
+            HFS_EPI_USER_ID = hfs_epi_user_id_record.value
+        else:
+            HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+            encountered_type = type(hfs_epi_user_id_record.value).__name__
+            send_wrong_type_configuration_value_email('hfs_epi_user', encountered_type, 'int')
     else:
         HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-        encountered_type = type(hfs_epi_user_id_record.value).__name__
-        send_wrong_type_configuration_value_email('hfs_epi_user', encountered_type, 'int')
-else:
-    HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-    send_missing_configuration_value_email('hfs_epi_user')
+        send_missing_configuration_value_email('hfs_epi_user')
+    return HFS_EPI_USER_ID
 
-madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
-if madison_epi_user_id_record:
-    if madison_epi_user_id_record.value.isdecimal():
-        MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+def get_madison_epi_user_id():
+    madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
+    if madison_epi_user_id_record:
+        if madison_epi_user_id_record.value.isdecimal():
+            MADISON_EPI_USER_ID = madison_epi_user_id_record.value
+        else:
+            MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
+            encountered_type = type(madison_epi_user_id_record.value).__name__
+            send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
     else:
         MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-        encountered_type = type(madison_epi_user_id_record.value).__name__
-        send_wrong_type_configuration_value_email('madison_epi_user', encountered_type, 'int')
-else:
-    MADISON_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
-    send_missing_configuration_value_email('madison_epi_user')
+        send_missing_configuration_value_email('madison_epi_user')
+    return MADISON_EPI_USER_ID
 
 
 def jsonify_errors(data):
@@ -162,6 +182,7 @@ def construct_email(subject, message):
     # construct and send the email
     subject = subject
     body = message
+    EMAIL_WHISPERS = get_whispers_email_address()
     from_address = EMAIL_WHISPERS
     to_list = [EMAIL_WHISPERS, ]
     bcc_list = []
@@ -448,8 +469,8 @@ class CommentSerializer(serializers.ModelSerializer):
         if content_type.model == 'servicerequest':
             service_request = ServiceRequest.objects.filter(id=comment.object_id).first()
             event_id = service_request.event.id
-            hfs_epi_user = User.objects.filter(id=HFS_EPI_USER_ID).first()
-            madison_epi_user = User.objects.filter(id=MADISON_EPI_USER_ID).first()
+            hfs_epi_user = User.objects.filter(id=get_hfs_epi_user_id()).first()
+            madison_epi_user = User.objects.filter(id=get_madison_epi_user_id()).first()
             # source: NWHC Epi staff/HFS staff or user with read/write privileges
             # recipients: toggles between nwhc-epi@usgs or HFS AND user who made the request and event owner
             # email forwarding:
@@ -491,6 +512,7 @@ class CommentSerializer(serializers.ModelSerializer):
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
                     evt_locs = EventLocation.objects.filter(event=event_id)
+                    HFS_LOCATIONS = get_hfs_locations()
                     if HFS_LOCATIONS and any(
                             [evt_loc.administrative_level_one.id in HFS_LOCATIONS for evt_loc in evt_locs]):
                         epi_user = hfs_epi_user
@@ -680,8 +702,10 @@ class EventSerializer(serializers.ModelSerializer):
                         latlng_is_valid = False
                     if ('longitude' in item and item['longitude'] is not None
                             and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(item['longitude']))):
-                        latlng_is_valid = False
+                                                latlng_is_valid = False
                     geonames_endpoint = 'extendedFindNearbyJSON'
+                    GEONAMES_USERNAME = get_geonames_username()
+                    GEONAMES_API = get_geonames_api()
                     if ('latitude' in item and item['latitude'] is not None
                             and 'longitude' in item and item['longitude'] is not None):
                         payload = {'lat': item['latitude'], 'lng': item['longitude'],
@@ -805,7 +829,10 @@ class EventSerializer(serializers.ModelSerializer):
                                      specdiag['new_species_diagnosis_organizations']]
                                     if not specdiag['suspect']:
                                         if specdiag['basis'] in [1, 2, 4]:
-                                            specdiag_nonsuspect_basis_is_valid = False
+                                            undetermined = list(Diagnosis.objects.filter(
+                                                name='Undetermined').values_list('id', flat=True))[0]
+                                            if specdiag['diagnosis'] != undetermined:
+                                                specdiag_nonsuspect_basis_is_valid = False
                                         elif specdiag['basis'] == 3:
                                             if ('new_species_diagnosis_organizations' in specdiag
                                                     and specdiag['new_species_diagnosis_organizations'] is not None):
@@ -1042,10 +1069,6 @@ class EventSerializer(serializers.ModelSerializer):
                 read_user = User.objects.filter(id=read_user_id).first()
                 if read_user is not None and not read_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not read_user.id == event.created_by.id
-                    #         and not read_user.organization.id == event.created_by.organization.id
-                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
@@ -1053,10 +1076,6 @@ class EventSerializer(serializers.ModelSerializer):
                 write_user = User.objects.filter(id=write_user_id).first()
                 if write_user is not None and not write_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not write_user.id == event.created_by.id
-                    #         and not write_user.organization.id == event.created_by.organization.id
-                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
 
         # create the child organizations for this event
@@ -1171,7 +1190,7 @@ class EventSerializer(serializers.ModelSerializer):
                     and new_service_request['request_type'] in [1, 2]):
                 request_type = ServiceRequestType.objects.filter(id=new_service_request['request_type']).first()
                 # request_response = ServiceRequestResponse.objects.filter(name='Pending').first()
-                admin = User.objects.filter(id=WHISPERS_ADMIN_USER_ID).first()
+                admin = User.objects.filter(id=get_whispers_admin_user_id()).first()
                 # use event to populate event field on new_service_request
                 new_service_request['event'] = event.id
                 new_service_request['request_type'] = request_type.id
@@ -1236,75 +1255,83 @@ class EventSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
-        if not instance.complete and new_complete and (user.id == instance.created_by.id or (
-                user.organization.id == instance.created_by.organization.id and (
-                user.role.is_partneradmin or user.role.is_partnermanager))):
-            # only let the status be changed to 'complete=True' if
-            # 1. All child locations have an end date and each location's end date is later than its start date
-            # 2. For morbidity/mortality events, there must be at least one number between sick, dead, estimated_sick,
-            #   and estimated_dead per species at the time of event completion.
-            #   (sick + dead + estimated_sick + estimated_dead >= 1)
-            # 3. All child species diagnoses must have a basis and a cause
-            locations = EventLocation.objects.filter(event=instance.id)
-            location_message = "The event may not be marked complete until all of its locations have an end date"
-            location_message += " and each location's end date is after that location's start date."
-            if locations is not None:
-                species_count_is_valid = []
-                est_count_gt_known_count = True
-                species_diagnosis_basis_is_valid = []
-                species_diagnosis_cause_is_valid = []
-                details = []
-                mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
-                for location in locations:
-                    if not location.end_date or not location.start_date or not location.end_date >= location.start_date:
-                        raise serializers.ValidationError(jsonify_errors(location_message))
-                    if instance.event_type.id == mortality_morbidity.id:
-                        location_species = LocationSpecies.objects.filter(event_location=location.id)
-                        for spec in location_species:
-                            if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.dead_count is not None and spec.dead_count > 0
-                                        and not spec.dead_count_estimated > spec.dead_count):
-                                    est_count_gt_known_count = False
-                            elif spec.dead_count is not None and spec.dead_count > 0:
-                                species_count_is_valid.append(True)
-                            elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
-                                species_count_is_valid.append(True)
-                                if (spec.sick_count or 0) > 0 and spec.sick_count_estimated <= (spec.sick_count or 0):
-                                    est_count_gt_known_count = False
-                            elif spec.sick_count is not None and spec.sick_count > 0:
-                                species_count_is_valid.append(True)
-                            else:
-                                species_count_is_valid.append(False)
-                            species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
-                            for specdiag in species_diagnoses:
-                                if specdiag.basis:
-                                    species_diagnosis_basis_is_valid.append(True)
+        if not instance.complete and new_complete:
+            if (user.id == instance.created_by.id
+                    or (user.organization.id == instance.created_by.organization.id
+                        and (user.role.is_partneradmin or user.role.is_partnermanager))
+                    or user.id in list(User.objects.filter(
+                        writeevents__in=[instance.id]).values_list('id', flat=True))):
+                # only let the status be changed to 'complete=True' if
+                # 1. All child locations have an end date and each location's end date is later than its start date
+                # 2. For morbidity/mortality events, there must be at least one number between sick, dead,
+                #   estimated_sick, and estimated_dead per species at the time of event completion.
+                #   (sick + dead + estimated_sick + estimated_dead >= 1)
+                # 3. All child species diagnoses must have a basis and a cause
+                locations = EventLocation.objects.filter(event=instance.id)
+                location_message = "The event may not be marked complete until all of its locations have an end date"
+                location_message += " and each location's end date is after that location's start date."
+                if locations is not None:
+                    species_count_is_valid = []
+                    est_count_gt_known_count = True
+                    species_diagnosis_basis_is_valid = []
+                    species_diagnosis_cause_is_valid = []
+                    details = []
+                    mortality_morbidity = EventType.objects.filter(name='Mortality/Morbidity').first()
+                    for location in locations:
+                        if (not location.end_date or not location.start_date
+                                or not location.end_date >= location.start_date):
+                            raise serializers.ValidationError(jsonify_errors(location_message))
+                        if instance.event_type.id == mortality_morbidity.id:
+                            location_species = LocationSpecies.objects.filter(event_location=location.id)
+                            for spec in location_species:
+                                if spec.dead_count_estimated is not None and spec.dead_count_estimated > 0:
+                                    species_count_is_valid.append(True)
+                                    if (spec.dead_count is not None and spec.dead_count > 0
+                                            and not spec.dead_count_estimated > spec.dead_count):
+                                        est_count_gt_known_count = False
+                                elif spec.dead_count is not None and spec.dead_count > 0:
+                                    species_count_is_valid.append(True)
+                                elif spec.sick_count_estimated is not None and spec.sick_count_estimated > 0:
+                                    species_count_is_valid.append(True)
+                                    if ((spec.sick_count or 0) > 0
+                                            and spec.sick_count_estimated <= (spec.sick_count or 0)):
+                                        est_count_gt_known_count = False
+                                elif spec.sick_count is not None and spec.sick_count > 0:
+                                    species_count_is_valid.append(True)
                                 else:
-                                    species_diagnosis_basis_is_valid.append(False)
-                                if specdiag.cause:
-                                    species_diagnosis_cause_is_valid.append(True)
-                                else:
-                                    species_diagnosis_cause_is_valid.append(False)
-                if False in species_count_is_valid:
-                    message = "Each location_species requires at least one species count in any of the following"
-                    message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
-                    details.append(message)
-                if not est_count_gt_known_count:
-                    message = "Estimated sick or dead counts must always be more than known sick or dead counts."
-                    details.append(message)
-                if False in species_diagnosis_basis_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a basis of diagnosis."
-                    details.append(message)
-                if False in species_diagnosis_cause_is_valid:
-                    message = "The event may not be marked complete until all of its location species diagnoses"
-                    message += " have a cause."
-                    details.append(message)
-                if details:
-                    raise serializers.ValidationError(jsonify_errors(details))
+                                    species_count_is_valid.append(False)
+                                species_diagnoses = SpeciesDiagnosis.objects.filter(location_species=spec.id)
+                                for specdiag in species_diagnoses:
+                                    if specdiag.basis:
+                                        species_diagnosis_basis_is_valid.append(True)
+                                    else:
+                                        species_diagnosis_basis_is_valid.append(False)
+                                    if specdiag.cause:
+                                        species_diagnosis_cause_is_valid.append(True)
+                                    else:
+                                        species_diagnosis_cause_is_valid.append(False)
+                    if False in species_count_is_valid:
+                        message = "Each location_species requires at least one species count in any of the following"
+                        message += " fields: dead_count_estimated, dead_count, sick_count_estimated, sick_count."
+                        details.append(message)
+                    if not est_count_gt_known_count:
+                        message = "Estimated sick or dead counts must always be more than known sick or dead counts."
+                        details.append(message)
+                    if False in species_diagnosis_basis_is_valid:
+                        message = "The event may not be marked complete until all of its location species diagnoses"
+                        message += " have a basis of diagnosis."
+                        details.append(message)
+                    if False in species_diagnosis_cause_is_valid:
+                        message = "The event may not be marked complete until all of its location species diagnoses"
+                        message += " have a cause."
+                        details.append(message)
+                    if details:
+                        raise serializers.ValidationError(jsonify_errors(details))
+                else:
+                    raise serializers.ValidationError(jsonify_errors(location_message))
             else:
-                raise serializers.ValidationError(jsonify_errors(location_message))
+                message = "You do not have sufficient permission to set the event status to complete."
+                raise serializers.ValidationError(jsonify_errors(message))
 
         # remove child event diagnoses list from the request
         if 'new_event_diagnoses' in validated_data:
@@ -1360,10 +1387,6 @@ class EventSerializer(serializers.ModelSerializer):
             for read_user in add_read_users:
                 if not read_user.id == instance.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not read_user.id == event.created_by.id
-                    #         and not read_user.organization.id == event.created_by.organization.id
-                    #         and read_user.organization.id not in event.created_by.parent_organizations):
                     EventReadUser.objects.create(user=read_user, event=instance, created_by=user, modified_by=user)
 
         # update the write_collaborators list if new_write_user_ids submitted
@@ -1384,10 +1407,6 @@ class EventSerializer(serializers.ModelSerializer):
             for write_user in add_write_users:
                 if not write_user.id == instance.created_by.id:
                     # only create collaborator if not the event owner
-                    # # only create collaborator if not the event owner or in event owner org
-                    # if (not write_user.id == event.created_by.id
-                    #         and not write_user.organization.id == event.created_by.organization.id
-                    #         and write_user.organization.id not in event.created_by.parent_organizations):
                     EventWriteUser.objects.create(user=write_user, event=instance, created_by=user, modified_by=user)
 
         # update the Event object
@@ -1908,8 +1927,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
         lng = 'lng'
         lat = 'lat'
         geonames_params = {'name': adm1_name, 'featureCode': 'ADM1', 'country': country_code}
-        geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
-        gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
+        geonames_params.update({'maxRows': 1, 'username': get_geonames_username()})
+        gr = requests.get(get_geonames_api() + geonames_endpoint, params=geonames_params)
         try:
             grj = gr.json()
             if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
@@ -1917,7 +1936,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             return coords
         except requests.exceptions.RequestException as e:
             # email admins
-            send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
+            send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
             return None
 
     # find the centroid coordinates (lng/lat) for a county or equivalent
@@ -1928,8 +1947,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
         lat = 'lat'
         geonames_params = {'name': adm2_name, 'featureCode': 'ADM2'}
         geonames_params.update({'adminCode1': adm1_code, 'country': country_code})
-        geonames_params.update({'maxRows': 1, 'username': GEONAMES_USERNAME})
-        gr = requests.get(GEONAMES_API + geonames_endpoint, params=geonames_params)
+        geonames_params.update({'maxRows': 1, 'username': get_geonames_username()})
+        gr = requests.get(get_geonames_api() + geonames_endpoint, params=geonames_params)
         try:
             grj = gr.json()
             if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
@@ -1940,7 +1959,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             return coords
         except requests.exceptions.RequestException as e:
             # email admins
-            send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
+            send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
             return None
 
     def validate(self, data):
@@ -2022,6 +2041,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         and not re.match(r"(-?)([\d]{1,3})(\.)(\d+)", str(data['longitude']))):
                     latlng_is_valid = False
                 geonames_endpoint = 'extendedFindNearbyJSON'
+                GEONAMES_USERNAME = get_geonames_username()
+                GEONAMES_API = get_geonames_api()
                 if ('latitude' in data and data['latitude'] is not None
                         and 'longitude' in data and data['longitude'] is not None):
                     payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
@@ -2137,7 +2158,10 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                  specdiag['new_species_diagnosis_organizations']]
                                 if not specdiag['suspect']:
                                     if specdiag['basis'] in [1, 2, 4]:
-                                        specdiag_nonsuspect_basis_is_valid = False
+                                        undetermined = list(Diagnosis.objects.filter(
+                                            name='Undetermined').values_list('id', flat=True))[0]
+                                        if specdiag['diagnosis'] != undetermined:
+                                            specdiag_nonsuspect_basis_is_valid = False
                                     elif specdiag['basis'] == 3:
                                         if ('new_species_diagnosis_organizations' in specdiag
                                                 and specdiag['new_species_diagnosis_organizations'] is not None):
@@ -2253,6 +2277,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                      or 'administrative_level_two' not in validated_data
                      or validated_data['administrative_level_two'] is None)):
             geonames_endpoint = 'extendedFindNearbyJSON'
+            GEONAMES_USERNAME = get_geonames_username()
+            GEONAMES_API = get_geonames_api()
             address = None
             payload = {'lat': validated_data['latitude'], 'lng': validated_data['longitude'],
                        'username': GEONAMES_USERNAME}
@@ -2316,7 +2342,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         test_params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false'}
         test_params.update({'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'})
         test_params.update({'geometry': '-90.0,45.0'})
-        r = requests.get(FLYWAYS_API, params=test_params, verify=settings.SSL_CERT)
+        r = requests.get(get_flyways_api(), params=test_params, verify=settings.SSL_CERT)
         try:
             if 'features' in r.json():
                 territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
@@ -2352,7 +2378,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         flyway = Flyway.objects.filter(name__contains='Pacific').first()
 
                     if flyway is None and 'geometry' in params:
-                        r = requests.get(FLYWAYS_API, params=params, verify=settings.SSL_CERT)
+                        r = requests.get(get_flyways_api(), params=params, verify=settings.SSL_CERT)
                         try:
                             rj = r.json()
                             if 'features' in rj and len(rj['features']) > 0:
@@ -2360,12 +2386,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 flyway = Flyway.objects.filter(name__contains=flyway_name).first()
                         except requests.exceptions.RequestException as e:
                             # email admins
-                            send_third_party_service_exception_email('FWS Flyways', FLYWAYS_API, e)
+                            send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
                             # flyways is not a required field, the admins can populate it after investigating
                             pass
         except requests.exceptions.RequestException as e:
             # email admins
-            send_third_party_service_exception_email('FWS Flyways', FLYWAYS_API, e)
+            send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
             # flyways is not a required field, the admins can populate it after investigating
             pass
 
@@ -3579,10 +3605,11 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             # determine which epi user (madison or hawaii (hfs)) receive notification (depends on event location)
             event_id = service_request.event.id
             evt_locs = EventLocation.objects.filter(event=event_id)
+            HFS_LOCATIONS = get_hfs_locations()
             if HFS_LOCATIONS and any([evt_loc.administrative_level_one.id in HFS_LOCATIONS for evt_loc in evt_locs]):
-                epi_user = User.objects.filter(id=HFS_EPI_USER_ID).first()
+                epi_user = User.objects.filter(id=get_hfs_epi_user_id()).first()
             else:
-                epi_user = User.objects.filter(id=MADISON_EPI_USER_ID).first()
+                epi_user = User.objects.filter(id=get_madison_epi_user_id()).first()
             # source: User making a service request.
             source = user.username
             # recipients: nwhc-epi@usgs.gov or HFS dropbox
@@ -3964,6 +3991,7 @@ class UserSerializer(serializers.ModelSerializer):
     notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
     new_user_change_request = serializers.JSONField(write_only=True, required=False)
     new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
+    recaptcha = ReCaptchaV2Field()
 
     def validate(self, data):
 
@@ -4027,6 +4055,9 @@ class UserSerializer(serializers.ModelSerializer):
 
         password = validated_data.pop('password', None)
 
+        # remove the recaptcha response
+        recaptcha = validated_data.pop('recaptcha', None)
+
         # pull out child service request from the request
         new_user_change_request = validated_data.pop('new_user_change_request', None)
 
@@ -4051,11 +4082,13 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(message))
                 validated_data['organization'] = requesting_user.organization
 
-        # only SuperAdmins and Admins can edit is_staff and is_active fields
+        # only SuperAdmins and Admins can edit is_staff
         if (requesting_user.is_authenticated
                 and not (requesting_user.role.is_superadmin or requesting_user.role.is_admin)):
             validated_data['is_staff'] = False
-            validated_data['is_active'] = True
+
+        # is_active is false for new users until email address is verified
+        validated_data['is_active'] = False
 
         # only SuperAdmins can edit is_superuser field
         if (requesting_user.is_authenticated
@@ -4066,21 +4099,7 @@ class UserSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
 
-        # create a 'User Created' notification
-        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Created').first()
-        if not msg_tmp:
-            send_missing_notification_template_message_email('userserializer_create', 'User Created')
-        else:
-            subject = msg_tmp.subject_template
-            body = msg_tmp.body_template
-            event = None
-            # source: User that requests a public account
-            source = user.username
-            # recipients: user, WHISPers admin team
-            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
-            # email forwarding: Automatic, to user's email and to whispers@usgs.gov
-            email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+        UserSerializer.send_email_verification_message(user)
 
         if new_user_change_request is not None:
             role_requested = None
@@ -4109,6 +4128,34 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(jsonify_errors(ucr_serializer.errors))
 
         return user
+
+    @staticmethod
+    def send_email_verification_message(user):
+        """Send email to user with link to verify their email address."""
+        # Create email verification link
+        token = email_verification_token.make_token(user)
+        verification_link = (settings.APP_WHISPERS_URL +
+                             "?" +
+                             urlencode({'user-id': user.id, 'email-token': token}))
+
+        # create a 'User Email Verification' notification
+        msg_tmp = NotificationMessageTemplate.objects.filter(name='User Email Verification').first()
+        if not msg_tmp:
+            send_missing_notification_template_message_email('userserializer_send_email_verification_message',
+                                                             'User Email Verification')
+        else:
+            source = 'system'
+            # recipients: user
+            recipients = [user.id]
+            # email forwarding: Automatic, to user's email
+            email_to = [user.email]
+            subject = msg_tmp.subject_template
+            body = msg_tmp.body_template.format(
+                first_name=user.first_name,
+                last_name=user.last_name,
+                verification_link=verification_link)
+            event = None
+            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
@@ -4241,7 +4288,7 @@ class UserSerializer(serializers.ModelSerializer):
                           'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
-        if action == 'create' or view_name == 'auth':
+        if action == 'create' or view_name == 'auth' or action == 'reset_password':
             fields = private_fields
         elif user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
@@ -4308,7 +4355,20 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             validated_data['request_response'] = UserChangeRequestResponse.objects.filter(name='Pending').first()
 
         ucr = UserChangeRequest.objects.create(**validated_data)
+        # store comment as a Comment object associated with UserChangeRequest
+        cmt_type = CommentType.objects.filter(name='Other').first()
+        Comment.objects.create(content_object=ucr, comment=comment,
+                               comment_type=cmt_type, created_by=user, modified_by=user)
+        return ucr
 
+    @staticmethod
+    def send_user_change_request_email(ucr):
+        # Email is sent only after user verifies their email address
+
+        # Get user's comment from the user change request
+        content_type = ContentType.objects.get_for_model(UserChangeRequest)
+        comment_object = Comment.objects.filter(object_id=ucr.id, content_type=content_type).first()
+        comment = comment_object.comment if comment_object else None
         # create a 'User Change Request' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request').first()
         if not msg_tmp:
