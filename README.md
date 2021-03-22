@@ -2,8 +2,6 @@
 
 # WHISPers Web Services
 
-WHISPers v2, Web Services v1
-
 This is the web services codebase for version 2 of Wildlife Health Information Sharing Partnership event reporting system (the web client application codebase can be found [here](https://github.com/USGS-WiM/whispers)). WHISPers allows users to enter, discover, amd explore wildlife mortality data submitted by partners across North America and verified by trained biologists.
 
 This project was built with Django, Django REST Framework, and Psycopg2.
