@@ -1256,7 +1256,7 @@ class EventSerializer(serializers.ModelSerializer):
 
         # otherwise if the Event is not complete but being set to complete, apply business rules
         if not instance.complete and new_complete:
-            if (user.id == instance.created_by.id
+            if (user.role.is_superadmin or user.role.is_admin or user.id == instance.created_by.id
                     or (user.organization.id == instance.created_by.organization.id
                         and (user.role.is_partneradmin or user.role.is_partnermanager))
                     or user.id in list(User.objects.filter(
