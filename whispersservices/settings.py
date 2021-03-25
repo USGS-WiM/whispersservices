@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/2.0/ref/settings/
 """
 
 import os
+import json
 from django.utils.six import moves
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -206,3 +207,19 @@ FLYWAYS_API = CONFIG.get('whispers', 'FLYWAYS_API')
 # 4. Use the site id in the environment.ts file on the client as the value of
 #    "recaptcha_site_key"
 DRF_RECAPTCHA_SECRET_KEY = CONFIG.get('security', 'DRF_RECAPTCHA_SECRET_KEY')
+
+
+def get_api_version():
+    version = ""
+    try:
+        file_path = os.path.join(PROJECT_PATH, 'code.json')
+        f = open(file_path, 'r')
+        data = json.load(f)
+        if 'version' in data[0]:
+            version = data[0]['version']
+    except OSError:
+        pass
+    return version
+
+
+WHISPERS_API_VERSION = get_api_version()

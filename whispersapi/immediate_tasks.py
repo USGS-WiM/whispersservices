@@ -19,7 +19,7 @@ def jsonify_errors(data):
 
 
 def send_third_party_service_exception_email(third_party_service, endpoint, exception):
-    recip = EMAIL_WHISPERS
+    recip = get_whispers_email_address()
     subject = "WHISPERS ADMIN: Third Party Service Exception"
     body = "A request to the \"" + third_party_service + "\" third party service at \"" + endpoint + "\" raised"
     body += " an exception at " + datetime.now().strftime("%m/%d/%Y %H:%M:%S") + "."
