@@ -734,7 +734,9 @@ class EventSerializer(serializers.ModelSerializer):
                             elif 'geonames' in geonames_object_list:
                                 geonames_objects_adm2 = [item for item in geonames_object_list['geonames'] if
                                                          item['fcode'] == 'ADM2']
-                                address = geonames_objects_adm2[0]
+                                # NOTE: some countries have fcode of PPL (city) instead of ADM2 immediately below ADM1,
+                                #  which are not in our database at this time, so skip over this
+                                address = geonames_objects_adm2[0] if geonames_objects_adm2 else None
                             else:
                                 # the response from the Geonames web service is in an unexpected format
                                 address = None
@@ -778,7 +780,7 @@ class EventSerializer(serializers.ModelSerializer):
                                       and item['administrative_level_two'] is not None):
                                     admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
                                     admin_l2 = AdministrativeLevelTwo.objects.filter(
-                                        name=admin_name2, administrative_level_one__id=admin_l1.id).first()
+                                        name__icontains=admin_name2, administrative_level_one__id=admin_l1.id).first()
                                     if not admin_l2 or int(item['administrative_level_two']) != admin_l2.id:
                                         latlng_matches_admin_21 = False
                     if 'new_location_species' in item:
@@ -871,10 +873,12 @@ class EventSerializer(serializers.ModelSerializer):
                     message = "latitude and longitude are not in the user-specified country."
                     details.append(message)
                 if not latlng_matches_admin_l1:
-                    message = "latitude and longitude are not in the user-specified administrative level one."
+                    message = "latitude and longitude are not in"
+                    message += " the user-specified administrative level one (e.g., state)."
                     details.append(message)
                 if not latlng_matches_admin_21:
-                    message = "latitude and longitude are not in the user-specified administrative level two."
+                    message = "latitude and longitude are not in"
+                    message += " the user-specified administrative level two (e.g., county)."
                     details.append(message)
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
@@ -2068,7 +2072,9 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 address['adminName2'] = address['name']
                         elif 'geonames' in geonames_object_list:
                             gn_adm2 = [data for data in geonames_object_list['geonames'] if data['fcode'] == 'ADM2']
-                            address = gn_adm2[0]
+                            # NOTE: some countries have fcode of PPL (city) instead of ADM2 immediately below ADM1,
+                            #  which are not in our database at this time, so skip over this
+                            address = gn_adm2[0] if gn_adm2 else None
                         else:
                             # the response from the Geonames web service is in an unexpected format
                             address = None
@@ -2109,7 +2115,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                   and data['administrative_level_two'] is not None):
                                 admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
                                 admin_l2 = AdministrativeLevelTwo.objects.filter(
-                                    name=admin_name2, administrative_level_one__id=admin_l1.id).first()
+                                    name__icontains=admin_name2, administrative_level_one__id=admin_l1.id).first()
                                 if not admin_l2 or data['administrative_level_two'].id != admin_l2.id:
                                     latlng_matches_admin_21 = False
                 if 'new_location_species' in data:
@@ -2200,10 +2206,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     message = "latitude and longitude are not in the user-specified country."
                     details.append(message)
                 if not latlng_matches_admin_l1:
-                    message = "latitude and longitude are not in the user-specified administrative level one."
+                    message = "latitude and longitude are not in"
+                    message += " the user-specified administrative level one (e.g., state)."
                     details.append(message)
                 if not latlng_matches_admin_21:
-                    message = "latitude and longitude are not in the user-specified administrative level two."
+                    message = "latitude and longitude are not in"
+                    message += " the user-specified administrative level two (e.g., county)."
                     details.append(message)
                 if False in comments_is_valid:
                     message = "Each new_event_location requires at least one new_comment, which must be one of"
