@@ -195,6 +195,8 @@ def construct_email(subject, message):
         except TypeError:
             message = "Send email failed, please contact the administrator."
             raise serializers.ValidationError(jsonify_errors(message))
+    else:
+        print(email.__dict__)
     return email
 
 
@@ -725,6 +727,7 @@ class EventSerializer(serializers.ModelSerializer):
                             and 'country' in item and item['country'] is not None):
                         payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                        geonames_latlng_url = r.request.url
                         try:
                             geonames_object_list = decode_json(r)
                             if 'address' in geonames_object_list:
@@ -782,7 +785,16 @@ class EventSerializer(serializers.ModelSerializer):
                                     admin_l2 = AdministrativeLevelTwo.objects.filter(
                                         name__icontains=admin_name2, administrative_level_one__id=admin_l1.id).first()
                                     if not admin_l2 or int(item['administrative_level_two']) != admin_l2.id:
-                                        latlng_matches_admin_21 = False
+                                        # Instead of causing a validation error, email admins and let the create proceed
+                                        # latlng_matches_admin_21 = False
+                                        message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
+                                        message += " different from the one submitted by the user"
+                                        message += f" ({data['administrative_level_two'].name}) when using the latitude"
+                                        message += " and longitude submitted by the user"
+                                        message += f" ({data['longitude']}, {data['latitude']})."
+                                        message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                        construct_email("WHISPERS ADMIN: Third Party Service Validation Warning",
+                                                        message)
                     if 'new_location_species' in item:
                         for spec in item['new_location_species']:
                             if 'species' in spec and spec['species'] is not None:
@@ -2064,6 +2076,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         and 'country' in data and data['country'] is not None):
                     payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
                     r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
+                    geonames_latlng_url = r.request.url
                     try:
                         geonames_object_list = decode_json(r)
                         if 'address' in geonames_object_list:
@@ -2117,7 +2130,15 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 admin_l2 = AdministrativeLevelTwo.objects.filter(
                                     name__icontains=admin_name2, administrative_level_one__id=admin_l1.id).first()
                                 if not admin_l2 or data['administrative_level_two'].id != admin_l2.id:
-                                    latlng_matches_admin_21 = False
+                                    # Instead of causing a validation error, email admins and let the create proceed
+                                    # latlng_matches_admin_21 = False
+                                    message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
+                                    message += " different from the one submitted by the user"
+                                    message += f" ({data['administrative_level_two'].name}) when using the latitude"
+                                    message += " and longitude submitted by the user"
+                                    message += f" ({data['longitude']}, {data['latitude']}).\r\n"
+                                    message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                    construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                 if 'new_location_species' in data:
                     for spec in data['new_location_species']:
                         if 'species' in spec and spec['species'] is not None:
