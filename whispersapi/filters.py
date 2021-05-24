@@ -1,6 +1,6 @@
 from django.db.models import Count
 from django.db.models.functions import Now
-from django_filters.rest_framework import FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, ChoiceFilter, DateFilter
+from django_filters.rest_framework import FilterSet, BaseInFilter, NumberFilter, CharFilter, BooleanFilter, MultipleChoiceFilter, DateFilter
 from django_filters.widgets import BooleanWidget
 from rest_framework.exceptions import NotFound
 from whispersapi.models import *
@@ -12,6 +12,10 @@ LIST_DELIMITER = ','
 
 
 class NumberInFilter(BaseInFilter, NumberFilter):
+    pass
+
+
+class CharInFilter(BaseInFilter, CharFilter):
     pass
 
 
@@ -165,10 +169,11 @@ class SearchFilter(FilterSet):
 #     while all other labels (like diagnosis) are assigned to variables
 #       e.g., complete = BooleanFilter(field_name='complete', lookup_expr='exact', label=event.complete)
 class EventSummaryFilter(FilterSet):
-    AND_PARAMS = (('diagnosis', 'diagnosis'), ('diagnosis_type', 'diagnosis_type'), ('species', 'species'),
-                  ('administrative_level_one', 'administrative_level_one'),
-                  ('administrative_level_two', 'administrative_level_two'), )
-    PERMISSION_SOURCES = (('own', 'own'), ('organization', 'organization'), ('collaboration', 'collaboration'), )
+    AND_PARAMS_ENUM = (('diagnosis', 'diagnosis'), ('diagnosis_type', 'diagnosis_type'), ('species', 'species'),
+                       ('administrative_level_one', 'administrative_level_one'),
+                       ('administrative_level_two', 'administrative_level_two'),
+                       )
+    PERMISSION_SOURCES_ENUM = (('own', 'own'), ('organization', 'organization'), ('collaboration', 'collaboration'), )
 
     # do nothing, as this query param is not an independent filter on any fields,
     #  but a 'meta' filter for changing how other filters are used in combination
@@ -224,13 +229,14 @@ class EventSummaryFilter(FilterSet):
                 queryset = queryset.prefetch_related('eventdiagnoses').filter(
                     eventdiagnoses__diagnosis__in=diagnosis_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
-                and_params = parser_context['kwargs'].get('and_params', None) if parser_context else None
+                and_params = parser_context['request'].query_params.get('and_params', None) if parser_context else None
                 if and_params is not None and 'diagnosis' in and_params:
                     # first, count the species for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
+                    # use the 'only' operator to avoid PostgreSQL GROUP BY errors in annotation aggregation
                     queryset = queryset.annotate(count_diagnoses=Count(
                         'eventdiagnoses__diagnosis', distinct=True)).filter(
-                        count_diagnoses__gte=len(diagnosis_list))
+                        count_diagnoses__gte=len(diagnosis_list)).only('id')
                     diagnosis_list_ints = [int(i) for i in diagnosis_list]
                     # next, find only the events that have _all_ the requested values, not just any of them
                     for item in queryset:
@@ -252,13 +258,14 @@ class EventSummaryFilter(FilterSet):
                 queryset = queryset.prefetch_related('eventdiagnoses__diagnosis__diagnosis_type').filter(
                     eventdiagnoses__diagnosis__diagnosis_type__in=diagnosis_type_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
-                and_params = parser_context['kwargs'].get('and_params', None) if parser_context else None
+                and_params = parser_context['request'].query_params.get('and_params', None) if parser_context else None
                 if and_params is not None and 'diagnosis_type' in and_params:
                     # first, count the species for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
+                    # use the 'only' operator to avoid PostgreSQL GROUP BY errors in annotation aggregation
                     queryset = queryset.annotate(count_diagnosis_types=Count(
                         'eventdiagnoses__diagnosis__diagnosis_type', distinct=True)).filter(
-                        count_diagnosis_types__gte=len(diagnosis_type_list))
+                        count_diagnosis_types__gte=len(diagnosis_type_list)).only('id')
                     diagnosis_type_list_ints = [int(i) for i in diagnosis_type_list]
                     # next, find only the events that have _all_ the requested values, not just any of them
                     for item in queryset:
@@ -280,12 +287,14 @@ class EventSummaryFilter(FilterSet):
                 queryset = queryset.prefetch_related('eventlocations__locationspecies__species').filter(
                     eventlocations__locationspecies__species__in=species_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
-                and_params = parser_context['kwargs'].get('and_params', None) if parser_context else None
+                and_params = parser_context['request'].query_params.get('and_params', None) if parser_context else None
                 if and_params is not None and 'species' in and_params:
                     # first, count the species for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
+                    # use the 'only' operator to avoid PostgreSQL GROUP BY errors in annotation aggregation
                     queryset = queryset.annotate(count_species=Count(
-                        'eventlocations__locationspecies__species')).filter(count_species__gte=len(species_list))
+                        'eventlocations__locationspecies__species')).filter(
+                        count_species__gte=len(species_list)).only('id')
                     species_list_ints = [int(i) for i in species_list]
                     # next, find only the events that have _all_ the requested values, not just any of them
                     for item in queryset:
@@ -308,7 +317,7 @@ class EventSummaryFilter(FilterSet):
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_one__in=admin_level_one_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
-                and_params = parser_context['kwargs'].get('and_params', None) if parser_context else None
+                and_params = parser_context['request'].query_params.get('and_params', None) if parser_context else None
                 if and_params is not None and 'administrative_level_one' in and_params:
                     # this _should_ be fairly straight forward with the postgresql ArrayAgg function,
                     # (which would offload the hard work to postgresql and make this whole operation faster)
@@ -317,8 +326,10 @@ class EventSummaryFilter(FilterSet):
 
                     # first, count the eventlocations for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
+                    # use the 'only' operator to avoid PostgreSQL GROUP BY errors in annotation aggregation
                     queryset = queryset.annotate(
-                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_one_list))
+                        count_evtlocs=Count('eventlocations')).filter(
+                        count_evtlocs__gte=len(admin_level_one_list)).only('id')
                     admin_level_one_list_ints = [int(i) for i in admin_level_one_list]
                     # next, find only the events that have _all_ the requested values, not just any of them
                     for item in queryset:
@@ -341,12 +352,14 @@ class EventSummaryFilter(FilterSet):
                 queryset = queryset.prefetch_related('eventlocations__administrative_level_two').filter(
                     eventlocations__administrative_level_two__in=admin_level_two_list).distinct()
                 parser_context = getattr(self.request, 'parser_context', None)
-                and_params = parser_context['kwargs'].get('and_params', None) if parser_context else None
+                and_params = parser_context['request'].query_params.get('and_params', None) if parser_context else None
                 if and_params is not None and 'administrative_level_two' in and_params:
                     # first, count the eventlocations for each returned event
                     # and only allow those with the same or greater count as the length of the query_param list
+                    # use the 'only' operator to avoid PostgreSQL GROUP BY errors in annotation aggregation
                     queryset = queryset.annotate(
-                        count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(admin_level_two_list))
+                        count_evtlocs=Count('eventlocations')).filter(
+                        count_evtlocs__gte=len(admin_level_two_list)).only('id')
                     admin_level_two_list_ints = [int(i) for i in admin_level_two_list]
                     # next, find only the events that have _all_ the requested values, not just any of them
                     for item in queryset:
@@ -386,10 +399,10 @@ class EventSummaryFilter(FilterSet):
 
     # label arguments were added to filters to prevent [invalid_name] displaying in filter form
     # https://github.com/carltongibson/django-filter/issues/1009
-    and_params = ChoiceFilter(choices=AND_PARAMS, method='filter_and_params', label='Set the fields that will be combined with an "AND" operator instead of the default "OR"')
+    and_params = CharInFilter(method='filter_and_params', label='Set the fields that will be combined with an "AND" operator instead of the default "OR"')
     complete = BooleanFilter(label='Filter by whether event is complete or not')
     public = BooleanFilter(label='Filter by whether event is public or not')
-    permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method='filter_permission_sources', label='Filter by how the user has permission to view events')
+    permission_source = MultipleChoiceFilter(choices=PERMISSION_SOURCES_ENUM, method='filter_permission_sources', label='Filter by how the user has permission to view events')
     event_type = NumberInFilter(lookup_expr='in', label='Filter by event type ID (or a list of event type IDs)')
     diagnosis = NumberInFilter(method='filter_diagnosis', label='Filter by diagnosis ID (or a list of diagnosis IDs)')
     diagnosis_type = NumberInFilter(method='filter_diagnosis_type', label='Filter by diagnosis type ID (or a list of diagnosis type IDs)')
