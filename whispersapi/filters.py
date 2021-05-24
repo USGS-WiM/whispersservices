@@ -384,26 +384,26 @@ class EventSummaryFilter(FilterSet):
             queryset = queryset.filter(start_date__lte=end_date)
         return queryset
 
-    # TODO: add label arguments to filters to prevent [invalid_name] displaying in filter form
+    # label arguments were added to filters to prevent [invalid_name] displaying in filter form
     # https://github.com/carltongibson/django-filter/issues/1009
-    and_params = ChoiceFilter(choices=AND_PARAMS, method='filter_and_params')
+    and_params = ChoiceFilter(choices=AND_PARAMS, method='filter_and_params', label='Set the fields that will be combined with an "AND" operator instead of the default "OR"')
     complete = BooleanFilter(label='Filter by whether event is complete or not')
     public = BooleanFilter(label='Filter by whether event is public or not')
-    permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method='filter_permission_sources')
-    event_type = NumberInFilter(lookup_expr='in')
-    diagnosis = NumberInFilter(method='filter_diagnosis')
-    diagnosis_type = NumberInFilter(method='filter_diagnosis_type')
-    species = NumberInFilter(method='filter_species')
-    administrative_level_one = NumberInFilter(method='filter_administrative_level_one')
-    administrative_level_two = NumberInFilter(method='filter_administrative_level_two')
-    flyway = NumberInFilter(field_name='eventlocations__flyway', lookup_expr='in')
-    country = NumberInFilter(field_name='eventlocations__country', lookup_expr='in')
-    gnis_id = NumberInFilter(field_name='eventlocations__gnis_id', lookup_expr='in')
-    affected_count__gte = NumberFilter(field_name='affected_count', lookup_expr='gte')
-    affected_count__lte = NumberFilter(field_name='affected_count', lookup_expr='lte')
-    start_date = DateFilter(method='filter_start_end_date')
-    end_date = DateFilter(method='filter_start_end_date')
-    id = NumberInFilter(lookup_expr='in')
+    permission_source = ChoiceFilter(choices=PERMISSION_SOURCES, method='filter_permission_sources', label='Filter by how the user has permission to view events')
+    event_type = NumberInFilter(lookup_expr='in', label='Filter by event type ID (or a list of event type IDs)')
+    diagnosis = NumberInFilter(method='filter_diagnosis', label='Filter by diagnosis ID (or a list of diagnosis IDs)')
+    diagnosis_type = NumberInFilter(method='filter_diagnosis_type', label='Filter by diagnosis type ID (or a list of diagnosis type IDs)')
+    species = NumberInFilter(method='filter_species', label='Filter by species ID (or a list of species IDs)')
+    administrative_level_one = NumberInFilter(method='filter_administrative_level_one', label='Filter by administrative level one (e.g., state) ID (or a list of administrative level one (e.g., state) IDs)')
+    administrative_level_two = NumberInFilter(method='filter_administrative_level_two', label='Filter by administrative level two (e.g., county) ID (or a list of administrative level two (e.g., county) IDs)')
+    flyway = NumberInFilter(field_name='eventlocations__flyway', lookup_expr='in', label='Filter by flyway ID (or a list of flyway IDs)')
+    country = NumberInFilter(field_name='eventlocations__country', lookup_expr='in', label='Filter by country ID (or a list of country IDs)')
+    gnis_id = NumberInFilter(field_name='eventlocations__gnis_id', lookup_expr='in', label='Filter by GNIS ID (or a list of GNIS IDs)')
+    affected_count__gte = NumberFilter(field_name='affected_count', lookup_expr='gte', label='Filter by affected count (greater than or equal to)')
+    affected_count__lte = NumberFilter(field_name='affected_count', lookup_expr='lte', label='Filter by affected count (less than or equal to)')
+    start_date = DateFilter(method='filter_start_end_date', label='Filter by start date', help_text='YYYY-MM-DD format')
+    end_date = DateFilter(method='filter_start_end_date', label='Filter by end date', help_text='YYYY-MM-DD format')
+    id = NumberInFilter(lookup_expr='in', label='Filter by event ID (or a list of event IDs)')
 
     class Meta:
         model = Event
