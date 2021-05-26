@@ -646,7 +646,7 @@ class EventSerializer(serializers.ModelSerializer):
                 country_admin_is_valid = True
                 latlng_is_valid = True
                 latlng_country_found = True
-                latlng_matches_county = True
+                latlng_matches_country = True
                 latlng_matches_admin_l1 = True
                 latlng_matches_admin_21 = True
                 comments_is_valid = []
@@ -719,8 +719,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 latlng_is_valid = False
                         except requests.exceptions.RequestException as e:
                             # email admins
-                            send_third_party_service_exception_email(
-                                'Geonames', GEONAMES_API + geonames_endpoint, e)
+                            send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
                             latlng_is_valid = False
                     if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
                             and 'longitude' in item and item['longitude'] is not None
@@ -745,8 +744,7 @@ class EventSerializer(serializers.ModelSerializer):
                                 address = None
                         except requests.exceptions.RequestException as e:
                             # email admins
-                            send_third_party_service_exception_email(
-                                'Geonames', GEONAMES_API + geonames_endpoint, e)
+                            send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
                             address = None
                         geonames_endpoint = 'countryInfoJSON'
                         if address:
@@ -770,15 +768,40 @@ class EventSerializer(serializers.ModelSerializer):
                             elif len(country_code) == 3:
                                 country = Country.objects.filter(abbreviation=country_code).first()
                             if not country:
-                                latlng_country_found = False
+                                # Instead of causing a validation error, email admins and let the create proceed
+                                # latlng_country_found = False
+                                message = f"Geonames did not find a Country ({country_code})"
+                                message += f" when using the latitude and longitude submitted by the user"
+                                message += f" ({item['longitude']}, {item['latitude']})."
+                                message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                             if int(item['country']) != country.id:
-                                latlng_matches_county = False
-                            elif ('administrative_level_one' in item
-                                  and item['administrative_level_one'] is not None):
-                                admin_l1 = AdministrativeLevelOne.objects.filter(
-                                    name=address['adminName1']).first()
+                                # Instead of causing a validation error, email admins and let the create proceed
+                                # latlng_matches_country = False
+                                user_country = Country.objects.filter(id=item['country']).first()
+                                user_country = user_country.name if user_country else item['country']
+                                message = f"Geonames returned a Country ({country_code})"
+                                message += " different from the one submitted by the user"
+                                message += f" ({user_country}) when using the latitude"
+                                message += " and longitude submitted by the user"
+                                message += f" ({item['longitude']}, {item['latitude']})."
+                                message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
+                            elif 'administrative_level_one' in item and item['administrative_level_one'] is not None:
+                                admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
                                 if not admin_l1 or int(item['administrative_level_one']) != admin_l1.id:
-                                    latlng_matches_admin_l1 = False
+                                    # Instead of causing a validation error, email admins and let the create proceed
+                                    # latlng_matches_admin_l1 = False
+                                    user_al1 = AdministrativeLevelOne.objects.filter(
+                                        id=item['administrative_level_one']).first()
+                                    user_al1 = user_al1.name if user_al1 else item['administrative_level_one']
+                                    message = f"Geonames returned an Administrative Level One ({address['adminName1']})"
+                                    message += " different from the one submitted by the user"
+                                    message += f" ({user_al1}) when using the latitude"
+                                    message += " and longitude submitted by the user"
+                                    message += f" ({item['longitude']}, {item['latitude']})."
+                                    message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                    construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                                 elif ('administrative_level_two' in item
                                       and item['administrative_level_two'] is not None):
                                     admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
@@ -787,9 +810,12 @@ class EventSerializer(serializers.ModelSerializer):
                                     if not admin_l2 or int(item['administrative_level_two']) != admin_l2.id:
                                         # Instead of causing a validation error, email admins and let the create proceed
                                         # latlng_matches_admin_21 = False
-                                        message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
+                                        user_al2 = AdministrativeLevelTwo.objects.filter(
+                                            id=item['administrative_level_two']).first()
+                                        user_al2 = user_al2.name if user_al2 else item['administrative_level_two']
+                                        message = f"Geonames returned an Administrative Level Two ({admin_name2})"
                                         message += " different from the one submitted by the user"
-                                        message += f" ({admin_l2.name}) when using the latitude"
+                                        message += f" ({user_al2}) when using the latitude"
                                         message += " and longitude submitted by the user"
                                         message += f" ({item['longitude']}, {item['latitude']})."
                                         message += f" The request made to Geonames was: {geonames_latlng_url}"
@@ -881,7 +907,7 @@ class EventSerializer(serializers.ModelSerializer):
                 if not latlng_country_found:
                     message = "A country matching the submitted latitude and longitude could not be found."
                     details.append(message)
-                if not latlng_matches_county:
+                if not latlng_matches_country:
                     message = "latitude and longitude are not in the user-specified country."
                     details.append(message)
                 if not latlng_matches_admin_l1:
@@ -2116,15 +2142,37 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         elif len(country_code) == 3:
                             country = Country.objects.filter(abbreviation=country_code).first()
                         if not country:
-                            latlng_country_found = False
+                            # Instead of causing a validation error, email admins and let the create proceed
+                            # latlng_country_found = False
+                            message = f"Geonames did not find a Country ({country_code})"
+                            message += f" when using the latitude and longitude submitted by the user"
+                            message += f" ({data['longitude']}, {data['latitude']})."
+                            message += f" The request made to Geonames was: {geonames_latlng_url}"
+                            construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                         if data['country'].id != country.id:
-                            latlng_matches_country = False
+                            # Instead of causing a validation error, email admins and let the create proceed
+                            # latlng_matches_country = False
+                            message = f"Geonames returned a Country ({country_code})"
+                            message += " different from the one submitted by the user"
+                            message += f" ({data['country'].name}) when using the latitude"
+                            message += " and longitude submitted by the user"
+                            message += f" ({data['longitude']}, {data['latitude']})."
+                            message += f" The request made to Geonames was: {geonames_latlng_url}"
+                            construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                         # TODO: check submitted admin L1 and L2 against lat/lng, not just ids
                         elif ('administrative_level_one' in data
                               and data['administrative_level_one'] is not None):
                             admin_l1 = AdministrativeLevelOne.objects.filter(name=address['adminName1']).first()
                             if not admin_l1 or data['administrative_level_one'].id != admin_l1.id:
-                                latlng_matches_admin_l1 = False
+                                # Instead of causing a validation error, email admins and let the create proceed
+                                # latlng_matches_admin_l1 = False
+                                message = f"Geonames returned an Administrative Level One ({address['adminName1']})"
+                                message += " different from the one submitted by the user"
+                                message += f" ({data['administrative_level_one'].name}) when using the latitude"
+                                message += " and longitude submitted by the user"
+                                message += f" ({data['longitude']}, {data['latitude']})."
+                                message += f" The request made to Geonames was: {geonames_latlng_url}"
+                                construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                             elif ('administrative_level_two' in data
                                   and data['administrative_level_two'] is not None):
                                 admin_name2 = address['adminName2'] if 'adminName2' in address else address['name']
@@ -2133,7 +2181,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 if not admin_l2 or data['administrative_level_two'].id != admin_l2.id:
                                     # Instead of causing a validation error, email admins and let the create proceed
                                     # latlng_matches_admin_21 = False
-                                    message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
+                                    message = f"Geonames returned an Administrative Level Two ({admin_name2})"
                                     message += " different from the one submitted by the user"
                                     message += f" ({admin_l2.name}) when using the latitude"
                                     message += " and longitude submitted by the user"
