@@ -789,9 +789,9 @@ class EventSerializer(serializers.ModelSerializer):
                                         # latlng_matches_admin_21 = False
                                         message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
                                         message += " different from the one submitted by the user"
-                                        message += f" ({data['administrative_level_two'].name}) when using the latitude"
+                                        message += f" ({admin_l2.name}) when using the latitude"
                                         message += " and longitude submitted by the user"
-                                        message += f" ({data['longitude']}, {data['latitude']})."
+                                        message += f" ({item['longitude']}, {item['latitude']})."
                                         message += f" The request made to Geonames was: {geonames_latlng_url}"
                                         construct_email("WHISPERS ADMIN: Third Party Service Validation Warning",
                                                         message)
@@ -2134,7 +2134,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                     # latlng_matches_admin_21 = False
                                     message = f"Geonames returned an Administrative Level Two name ({admin_name2})"
                                     message += " different from the one submitted by the user"
-                                    message += f" ({data['administrative_level_two'].name}) when using the latitude"
+                                    message += f" ({admin_l2.name}) when using the latitude"
                                     message += " and longitude submitted by the user"
                                     message += f" ({data['longitude']}, {data['latitude']}).\r\n"
                                     message += f" The request made to Geonames was: {geonames_latlng_url}"
