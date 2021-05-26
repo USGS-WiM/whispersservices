@@ -1133,23 +1133,24 @@ class EventSerializer(serializers.ModelSerializer):
                                                        created_by=user, modified_by=user)
 
         # create the child event diagnoses for this event
+
+        # remove Pending if in the list because it should never be submitted by the user
+        # and remove Undetermined if in the list and the event already has an Undetermined
         pending = list(Diagnosis.objects.filter(name='Pending').values_list('id', flat=True))[0]
         undetermined = list(Diagnosis.objects.filter(name='Undetermined').values_list('id', flat=True))[0]
         existing_evt_diag_ids = list(EventDiagnosis.objects.filter(event=event.id).values_list('diagnosis', flat=True))
         if len(existing_evt_diag_ids) > 0 and undetermined in existing_evt_diag_ids:
-            remove_diagnoses = [pending, undetermined]
+            rm_dg = [pending, undetermined]
         else:
-            remove_diagnoses = [pending, ]
+            rm_dg = [pending, ]
+        new_evt_dg = new_event_diagnoses
+        [new_evt_dg.remove(x) for x in new_evt_dg if x['diagnosis'] is not None and int(x['diagnosis']) in rm_dg]
 
-        # remove Pending if in the list because it should never be submitted by the user
-        # and remove Undetermined if in the list and the event already has an Undetermined
-        [new_event_diagnoses.remove(x) for x in new_event_diagnoses if int(x['diagnosis']) in remove_diagnoses]
-
-        if new_event_diagnoses:
+        if new_evt_dg:
             is_valid = True
             valid_data = []
             errors = []
-            for event_diagnosis in new_event_diagnoses:
+            for event_diagnosis in new_evt_dg:
                 if event_diagnosis is not None:
                     # use event to populate event field on event_diagnosis
                     event_diagnosis['event'] = event.id
