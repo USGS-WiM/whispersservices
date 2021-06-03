@@ -710,26 +710,8 @@ class EventSerializer(serializers.ModelSerializer):
                     # geonames_endpoint = 'extendedFindNearbyJSON'
                     # GEONAMES_USERNAME = get_geonames_username()
                     # GEONAMES_API = get_geonames_api()
-                    # if ('latitude' in item and item['latitude'] is not None
-                    #         and 'longitude' in item and item['longitude'] is not None):
-                    #     payload = {'lat': item['latitude'], 'lng': item['longitude'],
-                    #                'username': GEONAMES_USERNAME}
-                    #     r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
-                    #     try:
-                    #         content = decode_json(r)
-                    #         if 'address' not in content and 'geonames' not in content:
-                    #             # Instead of causing a validation error, email admins and let the create proceed
-                    #             # latlng_is_valid = False
-                    #             message = f"Geonames returned data in an unexpected format"
-                    #             message += " that could not be validated against data in the WHISPers database"
-                    #             message += f" when using the latitude and longitude submitted by the user"
-                    #             message += f" ({data['longitude']}, {data['latitude']})."
-                    #             message += f" The request made to Geonames was: {r.request.url}"
-                    #             construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
-                    #     except requests.exceptions.RequestException as e:
-                    #         # email admins
-                    #         send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
-                    # if (latlng_is_valid and 'latitude' in item and item['latitude'] is not None
+                    # if (latlng_is_valid
+                    #         and 'latitude' in item and item['latitude'] is not None
                     #         and 'longitude' in item and item['longitude'] is not None
                     #         and 'country' in item and item['country'] is not None):
                     #     payload = {'lat': item['latitude'], 'lng': item['longitude'], 'username': GEONAMES_USERNAME}
@@ -2103,26 +2085,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 geonames_endpoint = 'extendedFindNearbyJSON'
                 GEONAMES_USERNAME = get_geonames_username()
                 GEONAMES_API = get_geonames_api()
-                if ('latitude' in data and data['latitude'] is not None
-                        and 'longitude' in data and data['longitude'] is not None):
-                    payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
-                    r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
-                    try:
-                        content = decode_json(r)
-                        if 'address' not in content and 'geonames' not in content:
-                            # Instead of causing a validation error, email admins and let the create proceed
-                            # latlng_is_valid = False
-                            message = f"Geonames returned data in an unexpected format"
-                            message += " that could not be validated against data in the WHISPers database"
-                            message += f" when using the latitude and longitude submitted by the user"
-                            message += f" ({data['longitude']}, {data['latitude']})."
-                            message += f" The request made to Geonames was: {r.request.url}"
-                            construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
-                    except requests.exceptions.RequestException as e:
-                        # email admins
-                        send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
-                        # latlng_is_valid = False
-                if (latlng_is_valid and 'latitude' in data and data['latitude'] is not None
+                if (latlng_is_valid
+                        and 'latitude' in data and data['latitude'] is not None
                         and 'longitude' in data and data['longitude'] is not None
                         and 'country' in data and data['country'] is not None):
                     payload = {'lat': data['latitude'], 'lng': data['longitude'], 'username': GEONAMES_USERNAME}
