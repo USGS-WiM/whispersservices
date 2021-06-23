@@ -5055,37 +5055,7 @@ class EventSummarySerializer(serializers.ModelSerializer):
     organizations = OrganizationSerializer(many=True)
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
-    species_most_affected = serializers.SerializerMethodField()
 
-    def get_species_most_affected(self, obj, *args, **kwargs):
-        species_most_affected = None
-        unique_species_ids = []
-        unique_species = []
-        species_counts = {}
-        eventlocations = obj.eventlocations.values()
-        if eventlocations is not None:
-            for eventlocation in eventlocations:
-                locationspecies = LocationSpecies.objects.filter(event_location=eventlocation['id'])
-                if locationspecies is not None:
-                    for locspec in locationspecies:
-                        species = Species.objects.filter(id=locspec.species_id).first()
-                        if species is not None:
-                            sick_count = (locspec.sick_count or 0) + (locspec.sick_count_estimated or 0)
-                            dead_count = (locspec.dead_count or 0) + (locspec.dead_count_estimated or 0)
-                            species_count = sick_count + dead_count
-                            if species.id not in unique_species_ids:
-                                # not yet encountered in the loop
-                                unique_species_ids.append(species.id)
-                                unique_species.append(model_to_dict(species))
-                                species_counts[species.id] = species_count
-                            else:
-                                # already encountered in the loop so add the new count to the existing count
-                                current_species_count = species_counts[species.id]
-                                species_counts[species.id] = current_species_count + species_count
-            # find the highest count
-            species_most_affected_id = max(species_counts, key=(lambda key: species_counts[key]))
-            species_most_affected = model_to_dict(Species.objects.filter(id=species_most_affected_id).first())
-        return species_most_affected
 
     def get_eventdiagnoses(self, obj, *args, **kwargs):
         user = None
@@ -5198,19 +5168,19 @@ class EventSummarySerializer(serializers.ModelSerializer):
         fields = ('id', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type', 'event_type_string',
                   'event_status', 'event_status_string', 'eventdiagnoses', 'administrativelevelones',
                   'administrativeleveltwos', 'flyways', 'species', 'organizations', 'permissions',
-                  'permission_source', 'species_most_affected',)
+                  'permission_source',)
         private_fields = ('id', 'event_reference', 'affected_count', 'start_date', 'end_date', 'complete', 'event_type',
                           'event_type_string', 'event_status', 'event_status_string', 'public', 'eventdiagnoses',
                           'administrativelevelones', 'administrativeleveltwos', 'flyways', 'species', 'created_date',
                           'created_by', 'created_by_string', 'modified_date', 'modified_by', 'modified_by_string',
-                          'organizations', 'permissions', 'permission_source', 'species_most_affected',)
+                          'organizations', 'permissions', 'permission_source',)
         admin_fields = ('id', 'event_type', 'event_type_string', 'event_reference', 'complete', 'start_date',
                         'end_date', 'affected_count', 'staff', 'staff_string', 'event_status', 'event_status_string',
                         'legal_status', 'legal_status_string', 'legal_number', 'quality_check', 'public', 'eventgroups',
                         'organizations', 'contacts', 'eventdiagnoses', 'administrativelevelones',
                         'administrativeleveltwos', 'flyways', 'species', 'created_date', 'created_by',
                         'created_by_string', 'modified_date', 'modified_by', 'modified_by_string', 'permissions',
-                        'permission_source', 'species_most_affected',)
+                        'permission_source',)
 
         if user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
