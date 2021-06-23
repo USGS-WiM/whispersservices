@@ -6,17 +6,19 @@ from whispersapi.models import *
 from whispersapi.immediate_tasks import *
 
 
-nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
-if nwhc_org_record:
-    if nwhc_org_record.value.isdecimal():
-        NWHC_ORG_ID = int(nwhc_org_record.value)
+def get_nwhc_org_id():
+    nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
+    if nwhc_org_record:
+        if nwhc_org_record.value.isdecimal():
+            NWHC_ORG_ID = int(nwhc_org_record.value)
+        else:
+            NWHC_ORG_ID = settings.NWHC_ORG_ID
+            encountered_type = type(nwhc_org_record.value).__name__
+            send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
     else:
         NWHC_ORG_ID = settings.NWHC_ORG_ID
-        encountered_type = type(nwhc_org_record.value).__name__
-        send_wrong_type_configuration_value_email('nwhc_organization', encountered_type, 'int')
-else:
-    NWHC_ORG_ID = settings.NWHC_ORG_ID
-    send_missing_configuration_value_email('nwhc_organization')
+        send_missing_configuration_value_email('nwhc_organization')
+    return NWHC_ORG_ID
 
 
 def get_yesterday():
@@ -76,6 +78,7 @@ def get_change_info(history_record, model_name):
 def get_changes(history, source_id, yesterday, model_name, source_type, cue_user):
     yesterday_date = datetime.strptime(yesterday, '%Y-%m-%d').date()
     changes = ""
+    NWHC_OG_ID = get_nwhc_org_id()
 
     if len(history) == 0:
         # no history records for the model, so ignore
@@ -113,7 +116,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                 pass
             elif model_name == 'event_group_comment':
                 if not (cue_user.role.is_superadmin or cue_user.role.is_admin
-                          or cue_user.organization.id == NWHC_ORG_ID):
+                          or cue_user.organization.id == NWHC_OG_ID):
                     # Event Group comments visible only to NWHC staff
                     pass
             else:
@@ -159,7 +162,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                         continue
                     elif model_name == 'event_group_comment':
                         if not (cue_user.role.is_superadmin or cue_user.role.is_admin
-                                  or cue_user.organization.id == NWHC_ORG_ID):
+                                or cue_user.organization.id == NWHC_OG_ID):
                             # Event Group comments visible only to NWHC staff
                             # keep loop going in case changes made by this updater are interspersed among other changes
                             continue
@@ -195,16 +198,14 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         continue
                                 elif fld == 'staff':
                                     # check permissions (visible to NWHC only!)
-                                    if (cue_user.id == h.created_by.id
-                                            or cue_user.organization.id == h.created_by.organization.id):
+                                    if cue_user.organization.id == NWHC_OG_ID:
                                         change.new = Staff.objects.get(id=change.new) if change.new else change.new
                                         change.old = Staff.objects.get(id=change.old) if change.old else change.old
                                     else:
                                         continue
                                 elif fld == 'event_status':
                                     # check permissions (visible to NWHC only!)
-                                    if (cue_user.id == h.created_by.id
-                                            or cue_user.organization.id == h.created_by.organization.id):
+                                    if cue_user.organization.id == NWHC_OG_ID:
                                         chg = change
                                         change.new = EventStatus.objects.get(id=chg.new) if chg.new else chg.new
                                         change.old = EventStatus.objects.get(id=chg.old) if chg.old else chg.old
@@ -212,16 +213,14 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         continue
                                 elif fld == 'quality_check':
                                     # check permissions (visible to NWHC only!)
-                                    if (cue_user.id == h.created_by.id
-                                            or cue_user.organization.id == h.created_by.organization.id):
+                                    if cue_user.organization.id == NWHC_OG_ID:
                                         change.new = "\"\"" if change.new == '' else change.new
                                         change.old = "\"\"" if change.old == '' else change.old
                                     else:
                                         continue
                                 elif fld == 'legal_status':
                                     # check permissions (visible to NWHC only!)
-                                    if (cue_user.id == h.created_by.id
-                                            or cue_user.organization.id == h.created_by.organization.id):
+                                    if cue_user.organization.id == NWHC_OG_ID:
                                         chg = change
                                         change.new = LegalStatus.objects.get(id=chg.new) if chg.new else chg.new
                                         change.old = LegalStatus.objects.get(id=chg.old) if chg.old else chg.old
@@ -229,8 +228,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                                         continue
                                 elif fld == 'legal_number':
                                     # check permissions (visible to NWHC only!)
-                                    if (cue_user.id == h.created_by.id
-                                            or cue_user.organization.id == h.created_by.organization.id):
+                                    if cue_user.organization.id == NWHC_OG_ID:
                                         change.new = "\"\"" if change.new == '' else change.new
                                         change.old = "\"\"" if change.old == '' else change.old
                                     else:
@@ -566,9 +564,6 @@ def get_event_notifications_own_updated(events_updated_yesterday, yesterday, use
 
     elif cue.notification_cue_preference.create_when_modified:
         for event in events_updated_yesterday:
-            if event.id == 170903:
-                print("get_event_notifications_organization_updated for 170902")
-                print(event.id, cue.id, cue.created_by.id)
             # Create one notification per distinct updater (not including the creator)
             # django_simple_history.history_type: + for create, ~ for update, and - for delete
             event_updater_ids = list(set(
@@ -616,9 +611,6 @@ def get_event_notifications_organization_updated(events_updated_yesterday, yeste
 
     elif cue.notification_cue_preference.create_when_modified:
         for event in events_updated_yesterday:
-            if event.id == 170902:
-                print("get_event_notifications_organization_updated for 170902")
-                print(event.id, cue.id, cue.created_by.id)
             # Create one notification per distinct updater (not including the creator)
             # django_simple_history.history_type: + for create, ~ for update, and - for delete
             event_updater_ids = list(set(
@@ -927,7 +919,7 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
                 send_unique_notifications(own_notifs, org_notifs, collab_notifs, all_notifs)
 
     except SoftTimeLimitExceeded:
-        recip = EMAIL_WHISPERS
+        recip = get_whispers_email_address()
         subject = "WHISPERS ADMIN: Timeout Encountered During standard_notifications_by_user_task"
         body = "A timeout was encountered while generating standard notifications for user "
         body += user.first_name + " " + user.last_name + " (username " + user.username + ", ID " + str(user.id) + ")."
@@ -960,7 +952,7 @@ def standard_notifications():
                 standard_notifications_by_user.delay(new_event_count, updated_event_count, yesterday, user_id)
 
     except SoftTimeLimitExceeded:
-        recip = EMAIL_WHISPERS
+        recip = get_whispers_email_address()
         subject = "WHISPERS ADMIN: Timeout Encountered During standard_notifications_task"
         body = "A timeout was encountered while generating standard notifications."
         body += " Some notifications may have been created before the task timed out."
@@ -1389,7 +1381,7 @@ def custom_notifications_by_user(yesterday, user_id):
                                                                     body, send_email, email_to)
 
     except SoftTimeLimitExceeded:
-        recip = EMAIL_WHISPERS
+        recip = get_whispers_email_address()
         subject = "WHISPERS ADMIN: Timeout Encountered During custom_notifications_by_user_task"
         body = "A timeout was encountered while generating custom notifications for user "
         body += user.first_name + " " + user.last_name + " (username " + user.username + ", ID " + str(user.id) + ")."
@@ -1414,7 +1406,7 @@ def custom_notifications():
         for user_id in active_user_ids:
             custom_notifications_by_user.delay(yesterday, user_id)
     except SoftTimeLimitExceeded:
-        recip = EMAIL_WHISPERS
+        recip = get_whispers_email_address()
         subject = "WHISPERS ADMIN: Timeout Encountered During custom_notifications_task"
         body = "A timeout was encountered while generating custom notifications."
         body += " Some notifications may have been created before the task timed out."

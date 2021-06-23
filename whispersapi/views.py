@@ -2856,7 +2856,10 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
                 | Q(created_by__organization__in=user.organization.child_organizations)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-            queryset = public_queryset | personal_queryset
+            # the pipe operator is supposed to do a union,
+            # but apparently when one queryset is empty the resulting union is also empty, which is not what we want
+            # queryset = public_queryset | personal_queryset
+            queryset = public_queryset.union(personal_queryset)
 
         return queryset
 
@@ -2973,5 +2976,8 @@ class EventDetailViewSet(ReadOnlyHistoryViewSet):
             personal_queryset = queryset.filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization.id)
                 | Q(read_collaborators__in=[user.id]) | Q(write_collaborators__in=[user.id])).distinct()
-            queryset = public_queryset | personal_queryset
+            # the pipe operator is supposed to do a union,
+            # but apparently when one queryset is empty the resulting union is also empty, which is not what we want
+            # queryset = public_queryset | personal_queryset
+            queryset = public_queryset.union(personal_queryset)
             return queryset
