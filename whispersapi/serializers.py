@@ -25,6 +25,7 @@ from dry_rest_permissions.generics import DRYPermissionsField
 PK_REQUESTS = ['retrieve', 'update', 'partial_update', 'destroy']
 COMMENT_CONTENT_TYPES = ['event', 'eventgroup', 'eventlocation', 'servicerequest']
 
+
 def get_geonames_username():
     geonames_username_record = Configuration.objects.filter(name='geonames_username').first()
     if geonames_username_record:
@@ -33,6 +34,7 @@ def get_geonames_username():
         GEONAMES_USERNAME = settings.GEONAMES_USERNAME
         send_missing_configuration_value_email('geonames_username')
     return GEONAMES_USERNAME
+
 
 def get_geonames_api():
     geonames_api_url_record = Configuration.objects.filter(name='geonames_api_url').first()
@@ -43,6 +45,7 @@ def get_geonames_api():
         send_missing_configuration_value_email('geonames_api_url')
     return GEONAMES_API
 
+
 def get_flyways_api():
     flyways_api_url_record = Configuration.objects.filter(name='flyways_api_url').first()
     if flyways_api_url_record:
@@ -51,6 +54,7 @@ def get_flyways_api():
         FLYWAYS_API = settings.FLYWAYS_API
         send_missing_configuration_value_email('flyways_api_url')
     return FLYWAYS_API
+
 
 def get_whispers_admin_user_id():
     whispers_admin_user_record = Configuration.objects.filter(name='whispers_admin_user').first()
@@ -66,6 +70,7 @@ def get_whispers_admin_user_id():
         send_missing_configuration_value_email('whispers_admin_user')
     return WHISPERS_ADMIN_USER_ID
 
+
 def get_whispers_email_address():
     whispers_email_address = Configuration.objects.filter(name='whispers_email_address').first()
     if whispers_email_address:
@@ -79,6 +84,7 @@ def get_whispers_email_address():
         EMAIL_WHISPERS = settings.EMAIL_WHISPERS
         send_missing_configuration_value_email('whispers_email_address')
     return EMAIL_WHISPERS
+
 
 def get_hfs_locations():
     hfs_locations_record = Configuration.objects.filter(name='hfs_locations').first()
@@ -94,6 +100,7 @@ def get_hfs_locations():
         send_missing_configuration_value_email('hfs_locations')
     return HFS_LOCATIONS
 
+
 def get_hfs_epi_user_id():
     hfs_epi_user_id_record = Configuration.objects.filter(name='hfs_epi_user').first()
     if hfs_epi_user_id_record:
@@ -107,6 +114,7 @@ def get_hfs_epi_user_id():
         HFS_EPI_USER_ID = settings.WHISPERS_ADMIN_USER_ID
         send_missing_configuration_value_email('hfs_epi_user')
     return HFS_EPI_USER_ID
+
 
 def get_madison_epi_user_id():
     madison_epi_user_id_record = Configuration.objects.filter(name='madison_epi_user').first()
@@ -4063,7 +4071,8 @@ class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, allow_blank=True, required=False)
     organization_string = serializers.StringRelatedField(source='organization')
-    notification_cue_standards = NotificationCueStandardSerializer(read_only=True, many=True, source='notificationcuestandard_creator')
+    notification_cue_standards = NotificationCueStandardSerializer(
+        read_only=True, many=True, source='notificationcuestandard_creator')
     new_user_change_request = serializers.JSONField(write_only=True, required=False)
     new_notification_cue_standard_preferences = serializers.JSONField(write_only=True, required=False)
     recaptcha = ReCaptchaV2Field()
@@ -4474,9 +4483,10 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             if (ucr.organization_requested.parent_organization
                     and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
                 org_list = [ucr.organization_requested.id, ]
-                message = "Organization " + ucr.organization_requested.name + " (ID: " + ucr.organization_requested.id + ")"
-                message += " has itself as its parent organization, which can cause infinite recursion when"
-                message += " the parent_organizations or child_organizations properties of this organization are accessed."
+                message = "Organization " + ucr.organization_requested.name
+                message += " (ID: " + ucr.organization_requested.id + ")"
+                message += " has itself as its parent organization, which can cause infinite recursion when the"
+                message += " parent_organizations or child_organizations properties of this organization are accessed."
                 message += " Please correct this situation before a RecursionError occurs. If this organization has no"
                 message += " parent organization, set the parent organization value to null."
                 construct_email("Infinite Recursive Organization Found", message)
@@ -5056,7 +5066,6 @@ class EventSummarySerializer(serializers.ModelSerializer):
     permissions = DRYPermissionsField()
     permission_source = serializers.SerializerMethodField()
 
-
     def get_eventdiagnoses(self, obj, *args, **kwargs):
         user = None
         if 'context' in kwargs and 'request' in kwargs['context'] and hasattr(kwargs['context']['request'], 'user'):
@@ -5543,11 +5552,14 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 event=obj.id, organization__do_not_publish=False).order_by('priority')
             for evtorg in evtorgs:
                 org = [org for org in orgs if org.id == evtorg.organization.id][0]
+                al1_id = org.administrative_level_one.id if org.administrative_level_one else None
+                al1_name = org.administrative_level_one.name if org.administrative_level_one else ''
+                country_id = org.country.id if org.country else None
+                country_name = org.country.name if org.country else ''
                 new_org = {'id': org.id, 'name': org.name, 'address_one': org.address_one,
                            'address_two': org.address_two, 'city': org.city, 'postal_code': org.postal_code,
-                           'administrative_level_one': org.administrative_level_one.id,
-                           'administrative_level_one_string': org.administrative_level_one.name,
-                           'country': org.country.id, 'country_string': org.country.name, 'phone': org.phone}
+                           'administrative_level_one': al1_id, 'administrative_level_one_string': al1_name,
+                           'country': country_id, 'country_string': country_name, 'phone': org.phone}
                 pub_orgs.append({"id": evtorg.id, "priority": evtorg.priority, "organization": new_org})
         return pub_orgs
 
