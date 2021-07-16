@@ -2847,6 +2847,30 @@ class EventSummaryViewSet(ReadOnlyHistoryViewSet):
         # admins, superadmins, and superusers can see everything
         elif user.role.is_superadmin or user.role.is_admin:
             queryset = queryset
+        # for all non-admins, pk requests can only return non-public data to the owner or their org or collaborators
+        elif self.action in PK_REQUESTS:
+            pk = self.request.parser_context['kwargs'].get('pk', None)
+            if pk is not None and pk.isdecimal():
+                queryset = Event.objects.filter(id=pk)
+                if queryset:
+                    obj = queryset[0]
+                    if obj:
+                        read_collaborators = []
+                        write_collaborators = []
+                        if obj.read_collaborators:
+                            read_collaborators = list(
+                                User.objects.filter(readevents=obj.id).values_list('id', flat=True))
+                        if obj.write_collaborators:
+                            write_collaborators = list(
+                                User.objects.filter(writeevents=obj.id).values_list('id', flat=True))
+                        if (user.id == obj.created_by.id
+                                or user.organization.id == obj.created_by.organization.id
+                                or user.organization.id in obj.created_by.parent_organizations
+                                or user.id in read_collaborators or user.id in write_collaborators):
+                            return queryset
+                        else:
+                            return queryset.filter(public=True)
+            raise NotFound
         # for non-user-specific event requests, try to return the (old default) public data
         #  AND any private data the user should be able to see
         else:
