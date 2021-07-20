@@ -3,7 +3,7 @@
     "name": "whispersservices",
     "organization": "U.S. Geological Survey",
     "description": "Web services for WHISPers (Wildlife Health Information Sharing Partnership event reporting system)",
-    "version": "v2.1.5",
+    "version": "v2.1.6",
     "status": "Production",
 
     "permissions": {
@@ -45,7 +45,7 @@
     },
 
     "date": {
-      "metadataLastUpdated": "2021-07-02"
+      "metadataLastUpdated": "2021-07-20"
     }
   }
 ]
