@@ -4480,9 +4480,10 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             # recipients: WHISPers admin team, Admins of organization requested
             # check if the requested org has itself as its parent org,
             #  and if so alert the admins (this situation should not be allowed)
+            org_requested_id = ucr.organization_requested.id
             if (ucr.organization_requested.parent_organization
-                    and ucr.organization_requested.parent_organization.id == ucr.organization_requested.id):
-                org_list = [ucr.organization_requested.id, ]
+                    and ucr.organization_requested.parent_organization.id == org_requested_id):
+                org_list = [org_requested_id, ]
                 message = "Organization " + ucr.organization_requested.name
                 message += " (ID: " + ucr.organization_requested.id + ")"
                 message += " has itself as its parent organization, which can cause infinite recursion when the"
@@ -4492,13 +4493,13 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 construct_email("Infinite Recursive Organization Found", message)
             else:
                 org_list = ucr.organization_requested.parent_organizations
-            recipients = list(User.objects.filter(
-                Q(role__in=[1, 2]) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-                    role=3, organization__in=org_list)
+            recipients = list(User.objects.exclude(is_active=False).filter(
+                Q(role__in=[1, 2]) | Q(role=3, organization=org_requested_id) | Q(role=3, organization__in=org_list)
             ).values_list('id', flat=True))
             # email forwarding: Automatic, to whispers@usgs.gov, org admin, parent org admin
-            email_to = list(User.objects.filter(Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(
-                role=3, organization__in=org_list)).values_list('email', flat=True))
+            email_to = list(User.objects.exclude(is_active=False).filter(
+                Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(role=3, organization__in=org_list)
+            ).values_list('email', flat=True))
             generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
 
         # also create a 'User Change Request Response Pending' notification
@@ -4581,8 +4582,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                     # source: WHISPers Admin or Org Admin who assigns a WHISPers role.
                     source = instance.modified_by.username
                     # recipients: user, WHISPers admin team
-                    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                        instance.requester.id, ]
+                    recipients = list(User.objects.exclude(is_active=False).filter(
+                        role__in=[1, 2]).values_list('id', flat=True)) + [instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
                     generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
@@ -4598,8 +4599,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                     # source: WHISPer Admin or Org Admin who assigns a WHISPers role.
                     source = instance.modified_by.username
                     # recipients: user, WHISPers admin team
-                    recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [
-                        instance.requester.id, ]
+                    recipients = list(User.objects.exclude(is_active=False).filter(
+                        role__in=[1, 2]).values_list('id', flat=True)) + [instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
                     generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
