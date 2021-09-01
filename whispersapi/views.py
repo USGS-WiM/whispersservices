@@ -152,7 +152,7 @@ def generate_notification_request_new(lookup_table, request):
         # source: User requesting a new option.
         source = user.username
         # recipients: WHISPers admin team
-        recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True))
+        recipients = list(User.objects.filter(role__in=[1, 2]).exclude(is_active=False).values_list('id', flat=True))
         # email forwarding: Automatic, to whispers@usgs.gov
         email_to = [User.objects.filter(id=1).values('email').first()['email'], ]
         generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
@@ -321,7 +321,7 @@ class EventViewSet(HistoryViewSet):
         # source: A qualified user (someone with edit permissions on event) who creates a collaborator alert.
         source = user.username
         # recipients: user(s) chosen from among the collaborator list
-        recipients = User.objects.filter(id__in=recipient_ids)
+        recipients = User.objects.filter(id__in=recipient_ids).exclude(is_active=False)
         recipient_ids = []
         recipient_names = ''
         for recipient in recipients:
@@ -329,7 +329,8 @@ class EventViewSet(HistoryViewSet):
             recipient_names += ", " + recipient.first_name + " " + recipient.last_name
         recipient_names = recipient_names.replace(", ", "", 1)
         # email forwarding: Automatic, to all users included in the notification request.
-        email_to = list(User.objects.filter(id__in=recipient_ids).values_list('email', flat=True))
+        email_to = list(
+            User.objects.filter(id__in=recipient_ids).exclude(is_active=False).values_list('email', flat=True))
         msg_tmp = NotificationMessageTemplate.objects.filter(name='Alert Collaborator').first()
         if not msg_tmp:
             send_missing_notification_template_message_email('eventviewset_alert_collaborator', 'Alert Collaborator')
@@ -389,12 +390,12 @@ class EventViewSet(HistoryViewSet):
                 body = ""
             event_owner = event.created_by
             # recipients: event owner, org manager, org admin
-            recipients = list(User.objects.filter(
+            recipients = list(User.objects.exclude(is_active=False).filter(
                 Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
                     role__in=[3, 4], organization__in=event_owner.parent_organizations)
             ).values_list('id', flat=True))
             # email forwarding: Automatic, to event owner, organization manager, and organization admin
-            email_to = list(User.objects.filter(
+            email_to = list(User.objects.exclude(is_active=False).filter(
                 Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
                     role__in=[3, 4], organization__in=event_owner.parent_organizations)
             ).values_list('email', flat=True))
@@ -2084,9 +2085,9 @@ class UserViewSet(HistoryViewSet):
                 if isinstance(item, str):
                     # check if this item is a well-formed email address
                     if '@' in item and re.match(r"[^@]+@[^@]+\.[^@]+", item):
-                        # check if there is a matching user (email addresses are unique across all users)
+                        # check if there is an ACTIVE matching user (email addresses are unique across all users)
                         # and that user is affiliate or above (no public users can be collaborators)
-                        user = User.objects.filter(email__iexact=item).first()
+                        user = User.objects.exclude(is_active=False).filter(email__iexact=item).first()
                         if user and (user.role.is_superadmin or user.role.is_admin or user.role.is_partneradmin
                                      or user.role.is_partnermanager or user.role.is_partner or user.role.is_affiliate):
                             found.append(user)
@@ -2220,7 +2221,9 @@ class UserViewSet(HistoryViewSet):
             # source: User that requests a public account
             source = user.username
             # recipients: user, WHISPers admin team
-            recipients = list(User.objects.filter(role__in=[1, 2]).values_list('id', flat=True)) + [user.id, ]
+            recipients = list(
+                User.objects.filter(role__in=[1, 2]).exclude(is_active=False).values_list('id', flat=True)
+            ) + [user.id, ]
             # email forwarding: Automatic, to user's email and to whispers@usgs.gov
             email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
             generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)

@@ -1580,12 +1580,12 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     from whispersapi.immediate_tasks import send_missing_configuration_value_email
                     send_missing_configuration_value_email('madison_epi_user')
                 # recipients: WHISPers admin team, WHISPers Epi staff, event owner
-                recipients = list(User.objects.filter(
-                    Q(role__in=[1, 2]) | Q(id=MADISON_EPI_USER_ID)).values_list('id', flat=True))
+                recipients = list(User.objects.filter(Q(role__in=[1, 2]) | Q(id=MADISON_EPI_USER_ID)
+                                                      ).exclude(is_active=False).values_list('id', flat=True))
                 recipients += [event.created_by.id, ]
                 # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
-                email_to = list(
-                    User.objects.filter(Q(id=1) | Q(id=MADISON_EPI_USER_ID)).values_list('email', flat=True))
+                email_to = list(User.objects.filter(Q(id=1) | Q(id=MADISON_EPI_USER_ID)
+                                                    ).exclude(is_active=False).values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
                 from whispersapi.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
