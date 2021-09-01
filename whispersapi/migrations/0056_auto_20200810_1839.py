@@ -37,8 +37,6 @@ If you did not request a password reset, please disregard this email.
 </p>
         """,
         message_variables=["first_name", "last_name", "password_reset_link"],
-        created_by_id=1,
-        modified_by_id=1
     )
 
 

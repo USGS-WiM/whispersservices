@@ -55,8 +55,6 @@ If you did not request a WHISPers account, please disregard this email.
 <p>Thanks again!</p>
         """,
         message_variables=["first_name", "last_name", "verification_link"],
-        created_by_id=1,
-        modified_by_id=1
     )
 
 
