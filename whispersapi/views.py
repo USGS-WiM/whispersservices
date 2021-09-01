@@ -2367,10 +2367,8 @@ class CircleViewSet(HistoryViewSet):
         # anonymous users cannot see anything
         if not user or not user.is_authenticated:
             return Circle.objects.none()
-        # admins and superadmins can see everything
-        elif user.role.is_superadmin or user.role.is_admin:
-            queryset = Circle.objects.all()
         # otherwise return data owned by the user or user's org
+        # including for admins and superadmins, per NWHC request 2021-09-01
         else:
             queryset = Circle.objects.all().filter(
                 Q(created_by__exact=user.id) | Q(created_by__organization__exact=user.organization) | Q(
