@@ -673,6 +673,7 @@ class EventOrganization(PermissionsHistoryModel):
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
                 and (not self.event.modified_by or not self.event.modified_date
+                     or not self.modified_by or not self.modified_date
                      or (self.event.modified_by.id != self.modified_by.id
                          or self.event.modified_date != self.modified_date))):
             event = Event.objects.filter(id=self.event.id).first()
@@ -867,7 +868,7 @@ class EventLocation(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by
@@ -1200,7 +1201,7 @@ class LocationSpecies(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by
@@ -1607,7 +1608,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by

@@ -93,6 +93,7 @@ def get_hfs_locations():
         if all(x.strip().isdecimal() for x in hfs_locations_str):
             HFS_LOCATIONS = [int(hfs_loc) for hfs_loc in hfs_locations_str]
         else:
+            HFS_LOCATIONS = settings.HFS_LOCATIONS
             encountered_types = ''.join(list(set([type(x).__name__ for x in hfs_locations_str])))
             send_wrong_type_configuration_value_email('hfs_locations', encountered_types, 'int')
     else:
@@ -2325,6 +2326,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        user = get_user(self.context, self.initial_data)
         flyway = None
 
         comment_types = {'site_description': 'Site description', 'history': 'History',
@@ -2420,66 +2422,80 @@ class EventLocationSerializer(serializers.ModelSerializer):
                 message = "A country matching the submitted latitude and longitude could not be found."
                 raise serializers.ValidationError(message)
 
-        # auto-assign flyway for locations in the USA (exclude territories and minor outlying islands)
-        # but first test the FWS flyway web service to confirm it is working
-        test_params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false'}
-        test_params.update({'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'})
-        test_params.update({'geometry': '-90.0,45.0'})
-        r = requests.get(get_flyways_api(), params=test_params, verify=settings.SSL_CERT)
-        try:
-            if 'features' in r.json():
-                territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
-                country = validated_data['country']
-                admin_l1 = validated_data['administrative_level_one']
-                admin_l2 = validated_data['administrative_level_two']
-                if (country.id == Country.objects.filter(abbreviation='USA').first().id
-                        and admin_l1.abbreviation not in territories):
-                    geonames_endpoint = 'searchJSON'
-                    params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false',
-                              'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'}
-                    # if lat/lng is present, use it to get the intersecting flyway
-                    if ('latitude' in validated_data and validated_data['latitude'] is not None
-                            and 'longitude' in validated_data and validated_data['longitude'] is not None):
-                        geom = str(validated_data['longitude']) + ',' + str(validated_data['latitude'])
-                        params.update({'geometry': geom})
-                    # otherwise if county is present,
-                    # look up the county centroid and use it to get the intersecting flyway
-                    elif admin_l2 is not None:
-                        coords = self.search_geonames_adm2(
-                            admin_l2.name, admin_l1.name, admin_l1.abbreviation, country.abbreviation)
-                        if coords:
-                            params.update({'geometry': coords['lng'] + ',' + coords['lat']})
-                    # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info,
-                    # flyway cannot be determined, otherwise look up the state centroid,
-                    # then use it to get the intersecting flyway
-                    elif admin_l1.abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']:
-                        coords = self.search_geonames_adm1(admin_l1.name, country.abbreviation)
-                        if coords:
-                            params.update({'geometry': coords['lng'] + ',' + coords['lat']})
-                    # HI is not in a flyway, so assign it to Pacific ("Include all of Hawaii in with Pacific Americas")
-                    elif admin_l1.abbreviation == 'HI':
-                        flyway = Flyway.objects.filter(name__contains='Pacific').first()
-
-                    if flyway is None and 'geometry' in params:
-                        r = requests.get(get_flyways_api(), params=params, verify=settings.SSL_CERT)
-                        try:
-                            rj = r.json()
-                            if 'features' in rj and len(rj['features']) > 0:
-                                flyway_name = rj['features'][0]['attributes']['NAME'].replace(' Flyway', '')
-                                flyway = Flyway.objects.filter(name__contains=flyway_name).first()
-                        except requests.exceptions.RequestException as e:
-                            # email admins
-                            send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
-                            # flyways is not a required field, the admins can populate it after investigating
-                            pass
-        except requests.exceptions.RequestException as e:
-            # email admins
-            send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
-            # flyways is not a required field, the admins can populate it after investigating
-            pass
-
-        # create the event_location and return object for use in event_location_contacts object
+        # create the event_location and return object for use in child objects
         evt_location = EventLocation.objects.create(**validated_data)
+
+        # auto-assign flyway for locations in the USA (exclude territories and minor outlying islands)
+
+        # HI is not in a flyway, so assign to Pacific ("Include all of Hawaii in with Pacific Americas")
+        if validated_data['administrative_level_one'].abbreviation == 'HI':
+            flyway = Flyway.objects.filter(name__contains='Pacific').first()
+
+        # All others must be determined by spatial overlay
+        else:
+            # first test the FWS flyway web service to confirm it is working
+            test_params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false'}
+            test_params.update({'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'})
+            test_params.update({'geometry': '-90.0,45.0'})
+            r = requests.get(get_flyways_api(), params=test_params, verify=settings.SSL_CERT)
+            try:
+                if 'features' in r.json():
+                    territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
+                    country = validated_data['country']
+                    admin_l1 = validated_data['administrative_level_one']
+                    admin_l2 = validated_data['administrative_level_two']
+                    if (country.id == Country.objects.filter(abbreviation='USA').first().id
+                            and admin_l1.abbreviation not in territories):
+                        params = {'geometryType': 'esriGeometryPoint', 'returnGeometry': 'false',
+                                  'outFields': 'NAME', 'f': 'json', 'spatialRel': 'esriSpatialRelIntersects'}
+                        # if lat/lng is present, use it to get the intersecting flyway
+                        if ('latitude' in validated_data and validated_data['latitude'] is not None
+                                and 'longitude' in validated_data and validated_data['longitude'] is not None):
+                            geom = str(validated_data['longitude']) + ',' + str(validated_data['latitude'])
+                            params.update({'geometry': geom})
+                        # otherwise if county is present,
+                        # look up the county centroid and use it to get the intersecting flyway
+                        elif admin_l2 is not None:
+                            coords = self.search_geonames_adm2(
+                                admin_l2.name, admin_l1.name, admin_l1.abbreviation, country.abbreviation)
+                            if coords:
+                                params.update({'geometry': coords['lng'] + ',' + coords['lat']})
+                        # MT, WY, CO, and NM straddle two flyways, and without lat/lng or county info,
+                        # flyway cannot be determined, otherwise look up the state centroid,
+                        # then use it to get the intersecting flyway
+                        elif admin_l1.abbreviation not in ['MT', 'WY', 'CO', 'NM', 'HI']:
+                            coords = self.search_geonames_adm1(admin_l1.name, country.abbreviation)
+                            if coords:
+                                params.update({'geometry': coords['lng'] + ',' + coords['lat']})
+                        # Look up the flyway from the FWS flyway web service
+                        if 'geometry' in params:
+                            r = requests.get(get_flyways_api(), params=params, verify=settings.SSL_CERT)
+                            try:
+                                rj = r.json()
+                                if 'features' in rj and len(rj['features']) > 0:
+                                    flyway_name = rj['features'][0]['attributes']['NAME'].replace(' Flyway', '')
+                                    flyway = Flyway.objects.filter(name__contains=flyway_name).first()
+                            except requests.exceptions.RequestException as e:
+                                # email admins
+                                send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
+                                # flyways is not a required field, the admins can populate it after investigating
+                                pass
+            except requests.exceptions.RequestException as e:
+                # email admins
+                send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
+                # flyways is not a required field, the admins can populate it after investigating
+                pass
+
+        if flyway is not None:
+            EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
+                                               created_by=user, modified_by=user)
+        else:
+            # No flyway can be determined
+            # Instead of causing a validation error, email admins and let the create proceed
+            message = f"No flyway could be determined from the data submitted by the user"
+            message += f" for Event Location {evt_location.name} (ID {evt_location.id})"
+            message += f" in Event {event.event_reference} (ID {event.id})."
+            construct_email("WHISPERS ADMIN: No Flyway Validation Warning", message)
 
         # Create EventLocationSpecies
         if new_location_species is not None:
@@ -2512,12 +2528,6 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     # (related contacts and comments will be cascade deleted automatically if any exist)
                     evt_location.delete()
                 raise serializers.ValidationError(jsonify_errors(errors))
-
-        user = get_user(self.context, self.initial_data)
-
-        if flyway is not None:
-            EventLocationFlyway.objects.create(event_location=evt_location, flyway=flyway,
-                                               created_by=user, modified_by=user)
 
         for key, value in comment_types.items():
 
