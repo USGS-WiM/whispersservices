@@ -298,6 +298,8 @@ class Event(PermissionsHistoryModel):
     # and update event diagnoses as necessary so there is always at least one
     # and send notifications if the event requires quality check
     def save(self, *args, **kwargs):
+        is_new = True if self._state.adding else False
+
         # Disable Quality check field until field "complete" =1.
         # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
         if not self.complete:
@@ -350,7 +352,13 @@ class Event(PermissionsHistoryModel):
 
         # create real time notifications for quality check
         # trigger: Event status (event_status) is set to "Quality Check Needed"
-        if self.event_status.name == 'Quality Check Needed' and self.event_status.id != self.__original_event_status.id:
+        # NOTE: after the event status is set to "Quality Check Needed", we don't want to send out
+        # multiple notifications for every subsequent save where the status is still "Quality Check Needed",
+        # so compare the current event status to __original_event_status (the status before the current save process)
+        # ALSO NOTE: it is possible for the status to be set to "Quality Check Needed" during an event create,
+        # so we can't rely on the value of __original_event_status
+        if (self.event_status.name == 'Quality Check Needed'
+                and (is_new or self.event_status.id != self.__original_event_status.id)):
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
             if not msg_tmp:
                 from whispersapi.immediate_tasks import send_missing_notification_template_message_email
