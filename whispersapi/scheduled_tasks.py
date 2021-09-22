@@ -1148,15 +1148,21 @@ def build_custom_notifications_query(cue, base_queryset):
 
                 # first, count the eventlocations for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
-                queryset = queryset.annotate(
-                    count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(values))
+                # NOTE: to avoid PostgreSQL Grouping Error in the queryset annotation,
+                # create a separate queryset that _ONLY_ selects 'id' column,
+                # then use those resulting IDs to filter the main queryset that selects all columns
+                queryset_and = queryset.annotate(
+                    count_evtlocs=Count('eventlocations')).filter(count_evtlocs__gte=len(values)).only('id')
                 admin_level_one_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
-                for item in queryset:
+                for item in queryset_and:
                     evtlocs = EventLocation.objects.filter(event_id=item.id)
                     all_a1s = [evtloc.administrative_level_one.id for evtloc in evtlocs]
                     if not set(admin_level_one_list_ints).issubset(set(all_a1s)):
-                        queryset = queryset.exclude(pk=item.id)
+                        queryset_and = queryset_and.exclude(pk=item.id)
+                # use the resulting IDs to filter the main queryset
+                ids = list(queryset_and.values_list('id', flat=True))
+                queryset = queryset.filter(id__in=ids)
 
     # species
     if cue.species:
@@ -1180,16 +1186,22 @@ def build_custom_notifications_query(cue, base_queryset):
             if operator == "AND":
                 # first, count the species for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
-                queryset = queryset.annotate(count_species=Count(
-                    'eventlocations__locationspecies__species')).filter(count_species__gte=len(values))
+                # NOTE: to avoid PostgreSQL Grouping Error in the queryset annotation,
+                # create a separate queryset that _ONLY_ selects 'id' column,
+                # then use those resulting IDs to filter the main queryset that selects all columns
+                queryset_and = queryset.annotate(count_species=Count(
+                    'eventlocations__locationspecies__species')).filter(count_species__gte=len(values)).only('id')
                 species_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
-                for item in queryset:
+                for item in queryset_and:
                     evtlocs = EventLocation.objects.filter(event_id=item.id)
                     locspecs = LocationSpecies.objects.filter(event_location__in=evtlocs)
                     all_species = [locspec.species.id for locspec in locspecs]
                     if not set(species_list_ints).issubset(set(all_species)):
-                        queryset = queryset.exclude(pk=item.id)
+                        queryset_and = queryset_and.exclude(pk=item.id)
+                # use the resulting IDs to filter then main queryset
+                ids = list(queryset_and.values_list('id', flat=True))
+                queryset = queryset.filter(id__in=ids)
 
     # species_diagnosis_diagnosis
     if cue.species_diagnosis_diagnosis:
@@ -1213,16 +1225,22 @@ def build_custom_notifications_query(cue, base_queryset):
             if operator == "AND":
                 # first, count the species for each returned event
                 # and only allow those with the same or greater count as the length of the query_param list
-                queryset = queryset.annotate(count_diagnoses=Count(
+                # NOTE: to avoid PostgreSQL Grouping Error in the queryset annotation,
+                # create a separate queryset that _ONLY_ selects 'id' column,
+                # then use those resulting IDs to filter the main queryset that selects all columns
+                queryset_and = queryset.annotate(count_diagnoses=Count(
                     'eventlocations__locationspecies__speciesdiagnoses__diagnosis', distinct=True)).filter(
-                    count_diagnoses__gte=len(values))
+                    count_diagnoses__gte=len(values)).only('id')
                 diagnosis_list_ints = [int(i) for i in values]
                 # next, find only the events that have _all_ the requested values, not just any of them
-                for item in queryset:
+                for item in queryset_and:
                     evtdiags = EventDiagnosis.objects.filter(event_id=item.id)
                     all_diagnoses = [evtdiag.diagnosis.id for evtdiag in evtdiags]
                     if not set(diagnosis_list_ints).issubset(set(all_diagnoses)):
-                        queryset = queryset.exclude(pk=item.id)
+                        queryset_and = queryset_and.exclude(pk=item.id)
+                # use the resulting IDs to filter the main queryset
+                ids = list(queryset_and.values_list('id', flat=True))
+                queryset = queryset.filter(id__in=ids)
 
     criteria_string = ''
     for criterion in criteria:
