@@ -298,6 +298,8 @@ class Event(PermissionsHistoryModel):
     # and update event diagnoses as necessary so there is always at least one
     # and send notifications if the event requires quality check
     def save(self, *args, **kwargs):
+        is_new = True if self._state.adding else False
+
         # Disable Quality check field until field "complete" =1.
         # If event reopened ("complete" = 0) then "quality_check" = null AND quality check field is disabled
         if not self.complete:
@@ -350,7 +352,13 @@ class Event(PermissionsHistoryModel):
 
         # create real time notifications for quality check
         # trigger: Event status (event_status) is set to "Quality Check Needed"
-        if self.event_status.name == 'Quality Check Needed' and self.event_status.id != self.__original_event_status.id:
+        # NOTE: after the event status is set to "Quality Check Needed", we don't want to send out
+        # multiple notifications for every subsequent save where the status is still "Quality Check Needed",
+        # so compare the current event status to __original_event_status (the status before the current save process)
+        # ALSO NOTE: it is possible for the status to be set to "Quality Check Needed" during an event create,
+        # so we can't rely on the value of __original_event_status
+        if (self.event_status.name == 'Quality Check Needed'
+                and (is_new or self.event_status.id != self.__original_event_status.id)):
             msg_tmp = NotificationMessageTemplate.objects.filter(name='Quality Check').first()
             if not msg_tmp:
                 from whispersapi.immediate_tasks import send_missing_notification_template_message_email
@@ -673,6 +681,7 @@ class EventOrganization(PermissionsHistoryModel):
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
                 and (not self.event.modified_by or not self.event.modified_date
+                     or not self.modified_by or not self.modified_date
                      or (self.event.modified_by.id != self.modified_by.id
                          or self.event.modified_date != self.modified_date))):
             event = Event.objects.filter(id=self.event.id).first()
@@ -867,7 +876,7 @@ class EventLocation(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by
@@ -1200,7 +1209,7 @@ class LocationSpecies(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by
@@ -1580,12 +1589,12 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     from whispersapi.immediate_tasks import send_missing_configuration_value_email
                     send_missing_configuration_value_email('madison_epi_user')
                 # recipients: WHISPers admin team, WHISPers Epi staff, event owner
-                recipients = list(User.objects.filter(
-                    Q(role__in=[1, 2]) | Q(id=MADISON_EPI_USER_ID)).values_list('id', flat=True))
+                recipients = list(User.objects.filter(Q(role__in=[1, 2]) | Q(id=MADISON_EPI_USER_ID)
+                                                      ).exclude(is_active=False).values_list('id', flat=True))
                 recipients += [event.created_by.id, ]
                 # email forwarding: Automatic, to whispers@usgs.gov, nwhc-epi@usgs.gov, event owner
-                email_to = list(
-                    User.objects.filter(Q(id=1) | Q(id=MADISON_EPI_USER_ID)).values_list('email', flat=True))
+                email_to = list(User.objects.filter(Q(id=1) | Q(id=MADISON_EPI_USER_ID)
+                                                    ).exclude(is_active=False).values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
                 from whispersapi.immediate_tasks import generate_notification
                 generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
@@ -1607,7 +1616,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
         # because we found that this can cause dozens or hundreds of event updates, which result in dozens or hundreds
         # of notifications and emails that are of no use and only annoy the users
         if (self.priority == self.__original_priority
-                and (not event.modified_by or not event.modified_date
+                and (not event.modified_by or not event.modified_date or not self.modified_by or not self.modified_date
                      or (event.modified_by.id != self.modified_by.id
                          or event.modified_date != self.modified_date))):
             event.modified_by = self.modified_by
