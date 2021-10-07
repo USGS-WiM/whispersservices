@@ -2494,7 +2494,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
             # Instead of causing a validation error, email admins and let the create proceed
             message = f"No flyway could be determined from the data submitted by the user"
             message += f" for Event Location {evt_location.name} (ID {evt_location.id})"
-            message += f" in Event {event.event_reference} (ID {event.id})."
+            message += f" in Event {evt_location.event.event_reference} (ID {evt_location.event.id})."
             construct_email("WHISPERS ADMIN: No Flyway Validation Warning", message)
 
         # Create EventLocationSpecies
