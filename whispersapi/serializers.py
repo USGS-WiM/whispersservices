@@ -5205,16 +5205,21 @@ class EventSummarySerializer(serializers.ModelSerializer):
         if user and user.is_authenticated:
             if user.role.is_superadmin or user.role.is_admin:
                 fields = admin_fields
-            elif hasattr(kwargs['context']['request'], 'parser_context'):
-                pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
-                if pk is not None and pk.isdecimal():
-                    obj = Event.objects.filter(id=pk).first()
-                    if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
-                                or user.organization.id in obj.created_by.parent_organizations
-                                or user.id in list(User.objects.filter(
-                                Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
-                            ).values_list('id', flat=True))):
-                        fields = private_fields
+            # this is too complicated and leads to inconsistent field lists in the response,
+            #  because a user could have different permissions for different events
+            # elif hasattr(kwargs['context']['request'], 'parser_context'):
+            #     pk = kwargs['context']['request'].parser_context['kwargs'].get('pk', None)
+            #     if pk is not None and pk.isdecimal():
+            #         obj = Event.objects.filter(id=pk).first()
+            #         if obj and (user.id == obj.created_by.id or user.organization.id == obj.created_by.organization.id
+            #                     or user.organization.id in obj.created_by.parent_organizations
+            #                     or user.id in list(User.objects.filter(
+            #                     Q(writeevents__in=[obj.id]) | Q(readevents__in=[obj.id])
+            #                 ).values_list('id', flat=True))):
+            #             fields = private_fields
+            elif (user.role.is_partneradmin or user.role.is_partnermanager
+                  or user.role.is_partner or user.role.is_affiliate):
+                fields = private_fields
 
         super(EventSummarySerializer, self).__init__(*args, **kwargs)
 
