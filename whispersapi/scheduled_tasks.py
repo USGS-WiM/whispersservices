@@ -890,7 +890,7 @@ def standard_notifications_by_user(new_event_count, updated_event_count, yesterd
 
             # admin users can see all events regardless of public status or owner/org/collaborator status
             if user.role.is_admin or user.role.is_superadmin:
-                all_events = Event.objects.filter(created_date=yesterday).distinct()
+                all_events = Event.objects.filter(modified_date=yesterday).distinct()
 
             # for everyone else...
             else:
