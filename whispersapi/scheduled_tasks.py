@@ -1,4 +1,3 @@
-from pytz import timezone
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import Count
@@ -126,16 +125,7 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
         # more than one history record for the model
         for h in history:
             # only include changes made yesterday
-            # NOTE: for some reason, the simple_history module is not reading the timezone of the history_date field,
-            #  even tho the project settings have USE_TZ=True and TIME_ZONE='America/Chicago' (UTC-6)
-            #  and the simple_history maintainers say that's all that's necessary for the module to recognize timezone
-            #  (see https://github.com/jazzband/django-simple-history/issues/175)
-            #  and we can see the history tables are clearly storing datetimes with timezone info,
-            #  (e.g., '2021-12-20 21:04:01.232116-06'), so in order for the date math to work correctly here,
-            #  the history_date needs a timezone adjustment, using pytz.timezone() and the standard astimezone() methods
-            tz = timezone(settings.TIME_ZONE)
-            history_datetime = h.history_date.astimezone(tz)
-            if not history_datetime.date() == yesterday_date:
+            if not h.history_date.date() == yesterday_date:
                 # no changes from yesterday found, so move on
                 continue
             else:
