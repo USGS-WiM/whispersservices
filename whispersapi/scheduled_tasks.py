@@ -1026,8 +1026,10 @@ def stale_event_notifications():
                 recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
                 email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
 
-                recipients += [event.created_by.id, ]
-                email_to += [event.created_by.email, ]
+                # only notify the event owner if that user is still active
+                if event.created_by.is_active:
+                    recipients += [event.created_by.id, ]
+                    email_to += [event.created_by.email, ]
 
                 eventlocations = EventLocation.objects.filter(event=event.id)
                 all_evt_locs = ""
