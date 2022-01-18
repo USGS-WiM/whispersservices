@@ -2930,13 +2930,13 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                     sick_count = self.instance.sick_count
                 any_sick_count = max(sick_count_est or 0, sick_count or 0)
 
-                if pop_count and pop_count < (any_dead_count + any_sick_count):
+                if pop_count is not None and pop_count < (any_dead_count + any_sick_count):
                     pop_is_valid = False
 
-                if sick_count_est and sick_count and sick_count_est <= sick_count:
+                if sick_count_est is not None and sick_count and sick_count_est <= sick_count:
                     est_sick_is_valid = False
 
-                if dead_count_est and dead_count and dead_count_est <= dead_count:
+                if dead_count_est is not None and dead_count and dead_count_est <= dead_count:
                     est_dead_is_valid = False
 
                 mm = EventType.objects.filter(name='Mortality/Morbidity').first()
