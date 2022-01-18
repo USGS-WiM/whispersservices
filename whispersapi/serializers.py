@@ -2933,10 +2933,10 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if pop_count and pop_count < (any_dead_count + any_sick_count):
                     pop_is_valid = False
 
-                if sick_count_est <= sick_count:
+                if sick_count_est and sick_count and sick_count_est <= sick_count:
                     est_sick_is_valid = False
 
-                if dead_count_est <= dead_count:
+                if dead_count_est and dead_count and dead_count_est <= dead_count:
                     est_dead_is_valid = False
 
                 mm = EventType.objects.filter(name='Mortality/Morbidity').first()
