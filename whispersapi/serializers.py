@@ -1116,14 +1116,14 @@ class EventSerializer(serializers.ModelSerializer):
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.filter(id=read_user_id).first()
+                read_user = User.objects.exclude(is_active=False).filter(id=read_user_id).first()
                 if read_user is not None and not read_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.filter(id=write_user_id).first()
+                write_user = User.objects.exclude(is_active=False).filter(id=write_user_id).first()
                 if write_user is not None and not write_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
@@ -1421,11 +1421,11 @@ class EventSerializer(serializers.ModelSerializer):
         # update the read_collaborators list if new_read_collaborators submitted
         if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
             # get the old (current) read collaborator ID list for this event
-            old_read_users = User.objects.filter(readevents=instance.id)
+            old_read_users = User.objects.exclude(is_active=False).filter(readevents=instance.id)
             # remove users from the read list if they are also in the write list (these lists are already unique sets)
             new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
             # get the new (submitted) read collaborator ID list for this event
-            new_read_users = User.objects.filter(id__in=new_read_user_ids)
+            new_read_users = User.objects.exclude(is_active=False).filter(id__in=new_read_user_ids)
 
             # identify and delete relates where user IDs are present in old read list but not new read list
             delete_read_users = list(set(old_read_users) - set(new_read_users))
@@ -1443,9 +1443,9 @@ class EventSerializer(serializers.ModelSerializer):
         # update the write_collaborators list if new_write_user_ids submitted
         if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
             # get the old (current) write collaborator ID list for this event
-            old_write_users = User.objects.filter(writeevents=instance.id)
+            old_write_users = User.objects.exclude(is_active=False).filter(writeevents=instance.id)
             # get the new (submitted) write collaborator ID list for this event
-            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+            new_write_users = User.objects.exclude(is_active=False).filter(id__in=new_write_user_ids)
 
             # identify and delete relates where user IDs are present in old write list but not new write list
             delete_write_users = list(set(old_write_users) - set(new_write_users))
