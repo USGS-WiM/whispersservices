@@ -107,7 +107,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                 check_permissions = True
                 event_location = EventLocation.objects.filter(id=h.event_location_id).first()
                 event = Event.objects.filter(id=event_location.event_id).first()
-            if check_permissions and not (cue_user.id == event.created_by.id
+            if check_permissions and not (cue_user.role.is_superadmin or cue_user.role.is_admin
+                                          or cue_user.id == event.created_by.id
                                           or cue_user.organization.id == event.created_by.organization.id
                                           or cue_user.organization.id in event.created_by.parent_organizations
                                           or cue_user.id in list(User.objects.filter(
@@ -152,7 +153,8 @@ def get_changes(history, source_id, yesterday, model_name, source_type, cue_user
                         check_permissions = True
                         event_location = EventLocation.objects.filter(id=h.event_location_id).first()
                         event = Event.objects.filter(id=event_location.event_id).first()
-                    if check_permissions and not (cue_user.id == event.created_by.id
+                    if check_permissions and not (cue_user.role.is_superadmin or cue_user.role.is_admin
+                                                  or cue_user.id == event.created_by.id
                                                   or cue_user.organization.id == event.created_by.organization.id
                                                   or cue_user.organization.id in event.created_by.parent_organizations
                                                   or cue_user.id in list(User.objects.filter(
@@ -1016,8 +1018,10 @@ def stale_event_notifications():
                 recipients = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('id', flat=True))
                 email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
 
-                recipients += [event.created_by.id, ]
-                email_to += [event.created_by.email, ]
+                # only notify the event owner if that user is still active
+                if event.created_by.is_active:
+                    recipients += [event.created_by.id, ]
+                    email_to += [event.created_by.email, ]
 
                 eventlocations = EventLocation.objects.filter(event=event.id)
                 all_evt_locs = ""

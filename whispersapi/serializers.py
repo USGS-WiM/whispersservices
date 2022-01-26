@@ -1116,14 +1116,14 @@ class EventSerializer(serializers.ModelSerializer):
         # create the child collaborators for this event
         if new_read_user_ids is not None:
             for read_user_id in new_read_user_ids:
-                read_user = User.objects.filter(id=read_user_id).first()
+                read_user = User.objects.exclude(is_active=False).filter(id=read_user_id).first()
                 if read_user is not None and not read_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
                     EventReadUser.objects.create(user=read_user, event=event, created_by=user, modified_by=user)
 
         if new_write_user_ids is not None:
             for write_user_id in new_write_user_ids:
-                write_user = User.objects.filter(id=write_user_id).first()
+                write_user = User.objects.exclude(is_active=False).filter(id=write_user_id).first()
                 if write_user is not None and not write_user.id == event.created_by.id:
                     # only create collaborator if not the event owner
                     EventWriteUser.objects.create(user=write_user, event=event, created_by=user, modified_by=user)
@@ -1421,11 +1421,11 @@ class EventSerializer(serializers.ModelSerializer):
         # update the read_collaborators list if new_read_collaborators submitted
         if request_method == 'PUT' or (new_read_user_ids_prelim and request_method == 'PATCH'):
             # get the old (current) read collaborator ID list for this event
-            old_read_users = User.objects.filter(readevents=instance.id)
+            old_read_users = User.objects.exclude(is_active=False).filter(readevents=instance.id)
             # remove users from the read list if they are also in the write list (these lists are already unique sets)
             new_read_user_ids = new_read_user_ids_prelim - new_write_user_ids
             # get the new (submitted) read collaborator ID list for this event
-            new_read_users = User.objects.filter(id__in=new_read_user_ids)
+            new_read_users = User.objects.exclude(is_active=False).filter(id__in=new_read_user_ids)
 
             # identify and delete relates where user IDs are present in old read list but not new read list
             delete_read_users = list(set(old_read_users) - set(new_read_users))
@@ -1443,9 +1443,9 @@ class EventSerializer(serializers.ModelSerializer):
         # update the write_collaborators list if new_write_user_ids submitted
         if request_method == 'PUT' or (new_write_user_ids and request_method == 'PATCH'):
             # get the old (current) write collaborator ID list for this event
-            old_write_users = User.objects.filter(writeevents=instance.id)
+            old_write_users = User.objects.exclude(is_active=False).filter(writeevents=instance.id)
             # get the new (submitted) write collaborator ID list for this event
-            new_write_users = User.objects.filter(id__in=new_write_user_ids)
+            new_write_users = User.objects.exclude(is_active=False).filter(id__in=new_write_user_ids)
 
             # identify and delete relates where user IDs are present in old write list but not new write list
             delete_write_users = list(set(old_write_users) - set(new_write_users))
@@ -2833,21 +2833,24 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 details = []
 
                 if 'population_count' in data and data['population_count'] is not None:
-                    dead_count = 0
-                    sick_count = 0
-                    if 'dead_count_estimated' in data or 'dead_count' in data:
-                        dead_count = max(data.get('dead_count_estimated') or 0, data.get('dead_count') or 0)
-                    if 'sick_count_estimated' in data or 'sick_count' in data:
-                        sick_count = max(data.get('sick_count_estimated') or 0, data.get('sick_count') or 0)
-                    if data['population_count'] < dead_count + sick_count:
+                    if data['population_count'] == 0:
                         pop_is_valid = False
+                    else:
+                        dead_count = 0
+                        sick_count = 0
+                        if 'dead_count_estimated' in data or 'dead_count' in data:
+                            dead_count = max(data.get('dead_count_estimated') or 0, data.get('dead_count') or 0)
+                        if 'sick_count_estimated' in data or 'sick_count' in data:
+                            sick_count = max(data.get('sick_count_estimated') or 0, data.get('sick_count') or 0)
+                        if data['population_count'] < dead_count + sick_count:
+                            pop_is_valid = False
                 if ('sick_count_estimated' in data and data['sick_count_estimated'] is not None
                         and 'sick_count' in data and data['sick_count'] is not None
-                        and not data['sick_count_estimated'] > data['sick_count']):
+                        and data['sick_count_estimated'] <= data['sick_count']):
                     est_sick_is_valid = False
                 if ('dead_count_estimated' in data and data['dead_count_estimated'] is not None
                         and 'dead_count' in data and data['dead_count'] is not None
-                        and not data['dead_count_estimated'] > data['dead_count']):
+                        and data['dead_count_estimated'] <= data['dead_count']):
                     est_dead_is_valid = False
                 mm = EventType.objects.filter(name='Mortality/Morbidity').first()
                 mm_lsps = None
@@ -2882,7 +2885,6 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-        # TODO: fix this to test against submitted data!!!
         # else this is an existing LocationSpecies
         elif self.instance:
             # check if parent Event is complete
@@ -2901,47 +2903,60 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 est_dead_is_valid = True
                 details = []
 
-                if self.instance.population_count:
-                    dead_count = 0
-                    sick_count = 0
-                    if self.instance.dead_count_estimated or self.instance.dead_count:
-                        dead_count = max(self.instance.dead_count_estimated or 0, self.instance.dead_count or 0)
-                    if self.instance.sick_count_estimated or self.instance.sick_count:
-                        sick_count = max(self.instance.sick_count_estimated or 0, self.instance.sick_count or 0)
-                    if self.instance.population_count < dead_count + sick_count:
-                        pop_is_valid = False
+                # get the pop count
+                if 'population_count' in data:
+                    # can be null, per NWHC staff
+                    pop_count = data.get('population_count')
+                else:
+                    pop_count = self.instance.population_count
 
-                if (self.instance.sick_count_estimated and self.instance.sick_count
-                        and not self.instance.sick_count_estimated > self.instance.sick_count):
+                # get the dead count
+                if 'dead_count_estimated' in data:
+                    dead_count_est = data.get('dead_count_estimated')
+                else:
+                    dead_count_est = self.instance.dead_count_estimated
+                if 'dead_count' in data:
+                    dead_count = data.get('dead_count')
+                else:
+                    dead_count = self.instance.dead_count
+                any_dead_count = max(dead_count_est or 0, dead_count or 0)
+
+                # get the sick count
+                if 'sick_count_estimated' in data:
+                    sick_count_est = data.get('sick_count_estimated')
+                else:
+                    sick_count_est = self.instance.sick_count_estimated
+                if 'sick_count' in data:
+                    sick_count = data.get('sick_count')
+                else:
+                    sick_count = self.instance.sick_count
+                any_sick_count = max(sick_count_est or 0, sick_count or 0)
+
+                if pop_count is not None and pop_count < (any_dead_count + any_sick_count):
+                    pop_is_valid = False
+
+                if sick_count_est is not None and sick_count and sick_count_est <= sick_count:
                     est_sick_is_valid = False
-                if (self.instance.dead_count_estimated and self.instance.dead_count
-                        and not self.instance.dead_count_estimated > self.instance.dead_count):
+
+                if dead_count_est is not None and dead_count and dead_count_est <= dead_count:
                     est_dead_is_valid = False
+
                 mm = EventType.objects.filter(name='Mortality/Morbidity').first()
-                mm_locspecs = None
-                if self.instance.event_location.event.event_type.id == mm.id:
+                mm_lsps = None
+                event_type_id = self.instance.event_location.event.event_type.id
+                if event_type_id == mm.id:
                     locspecs = LocationSpecies.objects.filter(event_location=self.instance.event_location.id)
-                    mm_locspecs = [locspec for locspec in locspecs if
-                                   locspec.event_location.event.event_type.id == mm.id]
-                    if mm_locspecs is None:
-                        if self.instance.dead_count_estimated and self.instance.dead_count_estimated > 0:
-                            min_species_count = True
-                        elif self.instance.dead_count and self.instance.dead_count > 0:
-                            min_species_count = True
-                        elif self.instance.sick_count_estimated and self.instance.sick_count_estimated > 0:
-                            min_species_count = True
-                        elif self.instance.sick_count and self.instance.sick_count > 0:
-                            min_species_count = True
+                    mm_lsps = [locspec for locspec in locspecs if event_type_id == mm.id]
+                    if mm_lsps is None:
+                        min_species_count = True if any_sick_count > 0 or any_dead_count > 0 else False
 
                 if not pop_is_valid:
                     message = "New location_species population_count cannot be less than the sum of dead_count"
                     message += " and sick_count (where those counts are the maximum of the estimated or known count)."
                     details.append(message)
-                if (self.instance.event_location.event.event_type.id == mm.id
-                        and mm_locspecs is None and not min_species_count):
-                    message = "For Mortality/Morbidity events,"
-                    message += " at least one new_location_species requires at least one species"
-                    message += " count in any of the following fields:"
+                if event_type_id == mm.id and mm_lsps is None and not min_species_count:
+                    message = "For Mortality/Morbidity events, at least one new_location_species requires"
+                    message += " at least one species count in any of the following fields:"
                     message += " dead_count_estimated, dead_count, sick_count_estimated, sick_count."
                     details.append(message)
                 if not est_sick_is_valid:
