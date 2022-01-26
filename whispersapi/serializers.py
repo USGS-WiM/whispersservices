@@ -2833,14 +2833,17 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 details = []
 
                 if 'population_count' in data and data['population_count'] is not None:
-                    dead_count = 0
-                    sick_count = 0
-                    if 'dead_count_estimated' in data or 'dead_count' in data:
-                        dead_count = max(data.get('dead_count_estimated') or 0, data.get('dead_count') or 0)
-                    if 'sick_count_estimated' in data or 'sick_count' in data:
-                        sick_count = max(data.get('sick_count_estimated') or 0, data.get('sick_count') or 0)
-                    if data['population_count'] < dead_count + sick_count:
+                    if data['population_count'] == 0:
                         pop_is_valid = False
+                    else:
+                        dead_count = 0
+                        sick_count = 0
+                        if 'dead_count_estimated' in data or 'dead_count' in data:
+                            dead_count = max(data.get('dead_count_estimated') or 0, data.get('dead_count') or 0)
+                        if 'sick_count_estimated' in data or 'sick_count' in data:
+                            sick_count = max(data.get('sick_count_estimated') or 0, data.get('sick_count') or 0)
+                        if data['population_count'] < dead_count + sick_count:
+                            pop_is_valid = False
                 if ('sick_count_estimated' in data and data['sick_count_estimated'] is not None
                         and 'sick_count' in data and data['sick_count'] is not None
                         and data['sick_count_estimated'] <= data['sick_count']):
@@ -2882,7 +2885,6 @@ class LocationSpeciesSerializer(serializers.ModelSerializer):
                 if details:
                     raise serializers.ValidationError(details)
 
-        # TODO: fix this to test against submitted data!!!
         # else this is an existing LocationSpecies
         elif self.instance:
             # check if parent Event is complete
