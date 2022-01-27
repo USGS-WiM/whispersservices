@@ -1841,11 +1841,34 @@ class ServiceRequest(PermissionsHistoryModel):
                 # source: WHISPers admin who updates the request response value (i.e. responds).
                 source = self.response_by.username
                 # recipients: user who made the request, event owner
-                recipients = [self.created_by.id, self.event.created_by.id, ]
                 # email forwarding: Automatic, to the user who made the request and event owner
-                email_to = [self.created_by.email, self.event.created_by.email, ]
-                from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                recipients = []
+                email_to = []
+                if self.created_by.is_active:
+                    recipients.append(self.created_by.id)
+                    email_to.append(self.created_by.id)
+                if self.event.created_by.is_active:
+                    recipients.append(self.event.created_by.id)
+                    email_to.append(self.event.created_by.id)
+                if recipients and email_to:
+                    from whispersapi.immediate_tasks import generate_notification
+                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                else:
+                    # No recipients are active users
+                    # Instead of causing a validation error, email admins and let the create proceed
+                    message = "No active users were found as recipients for Service Request Response notification."
+                    message += " Intended recipients were the user who created the Service Request: Username"
+                    message += f" {self.created_by.username} (ID {self.created_by.id},"
+                    message += f" Email {self.created_by.email}),"
+                    message += " and the user who created the event that the Service Request was for: Username"
+                    message += f" {self.event.created_by.username}"
+                    message += f" (ID {self.event.created_by.id},"
+                    message += f" Email {self.event.created_by.email}).\r\n\r\n\r\n"
+                    message += "The subject and body of the intended email were:\r\n\r\n"
+                    message += f"Subject: {subject}\r\n\r\n"
+                    message += f"Body: {body}"
+                    from whispersapi.serializers import construct_email
+                    construct_email("WHISPERS ADMIN: No Active User Recipients for Notification", message)
 
     def __str__(self):
         return str(self.id)
