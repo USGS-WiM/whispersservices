@@ -128,7 +128,8 @@ def get_email_boilerplate():
     return EMAIL_BOILERPLATE
 
 
-def construct_notification_email(recipient_email, subject, html_body, include_boilerplate=True, whispers_email_address=None):
+def construct_notification_email(recipient_email, subject, html_body,
+                                 include_boilerplate=True, whispers_email_address=None):
 
     # append the boilerplate text to the end of the email body
     if include_boilerplate:
