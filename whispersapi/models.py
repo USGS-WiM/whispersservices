@@ -714,7 +714,7 @@ class EventContact(PermissionsHistoryModel):
     """
 
     event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
-    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value indentifying a contact')
+    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value identifying a contact')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_eventcontact')
 
     @staticmethod
@@ -780,8 +780,8 @@ class EventLocation(PermissionsHistoryModel):
         'AdministrativeLevelTwo', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the administrative level two to which this event location belongs')
     county_multiple = models.BooleanField(default=False, help_text='A boolean value indicating that the event location spans multiple counties or not')
     county_unknown = models.BooleanField(default=False, help_text='A boolean value indicating that the event location county is unkown or not')
-    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the latitude for this event location')
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the longitude for this event location')
+    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the latitude for this event location')
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the longitude for this event location')
     priority = models.IntegerField(null=True, help_text='An intger value indicating the event locations priority. Can be used to set order of display based on importance')
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the entity that owns the land for this event location')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations', help_text='')
@@ -1007,8 +1007,8 @@ class AdministrativeLevelTwo(AdminPermissionsHistoryModel):
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.CASCADE, related_name='administrativeleveltwos', help_text='A foreign key integer value identifying the administrative level one to which this administrative level two belongs')
     points = models.TextField(blank=True, default='', help_text='An alphanumeric value of the points of this administrative level two')  # QUESTION: what is the purpose of this field?
-    centroid_latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the latitude for this administrative level two')
-    centroid_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the longitude for this administrative level two')
+    centroid_latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the latitude for this administrative level two')
+    centroid_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the longitude for this administrative level two')
     fips_code = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the FIPS code for this administrative level two')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_administrativeleveltwo')
 
@@ -1470,7 +1470,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     suspect_count = models.IntegerField(null=True, help_text='An integer value indicating the suspect count for this species diagnosis')
     pooled = models.BooleanField(default=False, help_text='A boolean value indicating if the species diagnosis was pooled or not')
     organizations = models.ManyToManyField(
-        'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
+        'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value identifying an organization')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_speciesdiagnosis')
 
     # keep track of "previous" diagnosis to detect if the value changes during save
@@ -2378,7 +2378,7 @@ class User(AbstractUser):
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
     circles = models.ManyToManyField(
-        'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users', help_text='A many to many releationship of circles based on a foreign key integer value indentifying a circle')
+        'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users', help_text='A many to many releationship of circles based on a foreign key integer value identifying a circle')
     active_key = models.TextField(blank=True, default='', help_text='An alphanumeric value of the active key for this user')
     user_status = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the status for this user')
 
@@ -2904,7 +2904,7 @@ class Search(PermissionsHistoryModel):
 
     name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of this search')
     data = JSONField(blank=True, help_text='A JSON object containing the search data')
-    count = models.IntegerField(default=0, help_text='An integer value indentifying the count of searches')
+    count = models.IntegerField(default=0, help_text='An integer value identifying the count of searches')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_search')
 
     @staticmethod
