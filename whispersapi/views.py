@@ -2041,6 +2041,47 @@ class ArtifactViewSet(HistoryViewSet):
     serializer_class = ArtifactSerializer
 
 
+class BannerViewSet(HistoryViewSet):
+    """
+    list:
+    Returns a list of all banners.
+
+    create:
+    Creates a banner.
+
+    read:
+    Returns a banner by id.
+
+    update:
+    Updates a banner.
+
+    partial_update:
+    Updates parts of a banner.
+
+    delete:
+    Deletes a banner.
+    """
+
+    serializer_class = BannerSerializer
+
+    # override the default queryset to automatically filter the response,
+    #  such that superadmins and admins see everything but everyone else sees just active banners
+    def get_queryset(self):
+        user = get_request_user(self.request)
+
+        # anonymous users cannot see anything
+        if not user or not user.is_authenticated:
+            return Banner.objects.none()
+        # admins and superadmins can see everything
+        elif user.role.is_superadmin or user.role.is_admin:
+            queryset = Banner.objects.all()
+        # otherwise return active banners
+        else:
+            return Banner.objects.filter(active=True)
+
+        return self.filter_queryset(queryset)
+
+
 ######
 #
 #  Users

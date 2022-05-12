@@ -2276,6 +2276,23 @@ class Artifact(PermissionsHistoryModel):  # TODO: implement file fields
         ordering = ['id']
 
 
+class Banner(AdminPermissionsHistoryModel):
+    """
+    Content intended for a HTML banner div in the main WHISPers client
+    """
+
+    content = models.TextField(help_text='An alphanumeric value of the HTML content of this banner')
+    active = models.BooleanField(default=True, help_text='A boolean value indication if a banner is active or not')
+    end_date = models.DateField(null=True, blank=True, db_index=True, help_text='The date for the banner to end in "YYYY-MM-DD" format')
+
+    def __str__(self):
+        return str(self.id)
+
+    class Meta:
+        db_table = "whispers_banner"
+        ordering = ['-id']
+
+
 class Configuration(AdminPermissionsHistoryNameModel):
     """
     Global Configuration Setting

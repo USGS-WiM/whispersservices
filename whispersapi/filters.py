@@ -126,6 +126,14 @@ class CommentFilter(FilterSet):
         fields = ['contains', ]
 
 
+class BannerFilter(FilterSet):
+    active = BooleanFilter(label='Filter by whether banner is active or not')
+
+    class Meta:
+        model = Banner
+        fields = ['active', ]
+
+
 class UserFilter(FilterSet):
     username = CharFilter(field_name='username', lookup_expr='exact', label='Filter by username, exact match')
     email = CharFilter(field_name='email', lookup_expr='iexact', label='Filter by email, exact match')

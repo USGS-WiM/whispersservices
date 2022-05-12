@@ -625,6 +625,13 @@ class ArtifactSerializer(serializers.ModelSerializer):
                   'modified_date', 'modified_by', 'modified_by_string',)
 
 
+class BannerSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Banner
+        fields = ('content', 'active', 'end_date',)
+
+
 ######
 #
 #  Events
