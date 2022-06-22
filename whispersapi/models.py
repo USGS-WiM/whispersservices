@@ -405,24 +405,27 @@ class Event(PermissionsHistoryModel):
 
         diagnosis = None
 
-        # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
-        if not self.complete:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
-            if len(get_event_diagnoses()) == 0:
+        # If no event-level diagnosis indicated by user,
+        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
+        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
+        # If have "Undetermined" at the event level, should have no other diagnoses at event level.
+        evt_diags = get_event_diagnoses()
+        if len(evt_diags) == 0:
+            # There are no event diagnoses, so assign "Pending" if event is incomplete or "Undetermined" if complete
+            if not self.complete:
                 diagnosis = Diagnosis.objects.filter(name='Pending').first()
-        # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
-        else:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
-            if len(get_event_diagnoses()) == 0:
+            else:
                 diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
-
-        if diagnosis:
             # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
             # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
             EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, priority=1,
                                           created_by=self.created_by, modified_by=self.modified_by)
+        else:
+            # There are already event diagnoses
+            # Check if one of them is "Undetermined", and if so delete all the others
+            evt_diag_names = [evt_diag.name for evt_diag in get_event_diagnoses()]
+            if 'Undetermined' in evt_diag_names:
+                [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name != 'Undetermined']
 
     def __str__(self):
         return str(self.id)
@@ -1397,12 +1400,28 @@ class EventDiagnosis(PermissionsHistoryModel):
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         diagnosis_name = self.diagnosis.name
+        deleting_user = self.modified_by
         event = Event.objects.filter(id=self.event.id).first()
 
         super(EventDiagnosis, self).delete(*args, **kwargs)
 
+        # Check if there are no event diagnoses remaining
+        # If no event-level diagnosis indicated by user,
+        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
+        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
+        event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
+        if len(event_diagnoses) == 0:
+            if not event.complete:
+                diagnosis = Diagnosis.objects.filter(name='Pending').first()
+            else:
+                diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+            EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=False, priority=1,
+                                          created_by=deleting_user, modified_by=deleting_user)
+
         # update the event modified_date only when the diagnosis is not Pending or Undetermined
-        #  to avoid an infinite loop, since one of those two diagnoses are is always created when an Event is created
+        #  to avoid an infinite loop, since one of those two diagnoses is always created when an Event is created
         #  or updated without an already existing event diagnosis
         if (diagnosis_name not in ['Pending', 'Undetermined']
                 and (not event.modified_by or not event.modified_date
