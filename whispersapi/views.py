@@ -380,7 +380,6 @@ class EventViewSet(HistoryViewSet):
             except KeyError as e:
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 subject = ""
-            # {first_name,last_name,organization,event_id,comment,email}
             try:
                 body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
                                                     email=user.email, organization=user.organization, event_id=event.id,
@@ -1687,6 +1686,7 @@ class ServiceRequestTypeViewSet(HistoryViewSet):
 class ServiceRequestResponseViewSet(HistoryViewSet):
     """
     list:
+    Returns a list of all service request responses.
     Returns a list of all service request responses.
 
     create:

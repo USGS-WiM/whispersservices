@@ -1566,7 +1566,6 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                     subject = ""
                 try:
-                    # {editor_first_name,editor_last_name,editor_username,editor_organization,owner_first_name,owner_last_name,owner_username,owner_organization,species,species_diagnosis,event_id,event_location}
                     body = msg_tmp.body_template.format(
                         editor_first_name=self.modified_by.first_name, editor_last_name=self.modified_by.last_name,
                         editor_username=self.modified_by.username, editor_organization=self.modified_by.organization.name,
