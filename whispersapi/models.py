@@ -403,8 +403,6 @@ class Event(PermissionsHistoryModel):
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
             return event_diagnoses if event_diagnoses is not None else []
 
-        diagnosis = None
-
         # If no event-level diagnosis indicated by user,
         #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
         #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
