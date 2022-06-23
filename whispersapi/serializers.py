@@ -498,7 +498,15 @@ class CommentSerializer(serializers.ModelSerializer):
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
-                        body = msg_tmp.body_template.format(event_id=event_id)
+                        body = msg_tmp.body_template.format(commenter_first_name=self.created_by.first_name,
+                                                            commenter_last_name=self.created_by.last_name,
+                                                            commenter_username=self.created_by.username,
+                                                            commenter_organization=self.created_by.organization.name,
+                                                            initiator_first_name=service_request.created_by.first_name,
+                                                            initiator_last_name=service_request.created_by.last_name,
+                                                            initiator_username=service_request.created_by.username,
+                                                            initiator_organization=service_request.created_by.organization.name,
+                                                            event_id=event_id)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
@@ -542,7 +550,15 @@ class CommentSerializer(serializers.ModelSerializer):
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
-                        body = msg_tmp.body_template.format(event_id=event_id)
+                        body = msg_tmp.body_template.format(commenter_first_name=self.created_by.first_name,
+                                                            commenter_last_name=self.created_by.last_name,
+                                                            commenter_username=self.created_by.username,
+                                                            commenter_organization=self.created_by.organization.name,
+                                                            initiator_first_name=service_request.created_by.first_name,
+                                                            initiator_last_name=service_request.created_by.last_name,
+                                                            initiator_username=service_request.created_by.username,
+                                                            initiator_organization=service_request.created_by.organization.name,
+                                                            event_id=event_id)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
@@ -4525,8 +4541,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 subject = ""
             try:
                 body = msg_tmp.body_template.format(first_name=ucr.requester.first_name,
-                                                    last_name=ucr.requester.last_name,username=ucr.requester.username,
-                                                    current_role=ucr.requester.role.name,
+                                                    last_name=ucr.requester.last_name, username=ucr.requester.username,
+                                                    email=ucr.requester.email, current_role=ucr.requester.role.name,
                                                     new_role=ucr.role_requested.name,
                                                     current_organization=ucr.requester.organization.name,
                                                     new_organization=ucr.organization_requested.name, comment=comment)
@@ -4632,7 +4648,10 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 else:
                     subject = msg_tmp.subject_template
                     try:
-                        body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                        body = msg_tmp.body_template.format(first_name=instance.requester.first_name,
+                                                            last_name=instance.requester.last_name,
+                                                            username=instance.requester.username,
+                                                            role=instance.role_requested.name,
                                                             organization=instance.organization_requested.name)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
