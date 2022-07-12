@@ -3271,14 +3271,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
         event_diagnosis.save(update_fields=['priority', ])
 
-        # Now that we have the new event diagnoses created,
-        # check for existing Pending record and delete it
+        # If the parent event is complete, check for an existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=event_diagnosis.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
-
-        # If the parent event is complete, also check for existing Undetermined record and delete it
-        if event_diagnosis.event.complete:
-            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
+        if event_diagnosis.event.complete and len(event_diagnoses) > 1:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         # calculate the priority value:
         event_diagnosis.priority = calculate_priority_event_diagnosis(event_diagnosis)
@@ -3301,13 +3297,10 @@ class EventDiagnosisSerializer(serializers.ModelSerializer):
         ).values_list('suspect', flat=True)
         instance.suspect = False if False in matching_specdiags_suspect else True
 
-        # Now that we have the new event diagnoses created, check for existing Pending record and delete it
+        # If the parent event is complete, check for an existing Pending record and delete it
         event_diagnoses = EventDiagnosis.objects.filter(event=instance.event.id)
-        [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
-
-        # If the parent event is complete, also check for existing Undetermined record and delete it
-        if instance.event.complete:
-            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Undetermined']
+        if instance.event.complete and len(event_diagnoses) > 1:
+            [diag.delete() for diag in event_diagnoses if diag.diagnosis.name == 'Pending']
 
         instance.save()
 
