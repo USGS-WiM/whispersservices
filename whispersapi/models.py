@@ -1856,10 +1856,10 @@ class ServiceRequest(PermissionsHistoryModel):
                 email_to = []
                 if self.created_by.is_active:
                     recipients.append(self.created_by.id)
-                    email_to.append(self.created_by.id)
+                    email_to.append(self.created_by.email)
                 if self.event.created_by.is_active:
                     recipients.append(self.event.created_by.id)
-                    email_to.append(self.event.created_by.id)
+                    email_to.append(self.event.created_by.email)
                 if recipients and email_to:
                     from whispersapi.immediate_tasks import generate_notification
                     generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
