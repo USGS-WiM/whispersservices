@@ -406,7 +406,6 @@ class Event(PermissionsHistoryModel):
         # If no event-level diagnosis indicated by user,
         #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
         #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
-        # If have "Undetermined" at the event level, should have no other diagnoses at event level.
         evt_diags = get_event_diagnoses()
         if len(evt_diags) == 0:
             # There are no event diagnoses, so assign "Pending" if event is incomplete or "Undetermined" if complete
@@ -418,12 +417,6 @@ class Event(PermissionsHistoryModel):
             # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
             EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, priority=1,
                                           created_by=self.created_by, modified_by=self.modified_by)
-        else:
-            # There are already event diagnoses
-            # Check if one of them is "Undetermined", and if so delete all the others
-            evt_diag_names = [evt_diag.name for evt_diag in get_event_diagnoses()]
-            if 'Undetermined' in evt_diag_names:
-                [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name != 'Undetermined']
 
     def __str__(self):
         return str(self.id)
