@@ -2010,11 +2010,16 @@ class EventLocationSerializer(serializers.ModelSerializer):
         geonames_params.update({'maxRows': 1, 'username': get_geonames_username()})
         gr = requests.get(get_geonames_api() + geonames_endpoint, params=geonames_params)
         try:
-            grj = gr.json()
+            try:
+                grj = gr.json()
+            except requests.exceptions.RequestException as e:
+                # email admins
+                send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
+                return None
             if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
                 coords = {lng: grj[gn][0][lng], lat: grj[gn][0][lat]}
             return coords
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             # email admins
             send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
             return None
@@ -2030,14 +2035,19 @@ class EventLocationSerializer(serializers.ModelSerializer):
         geonames_params.update({'maxRows': 1, 'username': get_geonames_username()})
         gr = requests.get(get_geonames_api() + geonames_endpoint, params=geonames_params)
         try:
-            grj = gr.json()
+            try:
+                grj = gr.json()
+            except requests.exceptions.RequestException as e:
+                # email admins
+                send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
+                return None
             if gn in grj and len(grj[gn]) > 0 and lng in grj[gn][0] and lat in grj[gn][0]:
                 coords = {lng: grj[gn][0][lng], lat: grj[gn][0][lat]}
             else:
                 # adm2 search failed so look up the adm1 coordinates as a fallback
                 coords = self.search_geonames_adm1(adm1_name, country_code)
             return coords
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             # email admins
             send_third_party_service_exception_email('Geonames', get_geonames_api() + geonames_endpoint, e)
             return None
@@ -2131,7 +2141,12 @@ class EventLocationSerializer(serializers.ModelSerializer):
                     r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
                     geonames_latlng_url = r.request.url
                     try:
-                        geonames_object_list = decode_json(r)
+                        try:
+                            geonames_object_list = decode_json(r)
+                        except requests.exceptions.RequestException as e:
+                            # email admins
+                            send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
+                            geonames_object_list = []
                         if 'address' in geonames_object_list:
                             address = geonames_object_list['address']
                             if 'name' in address:
@@ -2144,7 +2159,7 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         else:
                             # the response from the Geonames web service is in an unexpected format
                             address = None
-                    except requests.exceptions.RequestException as e:
+                    except Exception as e:
                         # email admins
                         send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
                         address = None
@@ -2156,12 +2171,18 @@ class EventLocationSerializer(serializers.ModelSerializer):
                             payload = {'country': country_code, 'username': GEONAMES_USERNAME}
                             r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
                             try:
-                                content = decode_json(r)
+                                try:
+                                    content = decode_json(r)
+                                except requests.exceptions.RequestException as e:
+                                    # email admins
+                                    send_third_party_service_exception_email(
+                                        'Geonames', GEONAMES_API + geonames_endpoint, e)
+                                    content = []
                                 if ('geonames' in content and content['geonames'] is not None
                                         and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                     alpha3 = content['geonames'][0]['isoAlpha3']
                                     country = Country.objects.filter(abbreviation=alpha3).first()
-                            except requests.exceptions.RequestException as e:
+                            except Exception as e:
                                 # email admins
                                 send_third_party_service_exception_email(
                                     'Geonames', GEONAMES_API + geonames_endpoint, e)
@@ -2398,14 +2419,19 @@ class EventLocationSerializer(serializers.ModelSerializer):
                        'username': GEONAMES_USERNAME}
             r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
             try:
-                geonames_object_list = decode_json(r)
+                try:
+                    geonames_object_list = decode_json(r)
+                except requests.exceptions.RequestException as e:
+                    # email admins
+                    send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
+                    geonames_object_list = []
                 if 'address' in geonames_object_list:
                     address = geonames_object_list['address']
                     address['adminName2'] = address['name']
                 elif 'geonames' in geonames_object_list:
                     gn_adm2 = [item for item in geonames_object_list['geonames'] if item['fcode'] == 'ADM2']
                     address = gn_adm2[0]
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 # email admins
                 send_third_party_service_exception_email('Geonames', GEONAMES_API + geonames_endpoint, e)
             geonames_endpoint = 'countryInfoJSON'
@@ -2416,12 +2442,18 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         payload = {'country': country_code, 'username': GEONAMES_USERNAME}
                         r = requests.get(GEONAMES_API + geonames_endpoint, params=payload, verify=settings.SSL_CERT)
                         try:
-                            content = decode_json(r)
+                            try:
+                                content = decode_json(r)
+                            except requests.exceptions.RequestException as e:
+                                # email admins
+                                send_third_party_service_exception_email(
+                                    'Geonames', GEONAMES_API + geonames_endpoint, e)
+                                content = []
                             if ('geonames' in content and content['geonames'] is not None
                                     and len(content['geonames']) > 0 and 'isoAlpha3' in content['geonames'][0]):
                                 alpha3 = content['geonames'][0]['isoAlpha3']
                                 validated_data['country'] = Country.objects.filter(abbreviation=alpha3).first()
-                        except requests.exceptions.RequestException as e:
+                        except Exception as e:
                             # email admins
                             send_third_party_service_exception_email(
                                 'Geonames', GEONAMES_API + geonames_endpoint, e)
@@ -2468,6 +2500,13 @@ class EventLocationSerializer(serializers.ModelSerializer):
             test_params.update({'geometry': '-90.0,45.0'})
             r = requests.get(get_flyways_api(), params=test_params, verify=settings.SSL_CERT)
             try:
+                try:
+                    rj = r.json()
+                except requests.exceptions.RequestException as e:
+                    # email admins
+                    send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
+                    # flyways is not a required field, the admins can populate it after investigating
+                    pass
                 if 'features' in r.json():
                     territories = ['PR', 'VI', 'MP', 'AS', 'UM', 'NOPO', 'SOPO']
                     country = validated_data['country']
@@ -2500,16 +2539,22 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         if 'geometry' in params:
                             r = requests.get(get_flyways_api(), params=params, verify=settings.SSL_CERT)
                             try:
-                                rj = r.json()
+                                try:
+                                    rj = r.json()
+                                except requests.exceptions.RequestException as e:
+                                    # email admins
+                                    send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
+                                    # flyways is not a required field, the admins can populate it after investigating
+                                    pass
                                 if 'features' in rj and len(rj['features']) > 0:
                                     flyway_name = rj['features'][0]['attributes']['NAME'].replace(' Flyway', '')
                                     flyway = Flyway.objects.filter(name__contains=flyway_name).first()
-                            except requests.exceptions.RequestException as e:
+                            except Exception as e:
                                 # email admins
                                 send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
                                 # flyways is not a required field, the admins can populate it after investigating
                                 pass
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 # email admins
                 send_third_party_service_exception_email('FWS Flyways', get_flyways_api(), e)
                 # flyways is not a required field, the admins can populate it after investigating
