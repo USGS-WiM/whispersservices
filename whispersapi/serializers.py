@@ -514,7 +514,7 @@ class CommentSerializer(serializers.ModelSerializer):
                         email_to.append(service_request.event.created_by.email)
                     if recipients and email_to:
                         generate_notification.delay(
-                            recipients, source, event_id, 'event', subject, body, True, email_to)
+                            msg_tmp.id, recipients, source, event_id, 'event', subject, body, True, email_to)
                     else:
                         # No recipients are active users
                         # Instead of causing a validation error, email admins and let the create proceed
@@ -580,7 +580,8 @@ class CommentSerializer(serializers.ModelSerializer):
                             recipients.append(service_request.event.created_by.id)
                             email_to.append(service_request.event.created_by.email)
                     source = comment.created_by.username
-                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                    generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                                True, email_to)
 
         return comment
 
@@ -3821,7 +3822,8 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             except KeyError as e:
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
-            generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                        True, email_to)
 
         return service_request
 
@@ -4331,7 +4333,8 @@ class UserSerializer(serializers.ModelSerializer):
                 last_name=user.last_name,
                 verification_link=verification_link)
             event = None
-            generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event, 'homepage', subject, body,
+                                        True, email_to)
 
     def update(self, instance, validated_data):
         requesting_user = get_user(self.context, self.initial_data)
@@ -4592,7 +4595,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             email_to = list(User.objects.exclude(is_active=False).filter(
                 Q(id=1) | Q(role=3, organization=ucr.organization_requested.id) | Q(role=3, organization__in=org_list)
             ).values_list('email', flat=True))
-            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event, 'userdashboard', subject, body,
+                                        True, email_to)
 
         # also create a 'User Change Request Response Pending' notification
         msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response Pending').first()
@@ -4609,7 +4613,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
             recipients = [ucr.created_by.id, ]
             # email forwarding: Automatic to the user's email
             email_to = [ucr.created_by.email, ]
-            generate_notification.delay(recipients, source, event, 'userdashboard', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event, 'userdashboard', subject, body,
+                                        True, email_to)
 
         return ucr
 
@@ -4678,7 +4683,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                         role__in=[1, 2]).values_list('id', flat=True)) + [instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                    generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+                    generate_notification.delay(msg_tmp.id, recipients, source, event, 'homepage', subject, body,
+                                                True, email_to)
             elif instance.request_response.name == 'No':
                 msg_tmp = NotificationMessageTemplate.objects.filter(name='User Change Request Response No').first()
                 if not msg_tmp:
@@ -4695,7 +4701,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                         role__in=[1, 2]).values_list('id', flat=True)) + [instance.requester.id, ]
                     # email forwarding: Automatic, to user's email and to whispers@usgs.gov
                     email_to = [User.objects.filter(id=1).values('email').first()['email'], instance.requester.email, ]
-                    generate_notification.delay(recipients, source, event, 'homepage', subject, body, True, email_to)
+                    generate_notification.delay(msg_tmp.id, recipients, source, event, 'homepage', subject, body,
+                                                True, email_to)
 
         return instance
 

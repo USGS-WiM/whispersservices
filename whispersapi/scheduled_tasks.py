@@ -545,7 +545,7 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
         body = ""
 
-    return [recipients, event_user.username, event.id, 'event', subject, body, send_email, email_to, org]
+    return [msg_tmp.id, recipients, event_user.username, event.id, 'event', subject, body, send_email, email_to, org]
 
 
 def get_event_notifications_own_new(events_created_yesterday, user):
@@ -728,7 +728,8 @@ def get_event_notifications_all_new(events_created_yesterday, user):
             source = event.created_by.organization.name
             org = source
 
-            notifications.append([recipients, source, event.id, 'event', subject, body, send_email, email_to, org])
+            notifications.append([msg_tmp.id, recipients, source, event.id, 'event', subject, body,
+                                  send_email, email_to, org])
 
     return notifications
 
@@ -791,7 +792,7 @@ def get_event_notifications_all_updated(events_updated_yesterday, yesterday, use
                                                                               msg_tmp.message_variables)
                             body = ""
 
-                        notifications.append([recipients, source, event.id, 'event', subject, body,
+                        notifications.append([msg_tmp.id, recipients, source, event.id, 'event', subject, body,
                                               send_email, email_to, org])
 
     return notifications
@@ -1058,7 +1059,8 @@ def stale_event_notifications():
                     body = ""
                 # source: system
                 source = 'system'
-                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event', subject, body,
+                                            True, email_to)
 
     else:
         encountered_types = ''.join(list(set([type(x).__name__ for x in stale_event_periods_list])))
@@ -1332,8 +1334,8 @@ def custom_notifications_by_user(yesterday, user_id):
                                 body = ""
                             # source: any organization who creates or updates an event that meets the trigger criteria
                             source = event.created_by.organization.name
-                            generate_notification.delay(recipients, source, event.id, 'event', subject, body,
-                                                        send_email, email_to)
+                            generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event', subject,
+                                                        body, send_email, email_to)
 
         custom_notification_cues_updated = NotificationCueCustom.objects.filter(
             notification_cue_preference__create_when_modified=True, created_by=user_id)
@@ -1409,8 +1411,8 @@ def custom_notifications_by_user(yesterday, user_id):
                                                                                               msg_tmp.message_variables)
                                             body = ""
 
-                                        generate_notification.delay(recipients, source, event.id, 'event', subject,
-                                                                    body, send_email, email_to)
+                                        generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event',
+                                                                    subject, body, send_email, email_to)
 
     except SoftTimeLimitExceeded:
         recip = get_whispers_email_address()

@@ -397,7 +397,8 @@ class Event(PermissionsHistoryModel):
                 # email forwarding: Automatic, to nwhc-epi@usgs.gov
                 email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, self.id, 'event', subject, body,
+                                            True, email_to)
 
         def get_event_diagnoses():
             event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
@@ -1607,7 +1608,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                                                     ).exclude(is_active=False).values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event', subject, body,
+                                            True, email_to)
 
         diagnosis = self.diagnosis
 
@@ -1862,7 +1864,8 @@ class ServiceRequest(PermissionsHistoryModel):
                     email_to.append(self.event.created_by.email)
                 if recipients and email_to:
                     from whispersapi.immediate_tasks import generate_notification
-                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                    generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                                True, email_to)
                 else:
                     # No recipients are active users
                     # Instead of causing a validation error, email admins and let the create proceed
@@ -1930,6 +1933,7 @@ class Notification(PermissionsHistoryModel):
     Notification
     """
 
+    template = models.ForeignKey('NotificationMessageTemplate', models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the source message template')
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the user receiving this notification')
     source = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the source of this notification')
     event = models.ForeignKey('Event', models.CASCADE, null=True, related_name='notifications', help_text='A foreign key integer value identifying an event')
@@ -2607,7 +2611,8 @@ class EventReadUser(PermissionsHistoryModel):
                 # email forwarding: Automatic, to user that was made a collaborator.
                 email_to = [self.user.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                            True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2692,7 +2697,8 @@ class EventWriteUser(PermissionsHistoryModel):
                 # email forwarding: Automatic, to user that was made a collaborator.
                 email_to = [self.user.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                            True, email_to)
 
     def __str__(self):
         return str(self.id)
