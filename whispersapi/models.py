@@ -15,6 +15,36 @@ from whispersapi.field_descriptions import *
 # For more information, see: https://docs.djangoproject.com/en/2.0/ref/contrib/auth/#user
 
 
+def validate_event_diagnosis(event_id, user_id):
+    event = Event.objects.filter(id=event_id).first()
+    user = User.objects.filter(id=user_id).first()
+    # Check if there are "Pending" event diagnoses remaining
+    evt_diags = EventDiagnosis.objects.filter(event=event.id)
+    if len(evt_diags) > 1:
+        # "Pending" is only allowed when there are no other event diagnoses and the event is not complete,
+        #  so check if there is a "Pending" and delete it
+        for evt_diag in evt_diags:
+            if evt_diag.diagnosis.name == 'Pending':
+                evt_diag.delete()
+    elif len(evt_diags) == 1:
+        # "Pending" is only allowed when there are no other event diagnoses and the event is not complete,
+        #  so check if there is a "Pending" and delete it, then replace it with "Undetermined"
+        if evt_diags[0].diagnosis.name == 'Pending' and event.complete:
+            evt_diags[0].delete()
+    elif len(evt_diags) == 0:
+        # If no event-level diagnosis indicated by user,
+        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
+        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
+        if not event.complete:
+            diagnosis = Diagnosis.objects.filter(name='Pending').first()
+        else:
+            diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=False, priority=1,
+                                      created_by=user, modified_by=user)
+
+
 def partner_create_permission(request):
     # anyone with role of Partner or above can create
     if (not request or not request.user or not request.user.is_authenticated or request.user.role.is_public
@@ -400,24 +430,7 @@ class Event(PermissionsHistoryModel):
                 generate_notification.delay(msg_tmp.id, recipients, source, self.id, 'event', subject, body,
                                             True, email_to)
 
-        def get_event_diagnoses():
-            event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
-            return event_diagnoses if event_diagnoses is not None else []
-
-        # If no event-level diagnosis indicated by user,
-        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
-        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
-        evt_diags = get_event_diagnoses()
-        if len(evt_diags) == 0:
-            # There are no event diagnoses, so assign "Pending" if event is incomplete or "Undetermined" if complete
-            if not self.complete:
-                diagnosis = Diagnosis.objects.filter(name='Pending').first()
-            else:
-                diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
-            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, priority=1,
-                                          created_by=self.created_by, modified_by=self.modified_by)
+        validate_event_diagnosis(self.id, self.created_by.id)
 
     def __str__(self):
         return str(self.id)
@@ -1389,6 +1402,8 @@ class EventDiagnosis(PermissionsHistoryModel):
             self.suspect = False
         super(EventDiagnosis, self).save(*args, **kwargs)
 
+        validate_event_diagnosis(self.event.id, self.created_by.id)
+
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         diagnosis_name = self.diagnosis.name
@@ -1397,20 +1412,7 @@ class EventDiagnosis(PermissionsHistoryModel):
 
         super(EventDiagnosis, self).delete(*args, **kwargs)
 
-        # Check if there are no event diagnoses remaining
-        # If no event-level diagnosis indicated by user,
-        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
-        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
-        event_diagnoses = EventDiagnosis.objects.filter(event=event.id)
-        if len(event_diagnoses) == 0:
-            if not event.complete:
-                diagnosis = Diagnosis.objects.filter(name='Pending').first()
-            else:
-                diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
-            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=False, priority=1,
-                                          created_by=deleting_user, modified_by=deleting_user)
+        validate_event_diagnosis(event.id, deleting_user.id)
 
         # update the event modified_date only when the diagnosis is not Pending or Undetermined
         #  to avoid an infinite loop, since one of those two diagnoses is always created when an Event is created
