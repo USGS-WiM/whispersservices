@@ -170,7 +170,7 @@ def construct_notification_email(recipient_email, subject, html_body,
 
 
 @shared_task(name='generate_notification_task')
-def generate_notification(recipients, source, event_id, client_page, subject, body,
+def generate_notification(template_id, recipients, source, event_id, client_page, subject, body,
                           send_email=False, email_to=None):
     if not recipients or not subject or not body:
         # notify admins of error
@@ -215,8 +215,9 @@ def generate_notification(recipients, source, event_id, client_page, subject, bo
         recipients = list(set(recipients))
         for recip in recipients:
             user = User.objects.filter(id=recip).first()
+            template = NotificationMessageTemplate.objects.filter(id=template_id).first()
             Notification.objects.create(
-                recipient=user, source=source, event=event, read=False, client_page=client_page,
+                template=template, recipient=user, source=source, event=event, read=False, client_page=client_page,
                 subject=subject, body=body, created_by=admin, modified_by=admin)
         if send_email and email_to is not None:
             # ensure no duplicate email recipients

@@ -15,6 +15,50 @@ from whispersapi.field_descriptions import *
 # For more information, see: https://docs.djangoproject.com/en/2.0/ref/contrib/auth/#user
 
 
+def validate_event_diagnosis(event_id, user_id):
+    event = Event.objects.filter(id=event_id).first()
+    user = User.objects.filter(id=user_id).first()
+    # Check if there are "Pending" event diagnoses remaining
+    evt_diags = EventDiagnosis.objects.filter(event=event.id)
+    if len(evt_diags) > 1:
+        # "Pending" is only allowed when there are no other event diagnoses and the event is not complete,
+        #  so check if there is a "Pending" and delete it
+        for evt_diag in evt_diags:
+            if evt_diag.diagnosis.name == 'Pending':
+                # this delete will NOT trigger the creation of a new event diagnosis because there are others remaining
+                evt_diag.delete()
+    elif len(evt_diags) == 1:
+        evt_diag = evt_diags[0]
+        # "Pending" is only allowed when there are no other event diagnoses and the event is not complete,
+        #  so check if there is a "Pending" when the event is complete and delete it, then replace with "Undetermined"
+        if evt_diag.diagnosis.name == 'Pending' and event.complete:
+            # this delete will trigger the creation of a new event diagnosis with the appropriate diagnosis
+            evt_diag.delete()
+        # "Undetermined" can be set manually or automatically;
+        #   if it was set automatically (modified_by was user 1 (Admin)) and event is now not complete
+        #   then it needs to be replaced by "Pending"
+        #   otherwise it was set manually and so can stay, regardless of event complete state
+        #   (per new business rule from NWHC July 2022)
+        elif evt_diag.diagnosis.name == 'Undetermined' and not event.complete and evt_diag.modified_by.id == 1:
+            # this delete will trigger the creation of a new event diagnosis with the appropriate diagnosis
+            evt_diag.delete()
+    elif len(evt_diags) == 0:
+        # If no event-level diagnosis indicated by user,
+        #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
+        #  and "Undetermined" used as event-level diagnosis_id if investigation is complete ("Complete"=1).
+        if not event.complete:
+            diagnosis = Diagnosis.objects.filter(name='Pending').first()
+        else:
+            diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
+        # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
+        # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        # also set the modified_by to user 1 (Admin) to indicate this was automatically (not manually) created
+        # (per new business rule from NWHC July 2022)
+        admin = User.objects.filter(id=1).first()
+        EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=False, priority=1,
+                                      created_by=user, modified_by=admin)
+
+
 def partner_create_permission(request):
     # anyone with role of Partner or above can create
     if (not request or not request.user or not request.user.is_authenticated or request.user.role.is_public
@@ -397,32 +441,10 @@ class Event(PermissionsHistoryModel):
                 # email forwarding: Automatic, to nwhc-epi@usgs.gov
                 email_to = list(User.objects.filter(id=MADISON_EPI_USER_ID).values_list('email', flat=True))
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, self.id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, self.id, 'event', subject, body,
+                                            True, email_to)
 
-        def get_event_diagnoses():
-            event_diagnoses = EventDiagnosis.objects.filter(event=self.id)
-            return event_diagnoses if event_diagnoses is not None else []
-
-        diagnosis = None
-
-        # If complete = 0 then: a. delete if diagnosis is Undetermined, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Pending, c. if count of event_diagnosis >= 1 then do nothing
-        if not self.complete:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Undetermined']
-            if len(get_event_diagnoses()) == 0:
-                diagnosis = Diagnosis.objects.filter(name='Pending').first()
-        # If complete = 1 then: a. delete if diagnosis is Pending, b. if count of event_diagnosis = 0
-        #  then insert diagnosis Undetermined, c. if count of event_diagnosis >= 1 then do nothing
-        else:
-            [evt_diag.delete() for evt_diag in get_event_diagnoses() if evt_diag.diagnosis.name == 'Pending']
-            if len(get_event_diagnoses()) == 0:
-                diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
-
-        if diagnosis:
-            # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
-            # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
-            EventDiagnosis.objects.create(event=self, diagnosis=diagnosis, suspect=False, priority=1,
-                                          created_by=self.created_by, modified_by=self.modified_by)
+        validate_event_diagnosis(self.id, self.created_by.id)
 
     def __str__(self):
         return str(self.id)
@@ -714,7 +736,7 @@ class EventContact(PermissionsHistoryModel):
     """
 
     event = models.ForeignKey('Event', models.CASCADE, help_text='A foreign key integer value identifying an event')
-    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value indentifying a contact')
+    contact = models.ForeignKey('Contact', models.CASCADE, help_text='A foreign key integer value identifying a contact')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_eventcontact')
 
     @staticmethod
@@ -780,8 +802,8 @@ class EventLocation(PermissionsHistoryModel):
         'AdministrativeLevelTwo', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the administrative level two to which this event location belongs')
     county_multiple = models.BooleanField(default=False, help_text='A boolean value indicating that the event location spans multiple counties or not')
     county_unknown = models.BooleanField(default=False, help_text='A boolean value indicating that the event location county is unkown or not')
-    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the latitude for this event location')
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the longitude for this event location')
+    latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the latitude for this event location')
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the longitude for this event location')
     priority = models.IntegerField(null=True, help_text='An intger value indicating the event locations priority. Can be used to set order of display based on importance')
     land_ownership = models.ForeignKey('LandOwnership', models.PROTECT, null=True, related_name='eventlocations', help_text='A foreign key integer value identifying the entity that owns the land for this event location')
     contacts = models.ManyToManyField('Contact', through='EventLocationContact', related_name='eventlocations', help_text='')
@@ -1007,8 +1029,8 @@ class AdministrativeLevelTwo(AdminPermissionsHistoryModel):
     administrative_level_one = models.ForeignKey(
         'AdministrativeLevelOne', models.CASCADE, related_name='administrativeleveltwos', help_text='A foreign key integer value identifying the administrative level one to which this administrative level two belongs')
     points = models.TextField(blank=True, default='', help_text='An alphanumeric value of the points of this administrative level two')  # QUESTION: what is the purpose of this field?
-    centroid_latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the latitude for this administrative level two')
-    centroid_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value indentifying the longitude for this administrative level two')
+    centroid_latitude = models.DecimalField(max_digits=8, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the latitude for this administrative level two')
+    centroid_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, help_text='A fixed-precision decimal number value identifying the longitude for this administrative level two')
     fips_code = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the FIPS code for this administrative level two')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_administrativeleveltwo')
 
@@ -1394,15 +1416,20 @@ class EventDiagnosis(PermissionsHistoryModel):
             self.suspect = False
         super(EventDiagnosis, self).save(*args, **kwargs)
 
+        validate_event_diagnosis(self.event.id, self.created_by.id)
+
     # override the delete method to update the parent event's modified_date
     def delete(self, *args, **kwargs):
         diagnosis_name = self.diagnosis.name
+        deleting_user = self.modified_by
         event = Event.objects.filter(id=self.event.id).first()
 
         super(EventDiagnosis, self).delete(*args, **kwargs)
 
+        validate_event_diagnosis(event.id, deleting_user.id)
+
         # update the event modified_date only when the diagnosis is not Pending or Undetermined
-        #  to avoid an infinite loop, since one of those two diagnoses are is always created when an Event is created
+        #  to avoid an infinite loop, since one of those two diagnoses is always created when an Event is created
         #  or updated without an already existing event diagnosis
         if (diagnosis_name not in ['Pending', 'Undetermined']
                 and (not event.modified_by or not event.modified_date
@@ -1470,7 +1497,7 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
     suspect_count = models.IntegerField(null=True, help_text='An integer value indicating the suspect count for this species diagnosis')
     pooled = models.BooleanField(default=False, help_text='A boolean value indicating if the species diagnosis was pooled or not')
     organizations = models.ManyToManyField(
-        'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value indentifying an organization')
+        'Organization', through='SpeciesDiagnosisOrganization', related_name='speciesdiagnoses', help_text='A many to many releationship of organizations based on a foreign key integer value identifying an organization')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_speciesdiagnosis')
 
     # keep track of "previous" diagnosis to detect if the value changes during save
@@ -1597,7 +1624,8 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                                                     ).exclude(is_active=False).values_list('email', flat=True))
                 email_to += [event.created_by.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event.id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event', subject, body,
+                                            True, email_to)
 
         diagnosis = self.diagnosis
 
@@ -1846,13 +1874,14 @@ class ServiceRequest(PermissionsHistoryModel):
                 email_to = []
                 if self.created_by.is_active:
                     recipients.append(self.created_by.id)
-                    email_to.append(self.created_by.id)
+                    email_to.append(self.created_by.email)
                 if self.event.created_by.is_active:
                     recipients.append(self.event.created_by.id)
-                    email_to.append(self.event.created_by.id)
+                    email_to.append(self.event.created_by.email)
                 if recipients and email_to:
                     from whispersapi.immediate_tasks import generate_notification
-                    generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                    generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                                True, email_to)
                 else:
                     # No recipients are active users
                     # Instead of causing a validation error, email admins and let the create proceed
@@ -1920,6 +1949,7 @@ class Notification(PermissionsHistoryModel):
     Notification
     """
 
+    template = models.ForeignKey('NotificationMessageTemplate', models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the source message template')
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, models.CASCADE, related_name='notifications', help_text='A foreign key integer value identifying the user receiving this notification')
     source = models.CharField(max_length=128, blank=True, default='', help_text='A alphanumeric value of the source of this notification')
     event = models.ForeignKey('Event', models.CASCADE, null=True, related_name='notifications', help_text='A foreign key integer value identifying an event')
@@ -2378,7 +2408,7 @@ class User(AbstractUser):
     role = models.ForeignKey('Role', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying a role assigned to a user')
     organization = models.ForeignKey('Organization', models.PROTECT, null=True, related_name='users', help_text='A foreign key integer value identifying an organization assigned to a user')
     circles = models.ManyToManyField(
-        'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users', help_text='A many to many releationship of circles based on a foreign key integer value indentifying a circle')
+        'Circle', through='CircleUser', through_fields=('user', 'circle'), related_name='users', help_text='A many to many releationship of circles based on a foreign key integer value identifying a circle')
     active_key = models.TextField(blank=True, default='', help_text='An alphanumeric value of the active key for this user')
     user_status = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the status for this user')
 
@@ -2597,7 +2627,8 @@ class EventReadUser(PermissionsHistoryModel):
                 # email forwarding: Automatic, to user that was made a collaborator.
                 email_to = [self.user.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                            True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2682,7 +2713,8 @@ class EventWriteUser(PermissionsHistoryModel):
                 # email forwarding: Automatic, to user that was made a collaborator.
                 email_to = [self.user.email, ]
                 from whispersapi.immediate_tasks import generate_notification
-                generate_notification.delay(recipients, source, event_id, 'event', subject, body, True, email_to)
+                generate_notification.delay(msg_tmp.id, recipients, source, event_id, 'event', subject, body,
+                                            True, email_to)
 
     def __str__(self):
         return str(self.id)
@@ -2904,7 +2936,7 @@ class Search(PermissionsHistoryModel):
 
     name = models.CharField(max_length=128, blank=True, default='', help_text='An alphanumeric value of the name of this search')
     data = JSONField(blank=True, help_text='A JSON object containing the search data')
-    count = models.IntegerField(default=0, help_text='An integer value indentifying the count of searches')
+    count = models.IntegerField(default=0, help_text='An integer value identifying the count of searches')
     history = HistoricalRecords(inherit=True, table_name='whispershistory_search')
 
     @staticmethod
