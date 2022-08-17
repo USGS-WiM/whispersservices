@@ -1,6 +1,6 @@
 amqp==5.0.6
 billiard==3.6.4.0
-celery==5.0.5
+celery==5.2.2
 certifi==2021.5.30
 chardet==3.0.4
 click==7.1.2
