@@ -347,7 +347,7 @@ class EventViewSet(HistoryViewSet):
             except KeyError as e:
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
-            generate_notification.delay(msg_tmp, recipient_ids, source, event.id, 'event', subject, body,
+            generate_notification.delay(msg_tmp.id, recipient_ids, source, event.id, 'event', subject, body,
                                         True, email_to)
 
         # Collaborator alert is also logged as an event-level comment.
@@ -400,7 +400,7 @@ class EventViewSet(HistoryViewSet):
                 Q(id=event_owner.id) | Q(role__in=[3, 4], organization=event_owner.organization.id) | Q(
                     role__in=[3, 4], organization__in=event_owner.parent_organizations)
             ).values_list('email', flat=True))
-            generate_notification.delay(msg_tmp, recipients, source, event.id, 'event', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event.id, 'event', subject, body, True, email_to)
         return Response({"status": 'email sent'}, status=200)
 
     def destroy(self, request, *args, **kwargs):
@@ -2164,7 +2164,7 @@ class UserViewSet(HistoryViewSet):
                     last_name=user.last_name,
                     password_reset_link=password_reset_link)
                 event = None
-                generate_notification.delay(msg_tmp, recipients, source, event, 'homepage', subject, body,
+                generate_notification.delay(msg_tmp.id, recipients, source, event, 'homepage', subject, body,
                                             True, email_to)
             return Response({"status": "Password reset request processed."})
         else:
@@ -2228,7 +2228,7 @@ class UserViewSet(HistoryViewSet):
             ) + [user.id, ]
             # email forwarding: Automatic, to user's email and to whispers@usgs.gov
             email_to = [User.objects.filter(id=1).values('email').first()['email'], user.email, ]
-            generate_notification.delay(msg_tmp, recipients, source, event, 'homepage', subject, body, True, email_to)
+            generate_notification.delay(msg_tmp.id, recipients, source, event, 'homepage', subject, body, True, email_to)
 
 
 class AuthView(views.APIView):
