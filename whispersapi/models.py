@@ -25,12 +25,23 @@ def validate_event_diagnosis(event_id, user_id):
         #  so check if there is a "Pending" and delete it
         for evt_diag in evt_diags:
             if evt_diag.diagnosis.name == 'Pending':
+                # this delete will NOT trigger the creation of a new event diagnosis because there are others remaining
                 evt_diag.delete()
     elif len(evt_diags) == 1:
+        evt_diag = evt_diags[0]
         # "Pending" is only allowed when there are no other event diagnoses and the event is not complete,
-        #  so check if there is a "Pending" and delete it, then replace it with "Undetermined"
-        if evt_diags[0].diagnosis.name == 'Pending' and event.complete:
-            evt_diags[0].delete()
+        #  so check if there is a "Pending" when the event is complete and delete it, then replace with "Undetermined"
+        if evt_diag.diagnosis.name == 'Pending' and event.complete:
+            # this delete will trigger the creation of a new event diagnosis with the appropriate diagnosis
+            evt_diag.delete()
+        # "Undetermined" can be set manually or automatically;
+        #   if it was set automatically (modified_by was user 1 (Admin)) and event is now not complete
+        #   then it needs to be replaced by "Pending"
+        #   otherwise it was set manually and so can stay, regardless of event complete state
+        #   (per new business rule from NWHC July 2022)
+        elif evt_diag.diagnosis.name == 'Undetermined' and not event.complete and evt_diag.modified_by.id == 1:
+            # this delete will trigger the creation of a new event diagnosis with the appropriate diagnosis
+            evt_diag.delete()
     elif len(evt_diags) == 0:
         # If no event-level diagnosis indicated by user,
         #  then event diagnosis of "Pending" used for ongoing investigations (when "Complete"=0)
@@ -41,8 +52,11 @@ def validate_event_diagnosis(event_id, user_id):
             diagnosis = Diagnosis.objects.filter(name='Undetermined').first()
         # All "Pending" and "Undetermined" must be confirmed OR some other way of coding this
         # such that we never see "Pending suspect" or "Undetermined suspect" on front end.
+        # also set the modified_by to user 1 (Admin) to indicate this was automatically (not manually) created
+        # (per new business rule from NWHC July 2022)
+        admin = User.objects.filter(id=1).first()
         EventDiagnosis.objects.create(event=event, diagnosis=diagnosis, suspect=False, priority=1,
-                                      created_by=user, modified_by=user)
+                                      created_by=user, modified_by=admin)
 
 
 def partner_create_permission(request):
