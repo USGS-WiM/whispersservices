@@ -816,7 +816,7 @@ def send_unique_notifications(own_evt, org_evts, collab_evts, all_evts):
                 unique_notifications_org_source.append((notification[8], notification[2]))
 
             # remove the unnecessary 'org' attribute before generating the notification
-            notification.pop(8)
+            notification.pop(9)
             # generate the notification
             generate_notification.delay(*notification)
 
@@ -827,7 +827,7 @@ def send_unique_notifications(own_evt, org_evts, collab_evts, all_evts):
         if (notification[8], notification[2]) not in unique_notifications_org_source:
             unique_notifications_org_source.append((notification[8], notification[2]))
             # remove the unnecessary 'org' (which here is a copy of source) attribute before generating notification
-            notification.pop(8)
+            notification.pop(9)
             # generate the notification
             generate_notification.delay(*notification)
     return True
