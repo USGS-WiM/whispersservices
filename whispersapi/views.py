@@ -2248,31 +2248,6 @@ class AuthView(views.APIView):
         return Response(self.serializer_class(user, context={'request': request, 'view_name': 'auth'}).data)
 
 
-class RoleViewSet(HistoryViewSet):
-    """
-    list:
-    Returns a list of all roles.
-
-    create:
-    Creates a role.
-    
-    read:
-    Returns a role by id.
-    
-    update:
-    Updates a role.
-    
-    partial_update:
-    Updates parts of a role.
-    
-    delete:
-    Deletes a role.
-    """
-
-    queryset = Role.objects.all()
-    serializer_class = RoleSerializer
-
-
 class UserChangeRequestViewSet(HistoryViewSet):
     """
     list:

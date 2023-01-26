@@ -4497,16 +4497,6 @@ class UserSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class RoleSerializer(serializers.ModelSerializer):
-    created_by_string = serializers.StringRelatedField(source='created_by')
-    modified_by_string = serializers.StringRelatedField(source='modified_by')
-
-    class Meta:
-        model = Role
-        fields = ('id', 'name', 'created_date', 'created_by', 'created_by_string',
-                  'modified_date', 'modified_by', 'modified_by_string',)
-
-
 class UserChangeRequestSerializer(serializers.ModelSerializer):
     requester = serializers.PrimaryKeyRelatedField(read_only=True)
 
