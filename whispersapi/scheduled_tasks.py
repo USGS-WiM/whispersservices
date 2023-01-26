@@ -523,6 +523,7 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         event_date = event.created_date
         first_name = event.created_by.first_name
         last_name = event.created_by.last_name
+        username = event.created_by.username
         org = event.created_by.organization.name
     else:
         new_updated = "Updated"
@@ -530,6 +531,7 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         event_date = event.modified_date
         first_name = event_user.first_name
         last_name = event_user.last_name
+        username = event_user.username
         org = event_user.organization.name
 
     try:
@@ -539,8 +541,9 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         subject = ""
     try:
         body = msg_tmp.body_template.format(
-            first_name=first_name, last_name=last_name, created_updated=created_updated,
-            event_id=event.id, event_date=event_date, updates=updates, new_updated=new_updated)
+            first_name=first_name, last_name=last_name, username=username, organization=org,
+            created_updated=created_updated, event_id=event.id, event_date=event_date, updates=updates,
+            new_updated=new_updated)
     except KeyError as e:
         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
         body = ""

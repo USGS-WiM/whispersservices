@@ -498,7 +498,15 @@ class CommentSerializer(serializers.ModelSerializer):
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
-                        body = msg_tmp.body_template.format(event_id=event_id)
+                        body = msg_tmp.body_template.format(commenter_first_name=self.created_by.first_name,
+                                                            commenter_last_name=self.created_by.last_name,
+                                                            commenter_username=self.created_by.username,
+                                                            commenter_organization=self.created_by.organization.name,
+                                                            initiator_first_name=service_request.created_by.first_name,
+                                                            initiator_last_name=service_request.created_by.last_name,
+                                                            initiator_username=service_request.created_by.username,
+                                                            initiator_organization=service_request.created_by.organization.name,
+                                                            event_id=event_id)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
@@ -542,7 +550,15 @@ class CommentSerializer(serializers.ModelSerializer):
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         subject = ""
                     try:
-                        body = msg_tmp.body_template.format(event_id=event_id)
+                        body = msg_tmp.body_template.format(commenter_first_name=self.created_by.first_name,
+                                                            commenter_last_name=self.created_by.last_name,
+                                                            commenter_username=self.created_by.username,
+                                                            commenter_organization=self.created_by.organization.name,
+                                                            initiator_first_name=service_request.created_by.first_name,
+                                                            initiator_last_name=service_request.created_by.last_name,
+                                                            initiator_username=service_request.created_by.username,
+                                                            initiator_organization=service_request.created_by.organization.name,
+                                                            event_id=event_id)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                         body = ""
@@ -2192,7 +2208,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         if not country:
                             # Instead of causing a validation error, email admins and let the create proceed
                             # latlng_country_found = False
-                            message = f"Geonames returned a Country ({country_code})"
+                            message = f"During Event Location validation for Event {data['event'].id}:\r\n\r\n"
+                            message += f"Geonames returned a Country ({country_code})"
                             message += " that could not be found in the WHISPers database"
                             message += f" when using the latitude and longitude submitted by the user"
                             message += f" ({data['longitude']}, {data['latitude']})."
@@ -2201,7 +2218,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                         elif data['country'].id != country.id:
                             # Instead of causing a validation error, email admins and let the create proceed
                             # latlng_matches_country = False
-                            message = f"Geonames returned a Country ({country_code})"
+                            message = f"During Event Location validation for Event {data['event'].id}:\r\n\r\n"
+                            message += f"Geonames returned a Country ({country_code})"
                             message += " different from the one submitted by the user"
                             message += f" ({data['country'].name}) when using the latitude"
                             message += " and longitude submitted by the user"
@@ -2215,7 +2233,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                             if not admin_l1 or data['administrative_level_one'].id != admin_l1.id:
                                 # Instead of causing a validation error, email admins and let the create proceed
                                 # latlng_matches_admin_l1 = False
-                                message = f"Geonames returned an Administrative Level One ({address['adminName1']})"
+                                message = f"During Event Location validation for Event {data['event'].id}:\r\n\r\n"
+                                message += f"Geonames returned an Administrative Level One ({address['adminName1']})"
                                 message += " different from the one submitted by the user"
                                 message += f" ({data['administrative_level_one'].name}) when using the latitude"
                                 message += " and longitude submitted by the user"
@@ -2230,7 +2249,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                 if not admin_l2 or data['administrative_level_two'].id != admin_l2.id:
                                     # Instead of causing a validation error, email admins and let the create proceed
                                     # latlng_matches_admin_21 = False
-                                    message = f"Geonames returned an Administrative Level Two ({admin_name2})"
+                                    message = f"During Event Location validation for Event {data['event'].id}:\r\n\r\n"
+                                    message += f"Geonames returned an Administrative Level Two ({admin_name2})"
                                     message += " different from the one submitted by the user"
                                     message += f" ({data['administrative_level_two'].name}) when using the latitude"
                                     message += " and longitude submitted by the user"
@@ -2239,7 +2259,8 @@ class EventLocationSerializer(serializers.ModelSerializer):
                                     construct_email("WHISPERS ADMIN: Third Party Service Validation Warning", message)
                     else:
                         # Instead of causing a validation error, email admins and let the create proceed
-                        message = f"Geonames returned data in an unexpected format"
+                        message = f"During Event Location validation for Event {data['event'].id}:\r\n\r\n"
+                        message += f"Geonames returned data in an unexpected format"
                         message += " that could not be validated against data in the WHISPers database"
                         message += f" when using the latitude and longitude submitted by the user"
                         message += f" ({data['longitude']}, {data['latitude']})."
@@ -4552,8 +4573,8 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 subject = ""
             try:
                 body = msg_tmp.body_template.format(first_name=ucr.requester.first_name,
-                                                    last_name=ucr.requester.last_name,username=ucr.requester.username,
-                                                    current_role=ucr.requester.role.name,
+                                                    last_name=ucr.requester.last_name, username=ucr.requester.username,
+                                                    email=ucr.requester.email, current_role=ucr.requester.role.name,
                                                     new_role=ucr.role_requested.name,
                                                     current_organization=ucr.requester.organization.name,
                                                     new_organization=ucr.organization_requested.name, comment=comment)
@@ -4661,7 +4682,10 @@ class UserChangeRequestSerializer(serializers.ModelSerializer):
                 else:
                     subject = msg_tmp.subject_template
                     try:
-                        body = msg_tmp.body_template.format(role=instance.role_requested.name,
+                        body = msg_tmp.body_template.format(first_name=instance.requester.first_name,
+                                                            last_name=instance.requester.last_name,
+                                                            username=instance.requester.username,
+                                                            role=instance.role_requested.name,
                                                             organization=instance.organization_requested.name)
                     except KeyError as e:
                         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)

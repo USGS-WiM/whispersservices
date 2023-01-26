@@ -1594,8 +1594,12 @@ class SpeciesDiagnosis(PermissionsHistoryModel):
                     subject = ""
                 try:
                     body = msg_tmp.body_template.format(
-                        species_diagnosis=self.diagnosis.name, event_location=short_evt_loc,
-                        event_id=self.location_species.event_location.event.id)
+                        editor_first_name=self.modified_by.first_name, editor_last_name=self.modified_by.last_name,
+                        editor_username=self.modified_by.username, editor_organization=self.modified_by.organization.name,
+                        owner_first_name=event.created_by.first_name, owner_last_name=event.created_by.last_name,
+                        owner_username=event.created_by.username, owner_organization=event.created_by.organization.name,
+                        species=self.location_species.species.name, species_diagnosis=self.diagnosis.name,
+                        event_location=short_evt_loc, event_id=event.id)
                 except KeyError as e:
                     from whispersapi.immediate_tasks import send_notification_template_message_keyerror_email
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
@@ -1861,7 +1865,15 @@ class ServiceRequest(PermissionsHistoryModel):
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                     subject = ""
                 try:
-                    body = msg_tmp.body_template.format(event_id=event_id)
+                    body = msg_tmp.body_template.format(responder_first_name=self.response_by.first_name,
+                                                        responder_last_name=self.response_by.last_name,
+                                                        responder_username=self.response_by.username,
+                                                        responder_organization=self.response_by.organization.name,
+                                                        initiator_first_name=self.response_by.created_by.first_name,
+                                                        initiator_last_name=self.response_by.created_by.last_name,
+                                                        initiator_username=self.response_by.created_by.username,
+                                                        initiator_organization=self.response_by.created_by.organization,
+                                                        event_id=event_id)
                 except KeyError as e:
                     from whispersapi.immediate_tasks import send_notification_template_message_keyerror_email
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
@@ -2614,8 +2626,8 @@ class EventReadUser(PermissionsHistoryModel):
                     subject = ""
                 try:
                     body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                        username=user.username, collaborator_type="Read",
-                                                        event_id=event_id)
+                                                        username=user.username, organization=user.organization.name,
+                                                        collaborator_type="Read", event_id=event_id)
                 except KeyError as e:
                     from whispersapi.immediate_tasks import send_notification_template_message_keyerror_email
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
@@ -2700,8 +2712,8 @@ class EventWriteUser(PermissionsHistoryModel):
                     subject = ""
                 try:
                     body = msg_tmp.body_template.format(first_name=user.first_name, last_name=user.last_name,
-                                                        username=user.username, collaborator_type="Write",
-                                                        event_id=event_id)
+                                                        username=user.username, organization=user.organization.name,
+                                                        collaborator_type="Write", event_id=event_id)
                 except KeyError as e:
                     from whispersapi.immediate_tasks import send_notification_template_message_keyerror_email
                     send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
