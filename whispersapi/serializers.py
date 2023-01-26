@@ -4164,6 +4164,7 @@ class NotificationCueStandardTypeSerializer(serializers.ModelSerializer):
 # Contain symbols (~, !, @, #, etc.)
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, allow_blank=True, required=False)
+    role_string = serializers.StringRelatedField(source='role')
     organization_string = serializers.StringRelatedField(source='organization')
     notification_cue_standards = NotificationCueStandardSerializer(
         read_only=True, many=True, source='notificationcuestandard_creator')
@@ -4463,8 +4464,8 @@ class UserSerializer(serializers.ModelSerializer):
                 view_name = kwargs['context']['view_name']
         fields = ('id', 'username', 'first_name', 'last_name', 'email', 'organization', 'organization_string',)
         private_fields = ('id', 'username', 'password', 'first_name', 'last_name', 'email', 'is_superuser', 'is_staff',
-                          'is_active', 'role', 'organization', 'organization_string', 'circles', 'last_login',
-                          'active_key', 'user_status', 'notification_cue_standards',
+                          'is_active', 'role', 'role_string', 'organization', 'organization_string', 'circles',
+                          'last_login', 'active_key', 'user_status', 'notification_cue_standards',
                           'new_notification_cue_standard_preferences', 'new_user_change_request', )
 
         if action == 'create' or view_name == 'auth' or action == 'reset_password':
