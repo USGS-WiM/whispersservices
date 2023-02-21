@@ -1,5 +1,12 @@
 # Changelog
 
+## [v2.2.2](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.2) - 2023-02-21
+
+### Changed
+
+- Add role_string field to user serializer
+- Remove the Roles endpoint (url, view, serializer)
+
 ## [v2.2.1](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.1) - 2022-08-24
 
 ### Fixed
