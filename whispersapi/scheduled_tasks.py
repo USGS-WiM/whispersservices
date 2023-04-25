@@ -7,6 +7,24 @@ from whispersapi.models import *
 from whispersapi.immediate_tasks import *
 
 
+# This class is intended to prevent potential bugs caused by accessing the wrong indexes in a list
+#  (we had been using lists previously and encountered bugs when filtering for unique notifications)
+#  (explicit class properties are better than implicit list indices)
+class NotificationDetails:
+    def __init__(self, template_id, recipients, source, event_id, client_page,
+                 subject, body, send_email, email_to, org_name):
+        self.template_id = template_id
+        self.recipients = recipients
+        self.source = source
+        self.event_id = event_id
+        self.client_page = client_page
+        self.subject = subject
+        self.body = body
+        self.send_email = send_email
+        self.email_to = email_to
+        self.org_name = org_name
+
+
 def get_nwhc_org_id():
     nwhc_org_record = Configuration.objects.filter(name='nwhc_organization').first()
     if nwhc_org_record:
@@ -545,7 +563,8 @@ def get_notification_details(cue, event, msg_tmp, updates, event_user):
         send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
         body = ""
 
-    return [msg_tmp.id, recipients, event_user.username, event.id, 'event', subject, body, send_email, email_to, org]
+    return NotificationDetails(msg_tmp.id, recipients, event_user.username, event.id, 'event',
+                               subject, body, send_email, email_to, org)
 
 
 def get_event_notifications_own_new(events_created_yesterday, user):
@@ -726,10 +745,11 @@ def get_event_notifications_all_new(events_created_yesterday, user):
                 send_notification_template_message_keyerror_email(msg_tmp.name, e, msg_tmp.message_variables)
                 body = ""
             source = event.created_by.organization.name
-            org = source
+            org_name = source
 
-            notifications.append([msg_tmp.id, recipients, source, event.id, 'event', subject, body,
-                                  send_email, email_to, org])
+            notif_details = NotificationDetails(msg_tmp.id, recipients, source, event.id, 'event',
+                                                subject, body, send_email, email_to, org_name)
+            notifications.append(notif_details)
 
     return notifications
 
@@ -760,7 +780,7 @@ def get_event_notifications_all_updated(events_updated_yesterday, yesterday, use
                 for event_updater in event_updaters:
                     source = event_updater[0]
                     source_id = event_updater[1]
-                    org = source
+                    org_name = source
                     updates = get_updates(event, source_id, yesterday, 'org', cue.created_by)
 
                     # only create notifications if there are update details (non-empty string)
@@ -792,44 +812,46 @@ def get_event_notifications_all_updated(events_updated_yesterday, yesterday, use
                                                                               msg_tmp.message_variables)
                             body = ""
 
-                        notifications.append([msg_tmp.id, recipients, source, event.id, 'event', subject, body,
-                                              send_email, email_to, org])
+                        notif_details = NotificationDetails(msg_tmp.id, recipients, source, event.id, 'event',
+                                                            subject, body, send_email, email_to, org_name)
+                        notifications.append(notif_details)
 
     return notifications
 
 
-def send_unique_notifications(own_evt, org_evts, collab_evts, all_evts):
-    unique_notifications_user_source = []
-    unique_notifications_org_source = []
+def send_unique_notifications(own_evts, org_evts, collab_evts, all_evts):
+    unique_notification_details_user_source = []
+    unique_notification_details_org_source = []
 
     # send unique notifications (determined by combination of [source, event])
     # that include source user info (the own, org, and collab notifications), preferring own over org over collab
     # also collect unique notifications using org (not user) source info to find unique 'All Event' notifications
-    user_detail_notifications = own_evt + org_evts + collab_evts
-    for notification in user_detail_notifications:
+    user_events_notif_details = own_evts + org_evts + collab_evts
+    for notif_details in user_events_notif_details:
         # find unique by (user (source), event ID)
-        if (notification[1], notification[2]) not in unique_notifications_user_source:
-            unique_notifications_user_source.append((notification[1], notification[2]))
+        if (notif_details.source, notif_details.event_id) not in unique_notification_details_user_source:
+            unique_notification_details_user_source.append((notif_details.source, notif_details.event_id))
 
-            # find unique by (org, event ID) (so these will not also be sent during 'ALL Event' processing)
-            if (notification[8], notification[2]) not in unique_notifications_org_source:
-                unique_notifications_org_source.append((notification[8], notification[2]))
+            # find unique by (org, event ID)
+            #  (so these will not also be sent during 'ALL Event' processing)
+            if (notif_details.org_name, notif_details.event_id) not in unique_notification_details_org_source:
+                unique_notification_details_org_source.append((notif_details.org_name, notif_details.event_id))
 
-            # remove the unnecessary 'org' attribute before generating the notification
-            notification.pop(9)
+            # remove the unnecessary 'org_name' property before generating the notification
+            del notif_details.org_name
             # generate the notification
-            generate_notification.delay(*notification)
+            generate_notification.delay(**notif_details.__dict__)
 
     # then send unique 'ALL Event' notifications (which user org as source info)
-    all_evts = all_evts
-    for notification in all_evts:
+    all_events_notif_details = all_evts
+    for notif_details in all_events_notif_details:
         # find unique by (org, event ID)
-        if (notification[8], notification[2]) not in unique_notifications_org_source:
-            unique_notifications_org_source.append((notification[8], notification[2]))
-            # remove the unnecessary 'org' (which here is a copy of source) attribute before generating notification
-            notification.pop(9)
+        if (notif_details.org_name, notif_details.event_id) not in unique_notification_details_org_source:
+            unique_notification_details_org_source.append((notif_details.org_name, notif_details.event_id))
+            # remove the unnecessary 'org_name' property (which here is a copy of source) before generating notification
+            del notif_details.org_name
             # generate the notification
-            generate_notification.delay(*notification)
+            generate_notification.delay(**notif_details.__dict__)
     return True
 
 
