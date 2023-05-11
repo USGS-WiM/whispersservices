@@ -108,7 +108,10 @@ EMAIL_HOST = CONFIG.get('email', 'EMAIL_HOST')
 EMAIL_HOST_PASSWORD = CONFIG.get('email', 'EMAIL_HOST_PASSWORD')
 EMAIL_HOST_USER = CONFIG.get('email', 'EMAIL_HOST_USER')
 EMAIL_PORT = CONFIG.get('email', 'EMAIL_PORT')
-EMAIL_USE_TLS = CONFIG.get('email', 'EMAIL_USE_TLS')
+EMAIL_USE_SSL = CONFIG.get('email', 'EMAIL_USE_SSL')
+# Note that EMAIL_USE_SSL does implicit TLS, typically for port 465
+#  the alternative is EMAIL_USE_TLS which does explicit TLS, typically for port 587
+#  the USGS SMTP Relay documentation says to use prefer port 465 over 25 or 587, so I went with EMAIL_USE_SSL here
 EMAIL_TIMEOUT = CONFIG.get('email', 'EMAIL_TIMEOUT')
 DEFAULT_FROM_EMAIL = CONFIG.get('email', 'DEFAULT_FROM_EMAIL')
 
