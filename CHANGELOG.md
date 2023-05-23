@@ -1,10 +1,27 @@
 # Changelog
 
-## [v2.2.2](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.2) - 2023-02-21
+## [v2.2.3](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.3) - 2023-05-23
+
+### Added
+
+- Add active Field to Organization
 
 ### Changed
 
+- Change Email settings to use EMAIL_USE_SSL instead of EMAIL_USE_TLS because USGS SMTP Relay docs say to prefer port 465 over 25 or 587
+
+### Fixed
+
+- Fix bug in standard notifications where many expected notifications were not being created due to using wrong index references
+
+## [v2.2.2](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.2) - 2023-02-21
+
+### Added
+
 - Add role_string field to user serializer
+
+### Removed
+
 - Remove the Roles endpoint (url, view, serializer)
 
 ## [v2.2.1](https://github.com/USGS-WiM/whispersservices/releases/tag/v2.2.1) - 2022-08-24
