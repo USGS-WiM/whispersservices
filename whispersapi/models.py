@@ -2849,6 +2849,7 @@ class Organization(AdminPermissionsHistoryNameModel):
     parent_organization = models.ForeignKey('self', models.CASCADE, null=True, related_name='organizations')
     do_not_publish = models.BooleanField(default=False, help_text='A boolean value indicating if an organization is supposed to be published or not')
     laboratory = models.BooleanField(default=False, help_text='A boolean value indicating if an organization has a laboratory or not')
+    active = models.BooleanField(default=True, help_text='A boolean value indication if an organization is active or not')
 
     # override the save method to prevent infinite recursion
     #  (ensure the organization does not have itself as its parent organization)
