@@ -4809,15 +4809,15 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
         if not user or not user.is_authenticated or user.role.is_public:
             fields = ('id', 'name', 'address_one', 'address_two', 'city', 'postal_code', 'administrative_level_one',
-                      'country', 'phone', 'parent_organization', 'laboratory',)
+                      'country', 'phone', 'parent_organization', 'laboratory', 'active',)
         elif user.role.is_superadmin or user.role.is_admin:
             fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
                       'administrative_level_one', 'country', 'phone', 'parent_organization', 'do_not_publish',
-                      'laboratory', 'created_date', 'created_by', 'created_by_string',
+                      'laboratory', 'active', 'created_date', 'created_by', 'created_by_string',
                       'modified_date', 'modified_by', 'modified_by_string',)
         else:
             fields = ('id', 'name', 'private_name', 'address_one', 'address_two', 'city', 'postal_code',
-                      'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory',)
+                      'administrative_level_one', 'country', 'phone', 'parent_organization', 'laboratory', 'active',)
 
         super(OrganizationSerializer, self).__init__(*args, **kwargs)
 
