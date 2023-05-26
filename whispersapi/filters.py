@@ -141,10 +141,11 @@ class OrganizationFilter(FilterSet):
     users = NumberInFilter(field_name='users', lookup_expr='in', label='Filter by user ID (or a list of user IDs)')
     contacts = NumberInFilter(field_name='contacts', lookup_expr='in', label='Filter by contact ID (or a list of contact IDs)')
     laboratory = BooleanFilter(label='Filter by whether organization is a laboratory or not')
+    active = BooleanFilter(label='Filter by whether organization is active or not')
 
     class Meta:
         model = Organization
-        fields = ['users', 'contacts', 'laboratory', ]
+        fields = ['users', 'contacts', 'laboratory', 'active',]
 
 
 class ContactFilter(FilterSet):

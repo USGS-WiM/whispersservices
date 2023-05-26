@@ -4841,9 +4841,9 @@ class OrganizationSlimSerializer(serializers.ModelSerializer):
             user = kwargs['context']['request'].user
 
         if not user or not user.is_authenticated or user.role.is_public:
-            fields = ('id', 'name', 'laboratory',)
+            fields = ('id', 'name', 'laboratory', 'active',)
         else:
-            fields = ('id', 'name', 'private_name', 'laboratory',)
+            fields = ('id', 'name', 'private_name', 'laboratory', 'active',)
 
         super(OrganizationSlimSerializer, self).__init__(*args, **kwargs)
 
