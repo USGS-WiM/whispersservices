@@ -1,5 +1,8 @@
 ![USGS](USGS_ID_black.png) ![WIM](wimlogo.png)
 
+# THIS REPO IS ARCHIVED
+## Please visit https://code.usgs.gov/WiM/whispersservices for the active repo of this project.
+
 # WHISPers Web Services
 
 This is the web services codebase for version 2 of Wildlife Health Information Sharing Partnership event reporting system (the web client application codebase can be found [here](https://github.com/USGS-WiM/whispers)). WHISPers allows users to enter, discover, amd explore wildlife mortality data submitted by partners across North America and verified by trained biologists.
